@@ -33,33 +33,35 @@ class AmapService {
     _lastRequestAt = DateTime.now();
   }
 
-  /// 逆地理：坐标 → 附近地点列表
+  /// 周边地点搜索：坐标 → 附近 POI（按距离由近到远）
   ///
-  /// extensions=all 时响应自带 POI 及到坐标点的距离，接口默认按
-  /// 距离由近到远排序，正好用于选点页"附近地点"列表。
-  Future<RegeoResult> regeo(Gcj02Point point) async {
+  /// 与逆地理接口不同，本接口检索周边全量 POI 库，地图上标注得到的
+  /// 小店、幼儿园等都能返回，用于选点页"附近地点"列表主体。
+  Future<List<PoiItem>> around(Gcj02Point point) async {
     final uri = Uri.parse(
-      '$_baseUrl/geocode/regeo?key=$_webKey'
+      '$_baseUrl/place/around?key=$_webKey'
       '&location=${point.lng},${point.lat}'
-      '&extensions=all&poiaffinity=near&radius=1000&roadlevel=0',
+      '&radius=1000&offset=25&page=1&sortrule=distance',
     );
     final data = await _get(uri);
-    final regeocode = (data['regeocode'] as Map<String, dynamic>?) ?? const {};
-    final component =
-        (regeocode['addressComponent'] as Map<String, dynamic>?) ?? const {};
-    final pois = ((regeocode['pois'] as List?) ?? const [])
+    return ((data['pois'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(_parsePoi)
         .where((p) => p.name.isNotEmpty)
         .toList();
-    return RegeoResult(
-      formattedAddress: _str(regeocode['formatted_address']),
-      province: _str(component['province']),
-      city: _str(component['city']),
-      district: _str(component['district']),
-      township: _str(component['township']),
-      pois: pois,
+  }
+
+  /// 逆地理：坐标 → 格式化地址文本（如"湖南省衡阳市…人民医院"）
+  ///
+  /// 只承担列表首项"当前选择点"的地址解析；周边 POI 列表由 [around]
+  /// 负责，此处不再请求 extensions=all 的深度信息，响应更快。
+  Future<String> regeoAddress(Gcj02Point point) async {
+    final uri = Uri.parse(
+      '$_baseUrl/geocode/regeo?key=$_webKey&location=${point.lng},${point.lat}',
     );
+    final data = await _get(uri);
+    final regeocode = (data['regeocode'] as Map<String, dynamic>?) ?? const {};
+    return _str(regeocode['formatted_address']);
   }
 
   /// 输入提示：关键词 → 地点候选
@@ -132,30 +134,11 @@ class PoiItem {
   final String name;
   final String address;
 
-  /// 距坐标点距离（米），逆地理接口自带，输入提示无此值
+  /// 距坐标点距离（米），周边搜索/逆地理自带，输入提示无此值
   final int? distance;
 
   /// 坐标（GCJ-02），行政区类输入提示为 null
   final Gcj02Point? location;
-}
-
-/// 逆地理结果
-class RegeoResult {
-  const RegeoResult({
-    required this.formattedAddress,
-    required this.province,
-    required this.city,
-    required this.district,
-    required this.township,
-    required this.pois,
-  });
-
-  final String formattedAddress;
-  final String province;
-  final String city;
-  final String district;
-  final String township;
-  final List<PoiItem> pois;
 }
 
 /// 高德坐标系坐标（GCJ-02 火星坐标）

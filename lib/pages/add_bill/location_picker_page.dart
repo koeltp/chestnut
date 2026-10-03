@@ -96,6 +96,14 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   /// 点"回到当前位置"按钮后临时置 true
   bool _followLocation = false;
 
+  /// 用户是否手动拖过地图：拖过之后定位结果不再拽动地图
+  bool _userDragged = false;
+
+  /// 最近一次程序化移图的目标点。onCameraMoveEnd 里与地图中心比对，
+  /// 区分手势拖动与代码 moveCamera（原生对两种来源回调相同）——
+  /// 中心与程序化目标不符即为用户拖动
+  Gcj02Point? _lastProgrammaticTarget;
+
   /// 缓存的 Marker 对象。amap_map 按 marker id 做 diff，而 Marker 每次
   /// 构造都会生成新 id——若在 build 里反复新建，原生层会全删全建，
   /// 定位回调刷新时图标闪烁、气泡消失。必须复用同一对象。
@@ -320,14 +328,14 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     }
   }
 
-  /// 应用一次定位结果：记录真实位置并更新小蓝点；
-  /// [follow] 为 true 时把地图带到该位置（_followLocation 只消费一次，
-  /// 后续精化结果只更新蓝点，不再拽动地图）
+  /// 应用一次定位结果：记录真实位置并更新小蓝点。
+  /// [follow] 为 true 且用户未拖动地图时把地图带到该位置——缓存位置
+  /// 只是开场占位（可能过时/漂移），实时定位到达后纠正红蓝分离；
+  /// 用户一旦手动拖过地图就不再拽回。系统定位为单次回调，不会反复移图。
   void _applyLocation(Gcj02Point point, {bool follow = false}) {
     _gpsPoint = point;
     _updateGpsMarker();
-    if (follow && _followLocation) {
-      _followLocation = false;
+    if (follow && !_userDragged) {
       _moveTo(point);
     }
     if (mounted) setState(() {});
@@ -338,13 +346,14 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   /// 此时 moveCamera 会被吞掉——记下待移动状态，地图就绪后补飞。
   void _moveTo(Gcj02Point point) {
     _center = point;
+    _lastProgrammaticTarget = point;
     final controller = _mapController;
     if (controller == null) {
       _pendingMove = true;
     } else {
       _pendingMove = false;
       controller.moveCamera(
-        CameraUpdate.newLatLngZoom(LatLng(point.lat, point.lng), 16.5),
+        CameraUpdate.newLatLngZoom(LatLng(point.lat, point.lng), 17.5),
       );
     }
     _loadNear(point);
@@ -355,13 +364,20 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   void _onCameraMoveEnd(CameraPosition position) {
     final target = position.target;
     _center = Gcj02Point(lat: target.latitude, lng: target.longitude);
+    // 中心与最近一次程序化移图目标不符：用户手势拖动，此后定位不拽图
+    final prog = _lastProgrammaticTarget;
+    if (prog == null || _distanceMeters(_center!, prog) > 1) {
+      _userDragged = true;
+    }
     if (_keyword.isNotEmpty) return;
     final loaded = _lastLoadedPoint;
     if (loaded != null && _distanceMeters(_center!, loaded) < 1) return;
     _loadNear(_center!);
   }
 
-  /// 加载中心点附近地点列表
+  /// 加载中心点附近地点列表。
+  /// 列表主体来自周边搜索接口（全量 POI、按距离排序）；逆地理仅并行
+  /// 补充首项"当前选择点"的地址文本，失败时静默跳过不影响列表。
   Future<void> _loadNear(Gcj02Point point) async {
     final gen = ++_reqGen;
     _lastLoadedPoint = point;
@@ -370,7 +386,12 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       _error = null;
     });
     try {
-      final result = await _service.regeo(point);
+      final results = await Future.wait([
+        _service.around(point),
+        _service.regeoAddress(point).catchError((_) => ''),
+      ]);
+      final pois = results[0] as List<PoiItem>;
+      final address = results[1] as String;
       // 代数不符：期间已发起更新的请求（继续拖动/切搜索），丢弃过期结果
       if (gen != _reqGen || !mounted) return;
       // 中心点与已保存位置相距很近（50m 内）时，首项显示"已保存的位置"，
@@ -387,17 +408,21 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             subtitle: '已保存的位置',
             location: saved,
           )
-        else if (result.formattedAddress.isNotEmpty)
+        else if (address.isNotEmpty)
           _Entry(
-            title: result.formattedAddress,
+            title: address,
             subtitle: '当前选择点',
             location: point,
           ),
-        ...result.pois.map(
+        ...pois.map(
           (p) => _Entry(
             title: p.name,
             subtitle: p.address,
-            distance: p.distance,
+            // 接口未带距离时按坐标现算（输入提示类数据无 distance 字段）
+            distance: p.distance ??
+                (p.location != null
+                    ? _distanceMeters(p.location!, point).round()
+                    : null),
             location: p.location,
           ),
         ),
@@ -626,7 +651,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       markers: markers,
       initialCameraPosition: CameraPosition(
         target: LatLng(initial.lat, initial.lng),
-        zoom: 16.5,
+        zoom: 17.5,
       ),
       onMapCreated: (controller) {
         _mapController = controller;
@@ -636,7 +661,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
           final c = _center;
           if (c != null) {
             controller.moveCamera(
-              CameraUpdate.newLatLngZoom(LatLng(c.lat, c.lng), 16.5),
+              CameraUpdate.newLatLngZoom(LatLng(c.lat, c.lng), 17.5),
             );
           }
         }
