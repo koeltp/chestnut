@@ -64,6 +64,22 @@ class AmapService {
     return _str(regeocode['formatted_address']);
   }
 
+  /// 地理编码：地名 → 坐标（取首个结果）。
+  /// 行政区类搜索提示（如"四川省成都市"）无坐标，选中后用它把地图
+  /// 带到目标区域，支撑异地补记场景（搜城市名 → 飞过去 → 再选店）。
+  Future<Gcj02Point?> geocode(String address) async {
+    final uri = Uri.parse(
+      '$_baseUrl/geocode/geo?key=$_webKey'
+      '&address=${Uri.encodeComponent(address)}',
+    );
+    final data = await _get(uri);
+    final geocodes = ((data['geocodes'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    if (geocodes.isEmpty) return null;
+    return _parseLocation(_str(geocodes.first['location']));
+  }
+
   /// 输入提示：关键词 → 地点候选
   ///
   /// [near] 传入当前坐标使提示就近优先；行政区类提示无坐标

@@ -67,6 +67,10 @@ class BillProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 某分类（含子分类）账单流：分类统计详情页
+  Stream<List<Bill>> categoryBillsStream(int categoryId) =>
+      _repo.watchBillsInCategory(categoryId);
+
   /// 新增账单
   Future<void> addBill(BillsCompanion entry) => _repo.addBill(entry);
 

@@ -44,6 +44,10 @@ class _AddBillPageState extends State<AddBillPage> {
   final _noteFocus = FocusNode();
   bool _noteFocused = false;
 
+  /// 上一帧系统键盘可见性。Android 收起键盘（输入法"∨"按钮）不会
+  /// 自动释放 TextField 焦点——需要对比 insets 变化，收起时主动失焦
+  bool _keyboardWasVisible = false;
+
   /// 定位地名；null = 未定位
   String? _locationName;
 
@@ -90,6 +94,18 @@ class _AddBillPageState extends State<AddBillPage> {
     _noteFocus.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 备注聚焦时用户点输入法"∨"收起键盘：insets 归零但焦点仍在，
+    // 主动失焦让自定义数字键盘恢复显示
+    final visible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (_keyboardWasVisible && !visible && _noteFocus.hasFocus) {
+      _noteFocus.unfocus();
+    }
+    _keyboardWasVisible = visible;
   }
 
   @override
@@ -248,6 +264,9 @@ class _AddBillPageState extends State<AddBillPage> {
               focusNode: _noteFocus,
               maxLength: 50,
               keyboardType: TextInputType.text,
+              // 按"完成"键释放焦点：系统键盘收起、数字键盘恢复
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _noteFocus.unfocus(),
               decoration: const InputDecoration(
                 isDense: true,
                 counterText: '',

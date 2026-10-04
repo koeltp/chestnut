@@ -28,6 +28,10 @@ class CategoryProvider extends ChangeNotifier {
   Future<void> updateCategory(Category category) =>
       _repo.updateCategory(category);
 
+  /// 更新分类并返回受影响行数（0 行 = 未匹配到记录，便于 UI 诊断）
+  Future<int> updateCategoryCounted(Category category) =>
+      _repo.updateCategory(category);
+
   /// 删除分类（其下账单一并删除，UI 层负责确认）
   Future<void> deleteCategoryWithBills(int categoryId) =>
       _repo.deleteCategoryWithBills(categoryId);

@@ -7,7 +7,7 @@ import '../../models/enums.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/section_card.dart';
-import '../stats/stats_page.dart';
+import '../stats/category_stats_page.dart';
 import 'category_edit_page.dart';
 
 /// 分类管理页：钱迹式分组管理
@@ -301,7 +301,9 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
             _actionItem(ctx, '查看统计数据', () {
               Navigator.pop(ctx);
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const StatsPage()),
+                MaterialPageRoute<void>(
+                  builder: (_) => CategoryStatsPage(category: category),
+                ),
               );
             }),
             const SizedBox(height: 8),
@@ -390,12 +392,32 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
   /// 将二级分类升级为一级分类（排到一级末尾）
   Future<void> _changeToParent(Category sub) async {
     final provider = context.read<CategoryProvider>();
-    final all = await provider.categoriesStream(_type).first;
-    if (!mounted) return;
-    final parentCount = all.where((c) => c.parentId == null).length;
-    await provider.updateCategory(
-      sub.copyWith(parentId: const Value(null), sortOrder: parentCount),
-    );
+    try {
+      debugPrint('[分类] 升级开始: id=${sub.id} name=${sub.name} '
+          'parentId=${sub.parentId} type=${sub.type}');
+      final all = await provider.categoriesStream(_type).first;
+      if (!mounted) return;
+      final parentCount = all.where((c) => c.parentId == null).length;
+      final updated = sub.copyWith(
+        parentId: const Value(null),
+        sortOrder: parentCount,
+      );
+      debugPrint('[分类] 升级写入: parentId=${updated.parentId} '
+          'sortOrder=${updated.sortOrder}');
+      final rows = await provider.updateCategoryCounted(updated);
+      debugPrint('[分类] 升级完成，受影响行数: $rows');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(rows > 0 ? '已将"${sub.name}"改为一级分类' : '未找到该分类（id=${sub.id}），写入 0 行')),
+      );
+    } catch (e) {
+      debugPrint('[分类] 升级失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败: $e')),
+        );
+      }
+    }
   }
 
   /// 将二级分类移动到其它一级分类下

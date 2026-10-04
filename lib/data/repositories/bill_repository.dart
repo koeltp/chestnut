@@ -32,6 +32,25 @@ class BillRepository {
         .watch();
   }
 
+  /// 某分类（含其全部子分类）的账单流（分类统计详情页）
+  ///
+  /// 一级分类的账单可能挂在子分类上，用子查询把子分类账单一并取回，
+  /// 与统计页"子类金额归并父类"的聚合口径一致。
+  Stream<List<Bill>> watchBillsInCategory(int categoryId) {
+    final subIds = _db.selectOnly(_db.categories)
+      ..addColumns([_db.categories.id])
+      ..where(_db.categories.parentId.equals(categoryId));
+    return (_db.select(_db.bills)
+          ..where((b) =>
+              b.categoryId.equals(categoryId) |
+              b.categoryId.isInQuery(subIds))
+          ..orderBy([
+            (b) => OrderingTerm.desc(b.date),
+            (b) => OrderingTerm.desc(b.createdAt),
+          ]))
+        .watch();
+  }
+
   /// 查询时间区间 [start, end) 内的账单（按日期倒序，同日按创建时间倒序）
   ///
   /// 注意不能用 isBetweenValues（闭区间）：上界必须排除，
@@ -218,8 +237,24 @@ class BillRepository {
       _db.into(_db.bills).insert(entry);
 
   /// 更新账单（返回受影响行数）
+  ///
+  /// 必须用显式 Companion 而非直接 write(bill)：drift 的
+  /// DataClass.toCompanion(true) 会把 null 字段转为 absent（UPDATE SET
+  /// 不含该列），导致编辑账单清除位置（location/lat/lng 置 NULL）静默失效
   Future<int> updateBill(Bill bill) =>
-      (_db.update(_db.bills)..where((b) => b.id.equals(bill.id))).write(bill);
+      (_db.update(_db.bills)..where((b) => b.id.equals(bill.id))).write(
+        BillsCompanion(
+          type: Value(bill.type),
+          amountCents: Value(bill.amountCents),
+          categoryId: Value(bill.categoryId),
+          note: Value(bill.note),
+          date: Value(bill.date),
+          timeMinute: Value(bill.timeMinute),
+          location: Value(bill.location),
+          lat: Value(bill.lat),
+          lng: Value(bill.lng),
+        ),
+      );
 
   /// 删除账单
   Future<int> deleteBill(int id) =>

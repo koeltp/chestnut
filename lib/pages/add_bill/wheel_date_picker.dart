@@ -21,17 +21,24 @@ import '../../theme/app_theme.dart';
 ///   builder: (_) => WheelDatePicker(initial: 日期, initialMinute: 分钟数),
 /// );
 /// ```
+///
+/// [showTime] 传 false 时隐藏"时间 HH:mm"入口（纯日期选择场景，
+/// 如分类统计漏斗的自定义起止日期），返回值的分钟数固定为 0。
 class WheelDatePicker extends StatefulWidget {
   const WheelDatePicker({
     super.key,
     required this.initial,
     required this.initialMinute,
+    this.showTime = true,
   });
 
   final DateTime initial;
 
   /// 初始时间，当日 0..1439 分钟
   final int initialMinute;
+
+  /// 是否显示"时间 HH:mm"入口（默认显示；纯日期选择时传 false）
+  final bool showTime;
 
   @override
   State<WheelDatePicker> createState() => _WheelDatePickerState();
@@ -251,7 +258,7 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
               ),
             ),
             const SizedBox(height: AppDimens.gapMd),
-            // 快捷行：今 / 昨 / 前（选中当天时高亮）+ 时间入口 + 当前日期胶囊
+            // 快捷行：今 / 昨 / 前（选中当天时高亮）+ 时间入口（纯日期模式隐藏）
             Row(
               children: [
                 _quickChip('今', 0),
@@ -261,30 +268,31 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
                 _quickChip('前', 2),
                 const Spacer(),
                 // 时间入口：点击弹出时/分滚轮
-                InkWell(
-                  key: const ValueKey('time_chip'),
-                  onTap: _pickTime,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.fill,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      '时间 ${_pad2(_minute ~/ 60)}:${_pad2(_minute % 60)}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                if (widget.showTime)
+                  InkWell(
+                    key: const ValueKey('time_chip'),
+                    onTap: _pickTime,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.fill,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '时间 ${_pad2(_minute ~/ 60)}:${_pad2(_minute % 60)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: AppDimens.gapSm),
@@ -341,11 +349,21 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
             backgroundColor: Colors.white,
             // 选中段数字不加背景色，文字层次沿用默认（未选蓝灰 / 选中黑）
             hourMinuteColor: Colors.transparent,
+            // 选中框只显示下边框（默认 M3 是四边圆角框）：小时/分钟共用
+            // 该 shape，选中者显示蓝下划线，未选中无框
+            hourMinuteShape: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.primary, width: 2),
+            ),
           ),
         ),
         child: TimePickerDialog(
           initialTime: TimeOfDay(hour: _minute ~/ 60, minute: _minute % 60),
           helpText: '',
+          // "小时/分钟"标签在数字下方左对齐、与居中的数字错位（内置布局
+          // 不可配置）；置空隐藏，与 Google 自家 M3 时钟一致——表盘选中
+          // 态已表达时/分语义，无需文字标签
+          hourLabelText: '',
+          minuteLabelText: '',
         ),
       ),
     );

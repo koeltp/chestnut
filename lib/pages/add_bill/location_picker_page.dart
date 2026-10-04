@@ -484,11 +484,37 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     }
   }
 
-  /// 选中地点：带回地名与坐标（行政区类无坐标）
-  void _select(_Entry entry) {
-    Navigator.of(
-      context,
-    ).pop(LocationSelection(name: entry.title, point: entry.location));
+  /// 选中地点的处理：
+  /// 有坐标（店铺等精确地点）→ 直接带回地名与坐标；
+  /// 无坐标（行政区类，如"四川省成都市"）→ 当作导航入口，地理编码
+  /// 拿坐标后把地图飞过去、附近列表联动切换到该区域（异地补记场景：
+  /// 搜城市名 → 飞过去 → 再搜店选店），不直接关闭页面
+  Future<void> _select(_Entry entry) async {
+    final point = entry.location;
+    if (point != null) {
+      Navigator.of(
+        context,
+      ).pop(LocationSelection(name: entry.title, point: point));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final geo = await _service.geocode(entry.title);
+      if (!mounted) return;
+      if (geo == null) {
+        _toast('未能定位到该区域');
+        return;
+      }
+      // 退出搜索模式并清空输入，附近列表由 _moveTo 重新加载
+      _keyword = '';
+      _searchController.clear();
+      _moveTo(geo);
+    } catch (e) {
+      debugPrint('行政区定位失败: $e');
+      if (mounted) _toast('未能定位到该区域');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   /// 两点间粗略距离（米）：小范围选点场景平面近似足够
