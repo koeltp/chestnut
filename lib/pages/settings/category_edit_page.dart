@@ -338,7 +338,8 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
               ),
               const Spacer(),
               Text(
-                widget.parent!.name,
+                // 兜底空串：parent 理论上必有（跳转前已按 parentId 查出）
+                widget.parent?.name ?? '',
                 style: const TextStyle(
                   fontSize: 15,
                   color: AppColors.textSecondary,
@@ -394,7 +395,8 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
                 ),
                 const Spacer(),
                 Text(
-                  widget.parent!.name,
+                  // 兜底空串：parent 理论上必有（跳转前已按 parentId 查出）
+                  widget.parent?.name ?? '',
                   style: const TextStyle(
                     fontSize: 15,
                     color: AppColors.textSecondary,

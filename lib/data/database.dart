@@ -24,7 +24,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -51,6 +51,15 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.addColumn(bills, bills.lat);
             await m.addColumn(bills, bills.lng);
+          }
+          // v5 → v6：账单表增加定位完整信息列（可空），专供搜索；
+          // 历史账单回填现有 location（GPS 逆地理本就是完整地址）
+          if (from < 6) {
+            await m.addColumn(bills, bills.locationFull);
+            await customStatement(
+              "UPDATE bills SET location_full = location "
+              "WHERE location IS NOT NULL",
+            );
           }
         },
       );

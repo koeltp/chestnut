@@ -31,12 +31,17 @@ class LocationPickerPage extends StatefulWidget {
   State<LocationPickerPage> createState() => _LocationPickerPageState();
 }
 
-/// 选点结果：地名 + 坐标（行政区类地名无精确坐标，point 为 null）
+/// 选点结果：地名 + 坐标 + 完整定位信息（行政区类地名无精确坐标，point 为 null）
+///
+/// [fullAddress] 为"省 市 区 街道 地点名"全量拼接，专供搜索字段
+/// locationFull 写入；null = 无法补全（如"已保存的位置"），由记一笔
+/// 页保留旧值兜底。location（显示用地名）始终只存 [name]，不受影响。
 class LocationSelection {
-  const LocationSelection({required this.name, this.point});
+  const LocationSelection({required this.name, this.point, this.fullAddress});
 
   final String name;
   final Gcj02Point? point;
+  final String? fullAddress;
 }
 
 /// 列表条目（附近地点 / 搜索结果统一模型）
@@ -46,12 +51,17 @@ class _Entry {
     this.subtitle = '',
     this.distance,
     this.location,
+    this.fullAddress,
   });
 
   final String title;
   final String subtitle;
   final int? distance;
   final Gcj02Point? location;
+
+  /// 条目自带的完整地址（当前选择点的逆地理结果）；POI/搜索条目
+  /// 通常缺省市，选中时在 _select 中现场逆地理补全
+  final String? fullAddress;
 }
 
 class _LocationPickerPageState extends State<LocationPickerPage> {
@@ -413,6 +423,8 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             title: address,
             subtitle: '当前选择点',
             location: point,
+            // 逆地理结果本身就是"省 市 区 街道"完整地址
+            fullAddress: address,
           ),
         ...pois.map(
           (p) => _Entry(
@@ -492,9 +504,25 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   Future<void> _select(_Entry entry) async {
     final point = entry.location;
     if (point != null) {
-      Navigator.of(
-        context,
-      ).pop(LocationSelection(name: entry.title, point: point));
+      // 完整定位信息：条目自带（当前选择点逆地理）优先；POI/搜索条目
+      // 缺省市，现场逆地理补全后拼上点名，任何一段都能被搜索命中。
+      // 超时/失败静默降级（fullAddress 为空由记一笔页兜底），不阻塞选点
+      var full = entry.fullAddress;
+      if (full == null) {
+        try {
+          final regeo =
+              await _service.regeoAddress(point).timeout(const Duration(seconds: 5));
+          if (regeo.isNotEmpty) full = '$regeo ${entry.title}';
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(
+        LocationSelection(
+          name: entry.title,
+          point: point,
+          fullAddress: full,
+        ),
+      );
       return;
     }
     setState(() => _loading = true);

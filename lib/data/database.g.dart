@@ -561,6 +561,17 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _locationFullMeta = const VerificationMeta(
+    'locationFull',
+  );
+  @override
+  late final GeneratedColumn<String> locationFull = GeneratedColumn<String>(
+    'location_full',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _latMeta = const VerificationMeta('lat');
   @override
   late final GeneratedColumn<double> lat = GeneratedColumn<double>(
@@ -601,6 +612,7 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     date,
     timeMinute,
     location,
+    locationFull,
     lat,
     lng,
     createdAt,
@@ -665,6 +677,15 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
         location.isAcceptableOrUnknown(data['location']!, _locationMeta),
       );
     }
+    if (data.containsKey('location_full')) {
+      context.handle(
+        _locationFullMeta,
+        locationFull.isAcceptableOrUnknown(
+          data['location_full']!,
+          _locationFullMeta,
+        ),
+      );
+    }
     if (data.containsKey('lat')) {
       context.handle(
         _latMeta,
@@ -726,6 +747,10 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
         DriftSqlType.string,
         data['${effectivePrefix}location'],
       ),
+      locationFull: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}location_full'],
+      ),
       lat: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}lat'],
@@ -774,6 +799,11 @@ class Bill extends DataClass implements Insertable<Bill> {
   /// 定位地名（反地理编码得到，如"广东省 深圳市 南山区 深南大道"）；null = 未定位
   final String? location;
 
+  /// 定位完整信息（省市区街道 + 地点名全量拼接），专供搜索：
+  /// POI 选点保存的 location 可能只有店名，此字段保证任何一段
+  /// （省/市/区/街道/店名）都能被搜索命中；null = 未定位或旧数据
+  final String? locationFull;
+
   /// 定位坐标（GCJ-02 纬度/经度）：编辑账单时让地图回到当时的地点；
   /// null = 未定位或行政区类地名（无精确坐标）
   final double? lat;
@@ -790,6 +820,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     required this.date,
     this.timeMinute,
     this.location,
+    this.locationFull,
     this.lat,
     this.lng,
     required this.createdAt,
@@ -812,6 +843,9 @@ class Bill extends DataClass implements Insertable<Bill> {
     }
     if (!nullToAbsent || location != null) {
       map['location'] = Variable<String>(location);
+    }
+    if (!nullToAbsent || locationFull != null) {
+      map['location_full'] = Variable<String>(locationFull);
     }
     if (!nullToAbsent || lat != null) {
       map['lat'] = Variable<double>(lat);
@@ -837,6 +871,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       location: location == null && nullToAbsent
           ? const Value.absent()
           : Value(location),
+      locationFull: locationFull == null && nullToAbsent
+          ? const Value.absent()
+          : Value(locationFull),
       lat: lat == null && nullToAbsent ? const Value.absent() : Value(lat),
       lng: lng == null && nullToAbsent ? const Value.absent() : Value(lng),
       createdAt: Value(createdAt),
@@ -859,6 +896,7 @@ class Bill extends DataClass implements Insertable<Bill> {
       date: serializer.fromJson<DateTime>(json['date']),
       timeMinute: serializer.fromJson<int?>(json['timeMinute']),
       location: serializer.fromJson<String?>(json['location']),
+      locationFull: serializer.fromJson<String?>(json['locationFull']),
       lat: serializer.fromJson<double?>(json['lat']),
       lng: serializer.fromJson<double?>(json['lng']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -876,6 +914,7 @@ class Bill extends DataClass implements Insertable<Bill> {
       'date': serializer.toJson<DateTime>(date),
       'timeMinute': serializer.toJson<int?>(timeMinute),
       'location': serializer.toJson<String?>(location),
+      'locationFull': serializer.toJson<String?>(locationFull),
       'lat': serializer.toJson<double?>(lat),
       'lng': serializer.toJson<double?>(lng),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -891,6 +930,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     DateTime? date,
     Value<int?> timeMinute = const Value.absent(),
     Value<String?> location = const Value.absent(),
+    Value<String?> locationFull = const Value.absent(),
     Value<double?> lat = const Value.absent(),
     Value<double?> lng = const Value.absent(),
     DateTime? createdAt,
@@ -903,6 +943,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     date: date ?? this.date,
     timeMinute: timeMinute.present ? timeMinute.value : this.timeMinute,
     location: location.present ? location.value : this.location,
+    locationFull: locationFull.present ? locationFull.value : this.locationFull,
     lat: lat.present ? lat.value : this.lat,
     lng: lng.present ? lng.value : this.lng,
     createdAt: createdAt ?? this.createdAt,
@@ -923,6 +964,9 @@ class Bill extends DataClass implements Insertable<Bill> {
           ? data.timeMinute.value
           : this.timeMinute,
       location: data.location.present ? data.location.value : this.location,
+      locationFull: data.locationFull.present
+          ? data.locationFull.value
+          : this.locationFull,
       lat: data.lat.present ? data.lat.value : this.lat,
       lng: data.lng.present ? data.lng.value : this.lng,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -940,6 +984,7 @@ class Bill extends DataClass implements Insertable<Bill> {
           ..write('date: $date, ')
           ..write('timeMinute: $timeMinute, ')
           ..write('location: $location, ')
+          ..write('locationFull: $locationFull, ')
           ..write('lat: $lat, ')
           ..write('lng: $lng, ')
           ..write('createdAt: $createdAt')
@@ -957,6 +1002,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     date,
     timeMinute,
     location,
+    locationFull,
     lat,
     lng,
     createdAt,
@@ -973,6 +1019,7 @@ class Bill extends DataClass implements Insertable<Bill> {
           other.date == this.date &&
           other.timeMinute == this.timeMinute &&
           other.location == this.location &&
+          other.locationFull == this.locationFull &&
           other.lat == this.lat &&
           other.lng == this.lng &&
           other.createdAt == this.createdAt);
@@ -987,6 +1034,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
   final Value<DateTime> date;
   final Value<int?> timeMinute;
   final Value<String?> location;
+  final Value<String?> locationFull;
   final Value<double?> lat;
   final Value<double?> lng;
   final Value<DateTime> createdAt;
@@ -999,6 +1047,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     this.date = const Value.absent(),
     this.timeMinute = const Value.absent(),
     this.location = const Value.absent(),
+    this.locationFull = const Value.absent(),
     this.lat = const Value.absent(),
     this.lng = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1012,6 +1061,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     required DateTime date,
     this.timeMinute = const Value.absent(),
     this.location = const Value.absent(),
+    this.locationFull = const Value.absent(),
     this.lat = const Value.absent(),
     this.lng = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1028,6 +1078,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     Expression<DateTime>? date,
     Expression<int>? timeMinute,
     Expression<String>? location,
+    Expression<String>? locationFull,
     Expression<double>? lat,
     Expression<double>? lng,
     Expression<DateTime>? createdAt,
@@ -1041,6 +1092,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
       if (date != null) 'date': date,
       if (timeMinute != null) 'time_minute': timeMinute,
       if (location != null) 'location': location,
+      if (locationFull != null) 'location_full': locationFull,
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
       if (createdAt != null) 'created_at': createdAt,
@@ -1056,6 +1108,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     Value<DateTime>? date,
     Value<int?>? timeMinute,
     Value<String?>? location,
+    Value<String?>? locationFull,
     Value<double?>? lat,
     Value<double?>? lng,
     Value<DateTime>? createdAt,
@@ -1069,6 +1122,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
       date: date ?? this.date,
       timeMinute: timeMinute ?? this.timeMinute,
       location: location ?? this.location,
+      locationFull: locationFull ?? this.locationFull,
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
       createdAt: createdAt ?? this.createdAt,
@@ -1102,6 +1156,9 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     if (location.present) {
       map['location'] = Variable<String>(location.value);
     }
+    if (locationFull.present) {
+      map['location_full'] = Variable<String>(locationFull.value);
+    }
     if (lat.present) {
       map['lat'] = Variable<double>(lat.value);
     }
@@ -1125,6 +1182,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
           ..write('date: $date, ')
           ..write('timeMinute: $timeMinute, ')
           ..write('location: $location, ')
+          ..write('locationFull: $locationFull, ')
           ..write('lat: $lat, ')
           ..write('lng: $lng, ')
           ..write('createdAt: $createdAt')
@@ -1743,6 +1801,7 @@ typedef $$BillsTableCreateCompanionBuilder = BillsCompanion Function({
   required DateTime date,
   Value<int?> timeMinute,
   Value<String?> location,
+  Value<String?> locationFull,
   Value<double?> lat,
   Value<double?> lng,
   Value<DateTime> createdAt,
@@ -1756,6 +1815,7 @@ typedef $$BillsTableUpdateCompanionBuilder = BillsCompanion Function({
   Value<DateTime> date,
   Value<int?> timeMinute,
   Value<String?> location,
+  Value<String?> locationFull,
   Value<double?> lat,
   Value<double?> lng,
   Value<DateTime> createdAt,
@@ -1824,6 +1884,11 @@ class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
 
   ColumnFilters<String> get location => $composableBuilder(
     column: $table.location,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get locationFull => $composableBuilder(
+    column: $table.locationFull,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1910,6 +1975,11 @@ class $$BillsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get locationFull => $composableBuilder(
+    column: $table.locationFull,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get lat => $composableBuilder(
     column: $table.lat,
     builder: (column) => ColumnOrderings(column),
@@ -1983,6 +2053,11 @@ class $$BillsTableAnnotationComposer
   GeneratedColumn<String> get location =>
       $composableBuilder(column: $table.location, builder: (column) => column);
 
+  GeneratedColumn<String> get locationFull => $composableBuilder(
+    column: $table.locationFull,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get lat =>
       $composableBuilder(column: $table.lat, builder: (column) => column);
 
@@ -2052,6 +2127,7 @@ class $$BillsTableTableManager
                 Value<DateTime> date = const Value.absent(),
                 Value<int?> timeMinute = const Value.absent(),
                 Value<String?> location = const Value.absent(),
+                Value<String?> locationFull = const Value.absent(),
                 Value<double?> lat = const Value.absent(),
                 Value<double?> lng = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -2064,6 +2140,7 @@ class $$BillsTableTableManager
                 date: date,
                 timeMinute: timeMinute,
                 location: location,
+                locationFull: locationFull,
                 lat: lat,
                 lng: lng,
                 createdAt: createdAt,
@@ -2078,6 +2155,7 @@ class $$BillsTableTableManager
                 required DateTime date,
                 Value<int?> timeMinute = const Value.absent(),
                 Value<String?> location = const Value.absent(),
+                Value<String?> locationFull = const Value.absent(),
                 Value<double?> lat = const Value.absent(),
                 Value<double?> lng = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -2090,6 +2168,7 @@ class $$BillsTableTableManager
                 date: date,
                 timeMinute: timeMinute,
                 location: location,
+                locationFull: locationFull,
                 lat: lat,
                 lng: lng,
                 createdAt: createdAt,

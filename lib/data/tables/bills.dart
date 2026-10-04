@@ -31,6 +31,11 @@ class Bills extends Table {
   /// 定位地名（反地理编码得到，如"广东省 深圳市 南山区 深南大道"）；null = 未定位
   TextColumn get location => text().nullable()();
 
+  /// 定位完整信息（省市区街道 + 地点名全量拼接），专供搜索：
+  /// POI 选点保存的 location 可能只有店名，此字段保证任何一段
+  /// （省/市/区/街道/店名）都能被搜索命中；null = 未定位或旧数据
+  TextColumn get locationFull => text().nullable()();
+
   /// 定位坐标（GCJ-02 纬度/经度）：编辑账单时让地图回到当时的地点；
   /// null = 未定位或行政区类地名（无精确坐标）
   RealColumn get lat => real().nullable()();

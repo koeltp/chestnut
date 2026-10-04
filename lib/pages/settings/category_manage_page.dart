@@ -172,22 +172,10 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
                         onMore: () => _showActionMenu(parent),
                         // 二级单击图标/名称直接弹操作菜单（钱迹式）
                         onSubTap: _showActionMenu,
-                        // 二级分类拖动实时挤占：立即本地重排刷新（其它
-                        // 格子马上让位），同时异步写库持久化
-                        onSubReorder: (drag, target) {
-                          final list = [
-                            ...(_subOrderIds[parent.id] ??
-                                subs.map((c) => c.id).toList()),
-                          ];
-                          final from = list.indexOf(drag.id);
-                          final to = list.indexOf(target.id);
-                          // 目标即自身或顺序未变化，无需重排
-                          if (from < 0 || to < 0 || from == to) return;
-                          list
-                            ..removeAt(from)
-                            ..insert(to, drag.id);
-                          setState(() => _subOrderIds[parent.id] = list);
-                          provider.reorderCategories(list);
+                        // 二级分类拖动排序：松手后按最终顺序一次性写库
+                        onSubReorder: (ids) {
+                          setState(() => _subOrderIds[parent.id] = ids);
+                          provider.reorderCategories(ids);
                         },
                         onAddSub: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -250,6 +238,29 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
 
   // ---------- 行内 ··· 操作菜单 ----------
 
+  /// 打开编辑页：二级分类需同时传入所属一级分类
+  ///（编辑页"一级分类"只读行显示用，否则空指针报错）
+  Future<void> _openEdit(Category category) async {
+    Category? parent;
+    if (category.parentId != null) {
+      final provider = context.read<CategoryProvider>();
+      final all = await provider.categoriesStream(_type).first;
+      for (final c in all) {
+        if (c.id == category.parentId) {
+          parent = c;
+          break;
+        }
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            CategoryEditPage(type: _type, category: category, parent: parent),
+      ),
+    );
+  }
+
   /// 分类操作菜单（钱迹式居中弹窗：修改/删除/改为二级分类/查看统计数据）
   void _showActionMenu(Category category) {
     final provider = context.read<CategoryProvider>();
@@ -271,12 +282,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
           children: [
             _actionItem(ctx, '修改', () {
               Navigator.pop(ctx);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      CategoryEditPage(type: _type, category: category),
-                ),
-              );
+              _openEdit(category);
             }),
             _actionItem(ctx, '删除', () {
               Navigator.pop(ctx);
@@ -539,7 +545,9 @@ class _ParentCard extends StatelessWidget {
 
   /// 子分类交互：单击弹菜单、拖入排序、添加子类
   final ValueChanged<Category> onSubTap;
-  final void Function(Category drag, Category target) onSubReorder;
+
+  /// 二级拖动松手落位：传最终顺序的全量 id 序列
+  final ValueChanged<List<int>> onSubReorder;
   final VoidCallback onAddSub;
 
   @override
@@ -620,7 +628,7 @@ class _ParentCard extends StatelessWidget {
                 child: _SubPanel(
                   subs: subs,
                   onSubTap: onSubTap,
-                  onSubReorder: onSubReorder,
+                  onReorder: onSubReorder,
                   onAddSub: onAddSub,
                 ),
               ),
@@ -633,88 +641,189 @@ class _ParentCard extends StatelessWidget {
 
 /// 子分类面板：浅色圆角底 + 5 列网格（子分类 + 添加子类）
 ///
-/// 长按子分类拖动到目标格子上完成排序（钱迹式直接拖动）。
-class _SubPanel extends StatelessWidget {
+/// 排序手感与一级分类（ReorderableListView）对齐：长按拿起后原格
+/// 消失，空隙跟随手指在格位间连续移动，其它格子 150ms 滑动让位，
+/// 松手落位一次性写库。GridView 原生不支持位置动画，因此改用
+/// Stack + AnimatedPositioned 显式布局实现。
+class _SubPanel extends StatefulWidget {
   const _SubPanel({
     required this.subs,
     required this.onSubTap,
-    required this.onSubReorder,
+    required this.onReorder,
     required this.onAddSub,
   });
 
+  /// 数据库当前顺序（页面已按本地排序兜底合并后的完整兄弟序列）
   final List<Category> subs;
   final ValueChanged<Category> onSubTap;
 
-  /// 被拖动的子分类落到目标子分类格子上时的回调
-  final void Function(Category drag, Category target) onSubReorder;
+  /// 松手落位回调：传最终顺序的全量 id 序列
+  final ValueChanged<List<int>> onReorder;
   final VoidCallback onAddSub;
 
   @override
+  State<_SubPanel> createState() => _SubPanelState();
+}
+
+class _SubPanelState extends State<_SubPanel> {
+  static const int _columns = 5;
+
+  /// 列距/行距（与旧 GridView crossAxisSpacing/mainAxisSpacing 一致）
+  static const double _gapX = 4;
+  static const double _gapY = 10;
+
+  /// 本地显示顺序（含被拖项；渲染时被拖项原格隐藏，其 slot 即"空隙"）
+  late List<Category> _order;
+
+  /// 正在拖动的分类（null = 未拖动）
+  Category? _dragging;
+
+  /// 拖动结束已提交写库、等待数据库流确认期间为 true：
+  /// 防止父组件重建用旧数据库顺序覆盖本地新顺序导致回跳
+  bool _pending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _order = List.of(widget.subs);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SubPanel old) {
+    super.didUpdateWidget(old);
+    final dbIds = widget.subs.map((c) => c.id).toSet();
+    if (_dragging != null) {
+      // 拖动中：只合并新增/删除，不打乱正在拖动的顺序
+      _order.removeWhere((c) => !dbIds.contains(c.id));
+      for (final c in widget.subs) {
+        if (!_order.any((e) => e.id == c.id)) _order.add(c);
+      }
+    } else if (_pending) {
+      // 数据库流已确认与本地顺序一致时解除写库保护
+      final localIds = _order.map((c) => c.id).toList();
+      final dbIdList = widget.subs.map((c) => c.id).toList();
+      var same = localIds.length == dbIdList.length;
+      if (same) {
+        for (var i = 0; i < localIds.length; i++) {
+          if (localIds[i] != dbIdList[i]) {
+            same = false;
+            break;
+          }
+        }
+      }
+      if (same) _pending = false;
+    } else {
+      _order = List.of(widget.subs);
+    }
+  }
+
+  /// 松手落位：按最终显示顺序一次性写库（与一级 onReorder 同节奏）
+  void _endDrag() {
+    if (_dragging == null) return;
+    final ids = _order.map((c) => c.id).toList();
+    _dragging = null;
+    _pending = true;
+    setState(() {});
+    widget.onReorder(ids);
+  }
+
+  /// 指针全局坐标 → 目标格位（越界 clamp 到网格内）：
+  /// 与被拖项当前位置不同则重排，空隙随手指连续移动
+  void _onPointerMove(Offset global, double cellW, double cellH) {
+    if (_dragging == null) return;
+    final box = context.findRenderObject()! as RenderBox;
+    final local = box.globalToLocal(global);
+    final col = ((local.dx + _gapX / 2) / (cellW + _gapX))
+        .floor()
+        .clamp(0, _columns - 1);
+    final maxRow = (_order.length - 1) ~/ _columns;
+    final row = ((local.dy + _gapY / 2) / (cellH + _gapY))
+        .floor()
+        .clamp(0, maxRow);
+    var slot = row * _columns + col;
+    if (slot >= _order.length) slot = _order.length - 1;
+    final cur = _order.indexOf(_dragging!);
+    if (slot != cur) {
+      setState(() {
+        final item = _order.removeAt(cur);
+        _order.insert(slot, item);
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 网格项 = 子分类 + 末尾的"添加子类"
-    final itemCount = subs.length + 1;
+    final itemCount = _order.length + 1; // + 末尾"添加子类"
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.fill,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 5,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 4,
-          childAspectRatio: 0.86,
-        ),
-        itemCount: itemCount,
-        itemBuilder: (context, index) {
-          if (index == subs.length) {
-            return _AddSubCell(onTap: onAddSub);
-          }
-          final sub = subs[index];
-          // 每个格子既是拖动源（长按）也是放置目标：拖经目标格时
-          // 实时换位（其它子分类立即前移/后移让位），与一级拖动一致
-          return DragTarget<Category>(
-            onWillAcceptWithDetails: (details) => details.data.id != sub.id,
-            // 实时让位：拖动经过即重排，不等松手
-            onMove: (details) => onSubReorder(details.data, sub),
-            builder: (context, candidates, _) {
-              // 有其它格子悬停在上方时，本格放大作为"落点"提示
-              final hovered = candidates.isNotEmpty;
-              return LongPressDraggable<Category>(
-                data: sub,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final cellW =
+              (constraints.maxWidth - _gapX * (_columns - 1)) / _columns;
+          final cellH = cellW / 0.86; // 与旧 GridView childAspectRatio 一致
+          final rows = (itemCount + _columns - 1) ~/ _columns;
+          Offset posOf(int slot) => Offset(
+            slot % _columns * (cellW + _gapX),
+            slot ~/ _columns * (cellH + _gapY),
+          );
+          Widget cellFor(Category c) {
+            final slot = _order.indexOf(c);
+            final pos = posOf(slot);
+            return AnimatedPositioned(
+              key: ValueKey(c.id),
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              left: pos.dx,
+              top: pos.dy,
+              width: cellW,
+              height: cellH,
+              child: LongPressDraggable<Category>(
+                data: c,
                 dragAnchorStrategy: childDragAnchorStrategy,
-                // 拖动时跟随指针的副本：微放大更"拿起来"的感觉
-                feedback: AnimatedScale(
-                  scale: 1.08,
-                  duration: const Duration(milliseconds: 150),
-                  child: Opacity(
-                    opacity: 0.9,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: _SubCell(sub: sub, onTap: () {}),
-                    ),
+                onDragStarted: () => setState(() => _dragging = c),
+                onDragUpdate: (d) =>
+                    _onPointerMove(d.globalPosition, cellW, cellH),
+                onDragEnd: (_) => _endDrag(),
+                // 跟随手指的副本：与一级白卡拖起同款投影
+                feedback: Material(
+                  elevation: 3,
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: cellW,
+                    height: cellH,
+                    child: _SubCell(sub: c, onTap: () {}),
                   ),
                 ),
-                // 拖动中原格子缩小半透明占位
-                childWhenDragging: AnimatedScale(
-                  scale: 0.9,
-                  duration: const Duration(milliseconds: 150),
-                  child: Opacity(
-                    opacity: 0.35,
-                    child: _SubCell(sub: sub, onTap: () {}),
-                  ),
-                ),
-                child: AnimatedScale(
-                  scale: hovered ? 1.12 : 1.0,
+                // 拖动中隐藏原格：其 slot 即空隙，随手指移动
+                childWhenDragging: const SizedBox.shrink(),
+                child: _SubCell(sub: c, onTap: () => widget.onSubTap(c)),
+              ),
+            );
+          }
+
+          return SizedBox(
+            height: rows * cellH + (rows - 1) * _gapY,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final c in _order) cellFor(c),
+                // 加号格：固定在末位 slot，不参与拖动
+                AnimatedPositioned(
+                  key: const ValueKey('#add'),
                   duration: const Duration(milliseconds: 150),
                   curve: Curves.easeOut,
-                  child: _SubCell(sub: sub, onTap: () => onSubTap(sub)),
+                  left: posOf(_order.length).dx,
+                  top: posOf(_order.length).dy,
+                  width: cellW,
+                  height: cellH,
+                  child: _AddSubCell(onTap: widget.onAddSub),
                 ),
-              );
-            },
+              ],
+            ),
           );
         },
       ),

@@ -8,6 +8,7 @@ import '../../models/enums.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/date_label_util.dart';
 import '../../utils/money_util.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/pie_chart_card.dart';
@@ -316,20 +317,24 @@ class _CategoryStatsPageState extends State<CategoryStatsPage> {
                   .length;
               final avgPerMonth = months == 0 ? 0 : total ~/ months;
 
-              // 按月分组（数据已按日期倒序）
-              final monthKeys = <String>[];
-              final monthMap = <String, List<Bill>>{};
+              // 按日分组（数据已按日期倒序），与首页明细同粒度
+              final dayKeys = <String>[];
+              final dayMap = <String, List<Bill>>{};
               for (final bill in filtered) {
-                final key = '${bill.date.year}-${bill.date.month}';
-                if (!monthMap.containsKey(key)) {
-                  monthMap[key] = [];
-                  monthKeys.add(key);
+                final key =
+                    '${bill.date.year}-${bill.date.month}-${bill.date.day}';
+                if (!dayMap.containsKey(key)) {
+                  dayMap[key] = [];
+                  dayKeys.add(key);
                 }
-                monthMap[key]!.add(bill);
+                dayMap[key]!.add(bill);
               }
-              // 数据横跨多个年份时，月份分组头带上年份（"2025年10月"）
-              final crossYear = filtered.isNotEmpty &&
-                  filtered.any((b) => b.date.year != filtered.first.date.year);
+              // 年份按需显示：数据横跨多个年份时分组头带年份消歧
+              final crossYear = filtered
+                  .map((b) => b.date.year)
+                  .toSet()
+                  .length >
+                  1;
 
               return CustomScrollView(
                 slivers: [
@@ -407,16 +412,16 @@ class _CategoryStatsPageState extends State<CategoryStatsPage> {
                         24,
                       ),
                       sliver: SliverList.builder(
-                        itemCount: monthKeys.length,
+                        itemCount: dayKeys.length,
                         itemBuilder: (context, index) {
-                          final monthBills = monthMap[monthKeys[index]]!;
+                          final dayBills = dayMap[dayKeys[index]]!;
                           return Padding(
                             padding: const EdgeInsets.only(
                               bottom: AppDimens.gapSection,
                             ),
-                            child: _MonthCard(
-                              month: monthBills.first.date,
-                              bills: monthBills,
+                            child: _DayCard(
+                              date: dayBills.first.date,
+                              bills: dayBills,
                               categories: categories,
                               onDelete: _confirmDelete,
                               showYear: crossYear,
@@ -887,22 +892,23 @@ class _BarChartPainter extends CustomPainter {
       oldDelegate.color != color;
 }
 
-/// 按月分组的账单卡：月份头（左月右小计）+ 统一条目列表
-class _MonthCard extends StatelessWidget {
-  const _MonthCard({
-    required this.month,
+/// 按日分组的账单卡：日期头（左日期右小计）+ 统一条目列表，
+/// 与首页明细同构（分组头格式见 DateLabelUtil）
+class _DayCard extends StatelessWidget {
+  const _DayCard({
+    required this.date,
     required this.bills,
     required this.categories,
     required this.onDelete,
-    this.showYear = false,
+    required this.showYear,
   });
 
-  final DateTime month;
+  final DateTime date;
   final List<Bill> bills;
   final Map<int, Category> categories;
   final Future<void> Function(Bill bill) onDelete;
 
-  /// 范围跨年时分组头带年份（"2025年10月"），同一年内只显示"10月"
+  /// 列表数据跨年时分组头带年份消歧（2025.09.29 周二），同年省略（09.29 周二）
   final bool showYear;
 
   @override
@@ -922,7 +928,7 @@ class _MonthCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(
         children: [
-          // 月份分组头
+          // 日期分组头
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppDimens.cardPadding,
@@ -933,13 +939,11 @@ class _MonthCard extends StatelessWidget {
             child: Row(
               children: [
                 Text(
-                  showYear
-                      ? '${month.year}年${month.month}月'
-                      : '${month.month}月',
+                  DateLabelUtil.headOf(date, showYear: showYear),
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const Spacer(),
@@ -954,7 +958,7 @@ class _MonthCard extends StatelessWidget {
               ],
             ),
           ),
-          // 条目与首页明细完全一致（共享 BillListItem）
+          // 条目与首页明细完全一致（共享 BillListItem），日期由组头表达
           for (var i = 0; i < bills.length; i++) ...[
             if (i > 0) const Divider(indent: 68, endIndent: 16),
             Builder(
@@ -970,8 +974,6 @@ class _MonthCard extends StatelessWidget {
                   amountCents: bill.amountCents,
                   note: bill.note,
                   location: bill.location,
-                  // 月卡内无日分组头，条目自带头几号（年份已由月卡头表达）
-                  dateLabel: '${bill.date.month}月${bill.date.day}日',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => AddBillPage(editBill: bill),
@@ -1206,7 +1208,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                   child: _chip(
                     _start == null
                         ? '开始日期'
-                        : '${_start!.month}/${_start!.day}',
+                        // 完整格式消歧：跨年筛选时只显示月/日无法区分年份
+                        : '${_start!.year}/${_start!.month}/${_start!.day}',
                     selected: _start != null,
                     fullWidth: true,
                     onTap: () => _pickDate(isStart: true),
@@ -1218,7 +1221,9 @@ class _FilterSheetState extends State<_FilterSheet> {
                 ),
                 Expanded(
                   child: _chip(
-                    _end == null ? '截止日期' : '${_end!.month}/${_end!.day}',
+                    _end == null
+                        ? '截止日期'
+                        : '${_end!.year}/${_end!.month}/${_end!.day}',
                     selected: _end != null,
                     fullWidth: true,
                     onTap: () => _pickDate(isStart: false),

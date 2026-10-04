@@ -51,6 +51,10 @@ class _AddBillPageState extends State<AddBillPage> {
   /// 定位地名；null = 未定位
   String? _locationName;
 
+  /// 定位完整信息（省市区街道 + 地点名），专供搜索字段 locationFull；
+  /// 编辑时读旧账单回显，选点页无法补全时保留旧值兜底
+  String? _locationFull;
+
   /// 定位坐标（与地名一起保存，编辑时选点页据此回到原地点）
   Gcj02Point? _selectedPoint;
 
@@ -79,6 +83,7 @@ class _AddBillPageState extends State<AddBillPage> {
       _timeMinute = bill.timeMinute ?? nowMinute;
       _noteController.text = bill.note ?? '';
       _locationName = bill.location;
+      _locationFull = bill.locationFull;
       if (bill.lat != null && bill.lng != null) {
         _selectedPoint = Gcj02Point(lat: bill.lat!, lng: bill.lng!);
       }
@@ -433,6 +438,7 @@ class _AddBillPageState extends State<AddBillPage> {
                 GestureDetector(
                   onTap: () => setState(() {
                     _locationName = null;
+                    _locationFull = null;
                     _selectedPoint = null;
                   }),
                   child: const Icon(
@@ -467,6 +473,11 @@ class _AddBillPageState extends State<AddBillPage> {
       setState(() {
         _locationName = selection.name;
         _selectedPoint = selection.point;
+        // 选点页补全了完整地址则更新；无法补全（如"已保存的位置"）
+        // 保留旧值，避免把已有的完整信息冲掉
+        if (selection.fullAddress != null) {
+          _locationFull = selection.fullAddress;
+        }
       });
     }
   }
@@ -727,6 +738,7 @@ class _AddBillPageState extends State<AddBillPage> {
           date: _date,
           timeMinute: _timeMinute,
           location: _locationName,
+          locationFull: _locationFull,
           lat: _selectedPoint?.lat,
           lng: _selectedPoint?.lng,
           createdAt: bill.createdAt,
@@ -742,6 +754,7 @@ class _AddBillPageState extends State<AddBillPage> {
           timeMinute: Value(_timeMinute),
           note: Value(note.isEmpty ? null : note),
           location: Value(_locationName),
+          locationFull: Value(_locationFull),
           lat: Value(_selectedPoint?.lat),
           lng: Value(_selectedPoint?.lng),
         ),

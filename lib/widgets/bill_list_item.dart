@@ -19,7 +19,6 @@ class BillListItem extends StatelessWidget {
     required this.amountCents,
     this.note,
     this.location,
-    this.dateLabel,
     this.onTap,
     this.onLongPress,
   });
@@ -34,9 +33,6 @@ class BillListItem extends StatelessWidget {
   /// 消费地点（记账定位），无则不显示
   final String? location;
 
-  /// 账单日期文案（如"10月4日"，分类统计明细等无日期分组头的场景显示），
-  /// 无则不显示
-  final String? dateLabel;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -68,17 +64,6 @@ class BillListItem extends StatelessWidget {
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  if (dateLabel != null && dateLabel!.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      dateLabel!,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                        fontFeatures: [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
                   if (note != null && note!.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
