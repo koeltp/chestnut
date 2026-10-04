@@ -7,7 +7,7 @@ import '../../models/enums.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/section_card.dart';
-import '../stats/category_stats_page.dart';
+import '../stats/stats_page.dart';
 import 'category_edit_page.dart';
 
 /// 分类管理页：钱迹式分组管理
@@ -308,7 +308,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
               Navigator.pop(ctx);
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => CategoryStatsPage(category: category),
+                  builder: (_) => StatsPage(initialCategory: category),
                 ),
               );
             }),

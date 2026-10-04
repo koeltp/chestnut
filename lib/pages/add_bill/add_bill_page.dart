@@ -39,14 +39,48 @@ class _AddBillPageState extends State<AddBillPage> {
   late int _timeMinute;
   final _noteController = TextEditingController();
 
-  /// 备注输入框焦点：聚焦时隐藏自定义数字键盘，让位给系统软键盘；
-  /// 失焦后恢复数字键盘，避免两个键盘同时出现
+  /// 备注输入框焦点：聚焦时系统软键盘弹出、直接覆盖在常驻数字键盘上
+  /// （钱迹式遮盖），失焦后数字键盘原地露出，两键盘永不同时出现
   final _noteFocus = FocusNode();
-  bool _noteFocused = false;
 
   /// 上一帧系统键盘可见性。Android 收起键盘（输入法"∨"按钮）不会
   /// 自动释放 TextField 焦点——需要对比 insets 变化，收起时主动失焦
   bool _keyboardWasVisible = false;
+
+  /// 数字键盘固定高度：分割线 1 + 4 行键位 × 52（实测前的兜底估算）
+  static const double _keyboardHeight = 1 + 52 * 4;
+
+  /// 备注行高度估算（实测前的兜底值）
+  static const double _noteRowHeight = 40;
+
+  /// 日期/定位胶囊行高度估算（实测前的兜底值）
+  static const double _dateRowHeight = 38;
+
+  /// 底部固定区（备注行 + 日期行 + 键盘）实测总高，首帧后测量
+  double? _bottomZoneHeight;
+
+  /// 日期行 + 键盘的实测高度 = 备注行底面到屏幕底的距离，
+  /// 用于备注聚焦时精确贴合系统键盘上缘
+  double? _belowNoteHeight;
+
+  final _bottomZoneKey = GlobalKey();
+  final _belowNoteKey = GlobalKey();
+
+  /// 首帧后实测底部固定区各段高度：估算值受中文字体行高影响不可靠，
+  /// 实测值保证备注行在任何机型/字体下都精确贴住系统键盘上缘
+  void _measureBottomZone() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final zone = _bottomZoneKey.currentContext?.size?.height;
+      final below = _belowNoteKey.currentContext?.size?.height;
+      if (zone != _bottomZoneHeight || below != _belowNoteHeight) {
+        setState(() {
+          _bottomZoneHeight = zone;
+          _belowNoteHeight = below;
+        });
+      }
+    });
+  }
 
   /// 定位地名；null = 未定位
   String? _locationName;
@@ -66,11 +100,6 @@ class _AddBillPageState extends State<AddBillPage> {
   @override
   void initState() {
     super.initState();
-    _noteFocus.addListener(() {
-      if (_noteFocused != _noteFocus.hasFocus) {
-        setState(() => _noteFocused = _noteFocus.hasFocus);
-      }
-    });
     final now = DateTime.now();
     final nowMinute = now.hour * 60 + now.minute;
     final bill = widget.editBill;
@@ -115,21 +144,54 @@ class _AddBillPageState extends State<AddBillPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 底部固定区（备注行 + 日期行 + 数字键盘）常驻屏幕底；
+    // 备注聚焦时整体上移，让备注行恰好贴在系统键盘上缘——
+    // 日期行与数字键盘被系统键盘盖住，分类区高度保持不变（钱迹式）
+    _measureBottomZone();
+    final insets = MediaQuery.viewInsetsOf(context).bottom;
+    final belowNote = _belowNoteHeight ?? _keyboardHeight + _dateRowHeight;
+    final bottomOffset = insets > _keyboardHeight ? insets - belowNote : 0.0;
+    final bottomZone =
+        _bottomZoneHeight ?? _keyboardHeight + _noteRowHeight + _dateRowHeight;
     return Scaffold(
+      // 不随系统键盘 resize：系统键盘直接覆盖在底部固定区上
+      resizeToAvoidBottomInset: false,
       backgroundColor: Colors.white,
       body: SafeArea(
-        // 点击页面空白处收回备注焦点：系统键盘收起、数字键盘恢复
+        // 点击页面空白处收回备注焦点：系统键盘收起、数字键盘露出
         child: GestureDetector(
           onTap: () => _noteFocus.unfocus(),
           behavior: HitTestBehavior.translucent,
-          child: Column(
+          child: Stack(
             children: [
-              _buildTopBar(),
-              Expanded(child: _buildCategoryGrid()),
-              _buildNoteRow(),
-              _buildDateChip(),
-              // 备注聚焦时隐藏数字键盘，避免与系统软键盘同时出现
-              if (_noteFocused) const SizedBox.shrink() else _buildKeyboard(),
+              // 内容层：让出整个底部固定区，分类区高度恒定不跳
+              Padding(
+                padding: EdgeInsets.only(bottom: bottomZone),
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    Expanded(child: _buildCategoryGrid()),
+                  ],
+                ),
+              ),
+              // 底部固定区：备注聚焦时上移至备注行贴系统键盘上缘
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: bottomOffset < 0 ? 0 : bottomOffset,
+                child: Column(
+                  key: _bottomZoneKey,
+                  children: [
+                    _buildNoteRow(),
+                    KeyedSubtree(
+                      key: _belowNoteKey,
+                      child: Column(
+                        children: [_buildDateChip(), _buildKeyboard()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -275,6 +337,9 @@ class _AddBillPageState extends State<AddBillPage> {
               decoration: const InputDecoration(
                 isDense: true,
                 counterText: '',
+                // 收紧上下内边距：文字贴近行底，备注行贴键盘上缘时
+                // 文字与键盘的视觉距离更短（钱迹同款紧凑观感）
+                contentPadding: EdgeInsets.symmetric(vertical: 4),
                 hintText: '点此输入备注…',
                 hintStyle: TextStyle(
                   fontSize: 13,

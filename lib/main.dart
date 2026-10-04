@@ -13,7 +13,6 @@ import 'providers/bill_provider.dart';
 import 'providers/budget_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/settings_provider.dart';
-import 'providers/stats_provider.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -62,9 +61,6 @@ class ChestnutApp extends StatelessWidget {
             ctx.read<BudgetRepository>(),
             ctx.read<BillRepository>(),
           ),
-        ),
-        ChangeNotifierProvider<StatsProvider>(
-          create: (ctx) => StatsProvider(ctx.read<BillRepository>()),
         ),
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(prefs),

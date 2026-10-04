@@ -21,6 +21,7 @@ class PieChartCard extends StatefulWidget {
     required this.centerValue,
     required this.centerValueColor,
     required this.emptyText,
+    this.onSliceTap,
   });
 
   final String title;
@@ -53,6 +54,10 @@ class PieChartCard extends StatefulWidget {
 
   /// 无数据时的空态文案
   final String emptyText;
+
+  /// 扇区点击回调（参数为 [items] 的下标）：统计页钻取到对应分类视图；
+  /// null 时点击无响应
+  final void Function(int index)? onSliceTap;
 
   @override
   State<PieChartCard> createState() => _PieChartCardState();
@@ -89,6 +94,31 @@ class _PieChartCardState extends State<PieChartCard> {
         math.pi;
     setState(() => _startAngle += delta);
     _lastAngle = a;
+  }
+
+  /// 点击扇区定位：把点击点换算为极角，再按各扇区扫过角度累加，
+  /// 定位到 [PieChartCard.items] 的下标（与扇区绘制顺序一致）。
+  /// 环心区域保留给汇总文字不响应。
+  void _onTapUp(TapUpDetails d) {
+    final size = context.size!;
+    final v = d.localPosition - Offset(size.width / 2, size.height / 2);
+    // 环形区域：内径 52、扇区外缘 92，各留容差
+    final r = v.distance;
+    if (r < 44 || r > 100) return;
+    final a = math.atan2(v.dy, v.dx) * 180 / math.pi;
+    var rel = (a - _startAngle) % 360;
+    if (rel < 0) rel += 360;
+    final total = widget.items.fold<int>(0, (sum, item) => sum + item.$2);
+    var acc = 0.0;
+    for (var i = 0; i < widget.items.length; i++) {
+      final cents = widget.items[i].$2;
+      if (cents <= 0) continue; // 金额为 0 的项不绘制扇区
+      acc += cents / total * 360;
+      if (rel < acc) {
+        widget.onSliceTap!(i);
+        return;
+      }
+    }
   }
 
   @override
@@ -137,6 +167,8 @@ class _PieChartCardState extends State<PieChartCard> {
               // 竞技不冲突，旋转始终灵敏（pan 全向会与列表滚动抢手势）
               onHorizontalDragStart: _onDragStart,
               onHorizontalDragUpdate: _onDragUpdate,
+              // 扇区点击钻取（onSliceTap 非空时启用）
+              onTapUp: widget.onSliceTap == null ? null : _onTapUp,
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
                 height: 240,

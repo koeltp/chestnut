@@ -17,28 +17,8 @@ import '../add_bill/add_bill_page.dart';
 import 'period_picker_dialog.dart';
 
 /// 首页：当前查看范围（月/年/全部）的收支汇总 + 按日分组的账单卡片列表
-///
-/// 搜索态：顶栏切换为搜索框，在当前查看范围内过滤
-/// 备注/定位完整信息/分类名，复用日分组列表展示结果
-class HomePage extends StatefulWidget {
+class HomePage extends StatelessWidget {
   const HomePage({super.key});
-
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  /// 搜索关键词（空 = 浏览态，非空 = 过滤中）
-  final _searchCtrl = TextEditingController();
-
-  /// 是否处于搜索界面（与关键词独立：进入搜索框但未输入也显示搜索栏）
-  bool _searching = false;
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,17 +29,7 @@ class _HomePageState extends State<HomePage> {
     final billsStream = provider.homeBillsStream();
     return Column(
       children: [
-        _SummaryHeader(
-          provider: provider,
-          searching: _searching,
-          searchCtrl: _searchCtrl,
-          onSearchChanged: (_) => setState(() {}),
-          onStartSearch: () => setState(() => _searching = true),
-          onExitSearch: () => setState(() {
-            _searching = false;
-            _searchCtrl.clear();
-          }),
-        ),
+        _SummaryHeader(provider: provider),
         Expanded(
           child: StreamBuilder<List<Bill>>(
             stream: billsStream,
@@ -71,23 +41,9 @@ class _HomePageState extends State<HomePage> {
                 stream: context.read<CategoryProvider>().categoriesMapStream(),
                 builder: (context, catSnapshot) {
                   final categories = catSnapshot.data ?? const {};
-                  var bills = snapshot.data!;
-                  // 搜索过滤：定位完整信息/备注/分类名任一包含关键词
-                  // （英文统一转小写比较，中文不受影响）
-                  final kw = _searchCtrl.text.trim().toLowerCase();
-                  if (_searching && kw.isNotEmpty) {
-                    bills = bills.where((b) {
-                      return (b.locationFull ?? '').toLowerCase().contains(kw) ||
-                          (b.note ?? '').toLowerCase().contains(kw) ||
-                          (categories[b.categoryId]?.name ?? '')
-                              .toLowerCase()
-                              .contains(kw);
-                    }).toList();
-                  }
+                  final bills = snapshot.data!;
                   if (bills.isEmpty) {
-                    return _EmptyState(
-                      message: _searching && kw.isNotEmpty ? '未找到匹配账单' : null,
-                    );
+                    return const _EmptyState();
                   }
                   return _BillList(
                     bills: bills,
@@ -104,26 +60,11 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// 顶部渐变汇总区：显示方式切换 + 支出 / 收入 / 结余；
-/// 搜索态时年月切换行原地替换为搜索框
+/// 顶部渐变汇总区：显示方式切换 + 支出 / 收入 / 结余
 class _SummaryHeader extends StatelessWidget {
-  const _SummaryHeader({
-    required this.provider,
-    required this.searching,
-    required this.searchCtrl,
-    required this.onSearchChanged,
-    required this.onStartSearch,
-    required this.onExitSearch,
-  });
+  const _SummaryHeader({required this.provider});
 
   final BillProvider provider;
-
-  /// 是否处于搜索界面（顶栏显示搜索框而非年月切换）
-  final bool searching;
-  final TextEditingController searchCtrl;
-  final ValueChanged<String> onSearchChanged;
-  final VoidCallback onStartSearch;
-  final VoidCallback onExitSearch;
 
   /// 打开"显示方式"弹窗并应用选择结果（模式 + 基准月份）
   Future<void> _pickPeriod(BuildContext context) async {
@@ -136,81 +77,6 @@ class _SummaryHeader extends StatelessWidget {
     final (mode, month) = result;
     if (month != null) provider.changeMonth(month);
     provider.changePeriod(mode);
-  }
-
-  /// 搜索框行：白底胶囊输入框 + 右侧"取消"退出按钮
-  Widget _buildSearchField() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.search,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: TextField(
-                    controller: searchCtrl,
-                    onChanged: onSearchChanged,
-                    autofocus: true,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
-                    ),
-                    decoration: const InputDecoration(
-                      isCollapsed: true,
-                      border: InputBorder.none,
-                      hintText: '搜索备注、地点、分类',
-                      hintStyle: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    cursorColor: AppColors.primary,
-                  ),
-                ),
-                // 有输入时显示清除按钮
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: searchCtrl,
-                  builder: (context, value, _) {
-                    if (value.text.isEmpty) return const SizedBox.shrink();
-                    return GestureDetector(
-                      onTap: () {
-                        searchCtrl.clear();
-                        onSearchChanged('');
-                      },
-                      child: const Icon(
-                        Icons.cancel,
-                        size: 16,
-                        color: AppColors.textSecondary,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: onExitSearch,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          child: const Text('取消', style: TextStyle(fontSize: 14)),
-        ),
-      ],
-    );
   }
 
   @override
@@ -235,23 +101,21 @@ class _SummaryHeader extends StatelessWidget {
               final summary = snapshot.data ?? MonthSummary.empty;
               return Column(
                 children: [
-                  searching
-                      ? _buildSearchField()
-                      : Center(
-                          child: MonthSwitcher(
-                            month: provider.selectedMonth,
-                            onChanged: provider.changeMonth,
-                            // 弹窗内已可选年月，顶部左右箭头不再需要
-                            showArrows: false,
-                            text: switch (period) {
-                              HomePeriod.month => null,
-                              HomePeriod.year =>
-                                '${provider.selectedMonth.year}年',
-                              HomePeriod.all => '全部',
-                            },
-                            onTapText: () => _pickPeriod(context),
-                          ),
-                        ),
+                  Center(
+                    child: MonthSwitcher(
+                      month: provider.selectedMonth,
+                      onChanged: provider.changeMonth,
+                      // 弹窗内已可选年月，顶部左右箭头不再需要
+                      showArrows: false,
+                      text: switch (period) {
+                        HomePeriod.month => null,
+                        HomePeriod.year =>
+                          '${provider.selectedMonth.year}年',
+                        HomePeriod.all => '全部',
+                      },
+                      onTapText: () => _pickPeriod(context),
+                    ),
+                  ),
                   const SizedBox(height: AppDimens.gapLg),
                   Row(
                     children: [
@@ -268,14 +132,6 @@ class _SummaryHeader extends StatelessWidget {
                       _SummaryItem(
                         label: '结余',
                         amount: MoneyUtil.centsToYuanTrimmed(summary.balanceCents),
-                      ),
-                      // 搜索入口：右上角放大镜（浏览态显示）
-                      const Spacer(),
-                      IconButton(
-                        onPressed: onStartSearch,
-                        icon: const Icon(Icons.search, size: 24),
-                        color: Colors.white,
-                        tooltip: '搜索',
                       ),
                     ],
                   ),
@@ -520,11 +376,7 @@ class _DayCard extends StatelessWidget {
 
 /// 空状态引导
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.message});
-
-  /// 自定义提示文案；null = 默认"这个月还没有记账"（无记录），
-  /// 搜索无结果时传入"未找到匹配账单"
-  final String? message;
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -540,26 +392,24 @@ class _EmptyState extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              message == null
-                  ? Icons.savings_outlined
-                  : Icons.search_off_outlined,
+              Icons.savings_outlined,
               size: 44,
               color: AppColors.textSecondary.withValues(alpha: 0.45),
             ),
           ),
           const SizedBox(height: AppDimens.gapLg),
-          Text(
-            message ?? '这个月还没有记账',
-            style: const TextStyle(
+          const Text(
+            '这个月还没有记账',
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            message == null ? '点击下方 + 记下第一笔吧' : '换个关键词试试',
-            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          const Text(
+            '点击下方 + 记下第一笔吧',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
         ],
       ),

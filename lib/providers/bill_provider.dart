@@ -50,6 +50,15 @@ class BillProvider extends ChangeNotifier {
     HomePeriod.all => _repo.watchAllSummary(),
   };
 
+  /// 任意范围账单流（统计页用）：范围由 UI 显式传入而非内部状态，
+  /// 避免统计页与首页各自维护范围状态时串流
+  Stream<List<Bill>> billsInRangeStream(HomePeriod period, DateTime month) =>
+      switch (period) {
+        HomePeriod.month => _repo.watchBillsInMonth(month),
+        HomePeriod.year => _repo.watchBillsInYear(month.year),
+        HomePeriod.all => _repo.watchAllBills(),
+      };
+
   /// 切换月份
   void changeMonth(DateTime month) {
     if (month.year == _selectedMonth.year &&
