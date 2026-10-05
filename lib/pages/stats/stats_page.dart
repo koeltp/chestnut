@@ -11,10 +11,11 @@ import '../../theme/app_theme.dart';
 import '../../utils/date_label_util.dart';
 import '../../utils/money_util.dart';
 import '../../widgets/app_segmented.dart';
+import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
+import '../../widgets/category_avatar.dart';
 import '../../widgets/pie_chart_card.dart';
 import '../../widgets/section_card.dart';
-import '../add_bill/add_bill_page.dart';
 import '../add_bill/wheel_date_picker.dart';
 import '../home/period_picker_dialog.dart';
 
@@ -161,6 +162,17 @@ class _StatsPageState extends State<StatsPage> {
       HomePeriod.year => (DateTime(_month.year), DateTime(_month.year + 1)),
       HomePeriod.all => (null, null),
     };
+  }
+
+  /// 【临时诊断】当前筛选状态的简短描述（随诊断文案一起删除）
+  String get _diagState {
+    final c = _custom;
+    if (c != null) {
+      String side(DateTime? d) =>
+          d == null ? '不限' : '${d.year}/${d.month}/${d.day}';
+      return '自定义${side(c.start)}~${side(c.end)}';
+    }
+    return '${_period.name} ${_month.year}/${_month.month}';
   }
 
   /// 顶栏副标题点击：弹出范围选择（与首页同款弹窗）；自定义区间失效
@@ -395,8 +407,12 @@ class _StatsPageState extends State<StatsPage> {
           return StreamBuilder<List<Bill>>(
             stream: _billsStream(provider),
             builder: (context, snapshot) {
-              final bills = snapshot.data ?? const <Bill>[];
-              return _buildBody(bills, categories);
+              // 换流空窗（筛选变化重订阅 drift 流）显示加载态，
+              // 而不是当空列表顶"暂无账单"空态，避免闪现误导
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _buildBody(snapshot.data!, categories);
             },
           );
         },
@@ -416,8 +432,8 @@ class _StatsPageState extends State<StatsPage> {
     filtered = _applyKeyword(filtered, categories);
 
     final c = _category;
-    // 全部视图：汇总/图表按当前收支类型过滤（明细不过滤，支收都显示）；
-    // 分类视图：typeBills 即 filtered（单分类类型固定）
+    // 分段器是整页开关：全部视图下汇总/图表/明细都只展示当前收支
+    // 类型的数据；分类视图 typeBills 即 filtered（单分类类型固定）
     final typeBills = _isAllView
         ? filtered.where((b) => b.type == _type).toList()
         : filtered;
@@ -448,7 +464,7 @@ class _StatsPageState extends State<StatsPage> {
     // 按日分组（数据已按日期倒序），与首页明细同粒度
     final dayKeys = <String>[];
     final dayMap = <String, List<Bill>>{};
-    for (final bill in filtered) {
+    for (final bill in typeBills) {
       final key = '${bill.date.year}-${bill.date.month}-${bill.date.day}';
       if (!dayMap.containsKey(key)) {
         dayMap[key] = [];
@@ -457,7 +473,7 @@ class _StatsPageState extends State<StatsPage> {
       dayMap[key]!.add(bill);
     }
     // 年份按需显示：数据横跨多个年份时分组头带年份消歧
-    final crossYear = filtered.map((b) => b.date.year).toSet().length > 1;
+    final crossYear = typeBills.map((b) => b.date.year).toSet().length > 1;
     final emptyText = _keyword.trim().isEmpty ? '该范围内暂无账单' : '未找到匹配账单';
 
     return CustomScrollView(
@@ -587,12 +603,26 @@ class _StatsPageState extends State<StatsPage> {
               ),
             ),
           ),
-        if (filtered.isEmpty)
+        if (typeBills.isEmpty)
           SliverFillRemaining(
             child: Center(
-              child: Text(
-                emptyText,
-                style: const TextStyle(color: AppColors.textSecondary),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    emptyText,
+                    style: const TextStyle(color: AppColors.textSecondary),
+                  ),
+                  // 【临时诊断】排查"首次自定义搜索无数据"：区分流为空
+                  // 还是过滤滤光，定位后删除本段
+                  const SizedBox(height: 8),
+                  Text(
+                    '[诊断]流${bills.length}条 筛后${filtered.length}条 '
+                    '$_diagState',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
               ),
             ),
           )
@@ -615,6 +645,7 @@ class _StatsPageState extends State<StatsPage> {
                     bills: dayBills,
                     categories: categories,
                     onDelete: _confirmDelete,
+                    onCategoryTap: _drillTo,
                     showYear: crossYear,
                   ),
                 );
@@ -1093,6 +1124,7 @@ class _DayCard extends StatelessWidget {
     required this.bills,
     required this.categories,
     required this.onDelete,
+    required this.onCategoryTap,
     required this.showYear,
   });
 
@@ -1100,6 +1132,9 @@ class _DayCard extends StatelessWidget {
   final List<Bill> bills;
   final Map<int, Category> categories;
   final Future<void> Function(Bill bill) onDelete;
+
+  /// 详情弹窗里点击分类行的跳转（内部钻取，由宿主传入）
+  final void Function(Category category) onCategoryTap;
 
   /// 列表数据跨年时分组头带年份消歧（2025.09.29 周二），同年省略（09.29 周二）
   final bool showYear;
@@ -1166,10 +1201,11 @@ class _DayCard extends StatelessWidget {
                   amountCents: bill.amountCents,
                   note: bill.note,
                   location: bill.location,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AddBillPage(editBill: bill),
-                    ),
+                  onTap: () => showBillDetailSheet(
+                    context,
+                    bill: bill,
+                    categories: categories,
+                    onCategoryTap: onCategoryTap,
                   ),
                   onLongPress: () => onDelete(bill),
                 );
@@ -1236,24 +1272,12 @@ class _RankingCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppDimens.radiusControl),
                   child: Row(
                     children: [
-                      // 排行图标底：与全应用分类图标统一规格（40）
-                      Container(
-                        width: AppDimens.iconTile,
-                        height: AppDimens.iconTile,
-                        decoration: BoxDecoration(
-                          color: AppColors.tint(color),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          IconData(
-                            // ignore: non_const_argument_for_const_parameter
-                            e.category?.iconCode ??
-                                Icons.help_outline.codePoint,
-                            fontFamily: 'MaterialIcons',
-                          ),
-                          color: color,
-                          size: 21,
-                        ),
+                      // 排行头像：与全应用分类头像统一（40/21，文字图标显首字）
+                      CategoryAvatar(
+                        name: e.name,
+                        iconCode: e.category?.iconCode ??
+                            Icons.help_outline.codePoint,
+                        color: e.category?.colorValue ?? 0xFFA8A8A8,
                       ),
                       const SizedBox(width: AppDimens.gapMd),
                       Expanded(
@@ -1433,8 +1457,8 @@ class _FilterSheetState extends State<_FilterSheet> {
     return period == widget.initialPeriod && sameMonth;
   }
 
-  /// 确定按钮可点：选了日期或填了关键词；初始已带筛选时也允许——
-  /// 面板全清空后点确定 = 清除全部筛选
+  /// 搜索按钮可点：选了日期或填了关键词；初始已带筛选时也允许——
+  /// 面板全清空后点搜索 = 清除全部筛选
   bool get _canApply {
     if (_start != null || _end != null) return true;
     if (_keywordCtrl.text.trim().isNotEmpty) return true;
@@ -1445,6 +1469,10 @@ class _FilterSheetState extends State<_FilterSheet> {
   /// 面板当前关键词（快捷胶囊应用时一并带上，保持"整面板应用"语义）
   String get _keyword => _keywordCtrl.text.trim();
 
+  /// 快捷胶囊：立即应用时间范围并关闭面板。
+  /// 关键词一律清空（B 方案）——胶囊是"快速回到纯时间视角"：
+  /// 不捎带搜索框里未应用的草稿，也顺带清掉已生效的关键词；
+  /// 精细组合（关键词+日期）请用下方搜索区
   void _applyQuick(String label) {
     final now = DateTime.now();
     if (label == _crossYearLabel) {
@@ -1453,10 +1481,10 @@ class _FilterSheetState extends State<_FilterSheet> {
       widget.onApply(widget.initialPeriod, widget.initialMonth, (
         start: DateTime(now.year - 1, 1, 1),
         end: DateTime(now.year, now.month, now.day + 1),
-      ), _keyword);
+      ), '');
     } else {
       final (period, month) = _quickValue(label);
-      widget.onApply(period, month, null, _keyword);
+      widget.onApply(period, month, null, '');
     }
     Navigator.pop(context);
   }
@@ -1494,7 +1522,8 @@ class _FilterSheetState extends State<_FilterSheet> {
     });
   }
 
-  /// 应用自定义区间与关键词（两端至少选了一个日期或有关键词），关闭面板
+  /// 搜索按钮：应用自定义区间与关键词（两端至少选了一个日期或有关键词），
+  /// 关闭面板
   void _applyCustom() {
     if (!_canApply) return;
     widget.onApply(
@@ -1517,9 +1546,40 @@ class _FilterSheetState extends State<_FilterSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 关键词放最上面：搜索是最主动的筛选意图，优先呈现
+              // 快捷区在上：一键应用时间范围并关闭面板（关键词一并清空），
+              // 精细组合（关键词+日期）走下方搜索区
               const Text(
-                '关键词',
+                '账单日期',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final label in [
+                    '本月',
+                    '上月',
+                    '今年',
+                    '去年',
+                    _crossYearLabel,
+                    '全部',
+                  ])
+                    _chip(
+                      label,
+                      selected: _isQuickActive(label),
+                      onTap: () => _applyQuick(label),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // 搜索区在下：关键词 + 自定义起止组合，点"搜索"统一应用
+              const Text(
+                '搜索',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -1585,44 +1645,6 @@ class _FilterSheetState extends State<_FilterSheet> {
                 ),
                 cursorColor: AppColors.primary,
               ),
-              const SizedBox(height: 20),
-              const Text(
-                '账单日期',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final label in [
-                    '本月',
-                    '上月',
-                    '今年',
-                    '去年',
-                    _crossYearLabel,
-                    '全部',
-                  ])
-                    _chip(
-                      label,
-                      selected: _isQuickActive(label),
-                      onTap: () => _applyQuick(label),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                '自定义',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -1635,6 +1657,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                       selected: _start != null,
                       fullWidth: true,
                       onTap: () => _pickDate(isStart: true),
+                      onClear: () => setState(() => _start = null),
                     ),
                   ),
                   const Padding(
@@ -1652,12 +1675,13 @@ class _FilterSheetState extends State<_FilterSheet> {
                       selected: _end != null,
                       fullWidth: true,
                       onTap: () => _pickDate(isStart: false),
+                      onClear: () => setState(() => _end = null),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-              // 确定：选了日期或填了关键词才可点（见 _canApply）；
+              // 搜索：选了日期或填了关键词才可点（见 _canApply）；
               // 支持只选开始或只选截止（开放区间）
               SizedBox(
                 width: double.infinity,
@@ -1678,7 +1702,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                     ),
                   ),
                   child: const Text(
-                    '确定',
+                    '搜索',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -1691,12 +1715,13 @@ class _FilterSheetState extends State<_FilterSheet> {
   }
 
   /// 胶囊选项：快捷项宽度自适应内容（图 1 样式），日期胶囊撑满整列；
-  /// 浅灰底圆角，选中浅蓝底蓝字
+  /// 浅灰底圆角，选中浅蓝底蓝字；[onClear] 非空且选中时尾部显示 ×
   Widget _chip(
     String label, {
     required bool selected,
     VoidCallback? onTap,
     bool fullWidth = false,
+    VoidCallback? onClear,
   }) {
     return InkWell(
       borderRadius: BorderRadius.circular(20),
@@ -1710,14 +1735,35 @@ class _FilterSheetState extends State<_FilterSheet> {
               : AppColors.background,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          style: TextStyle(
-            fontSize: 13,
-            color: selected ? AppColors.primary : AppColors.textPrimary,
-          ),
+        child: Row(
+          mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                ),
+              ),
+            ),
+            // 尾部×：点击只清本端（起止日期各自清除），命中最内层
+            // GestureDetector，不会冒泡触发胶囊本身的 onTap
+            if (onClear != null && selected) ...[
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: onClear,
+                child: const Icon(
+                  Icons.cancel,
+                  size: 14,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

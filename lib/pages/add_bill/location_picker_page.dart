@@ -396,12 +396,20 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       _error = null;
     });
     try {
-      final results = await Future.wait([
-        _service.around(point),
-        _service.regeoAddress(point).catchError((_) => ''),
-      ]);
+      final regeoFuture = _service
+          .regeoDetail(point)
+          .then<RegeoDetail?>((v) => v, onError: (Object _) => null);
+      final results = await Future.wait([_service.around(point), regeoFuture]);
       final pois = results[0] as List<PoiItem>;
-      final address = results[1] as String;
+      final detail = results[1] as RegeoDetail?;
+      // 首项地址用结构化行政区划（省市区镇）而非 formatted 整串：
+      // 针指在无店铺处时，高德会拿最近的 POI 名当锚点拼在末尾
+      // （如"…新市镇晚安家居(新市街店)"），名不副实；adminPath
+      // 只描述"针所在的位置"，与下方店铺条目形成"要店点店、
+      // 要位置点首项"的清晰分工
+      final address = detail == null
+          ? ''
+          : (detail.adminPath.isNotEmpty ? detail.adminPath : detail.formatted);
       // 代数不符：期间已发起更新的请求（继续拖动/切搜索），丢弃过期结果
       if (gen != _reqGen || !mounted) return;
       // 中心点与已保存位置相距很近（50m 内）时，首项显示"已保存的位置"，
@@ -423,7 +431,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             title: address,
             subtitle: '当前选择点',
             location: point,
-            // 逆地理结果本身就是"省 市 区 街道"完整地址
+            // 结构化行政区划本身就是完整地址，选中时无需再补
             fullAddress: address,
           ),
         ...pois.map(
@@ -496,6 +504,61 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     }
   }
 
+  /// 创建自定义位置：搜索结果里没有想要的地点时，用输入的关键词
+  /// 命名当前红针位置（地图中心）。坐标取当前中心（编辑账单时地图
+  /// 仍可飞回），fullAddress 现场逆地理补全（失败静默降级为 null，
+  /// 由记一笔页兜底），不阻塞返回
+  Future<void> _createCustom(String name) async {
+    final point = _center;
+    if (point == null) {
+      _toast('地图尚未就绪，请稍后再试');
+      return;
+    }
+    var full = '';
+    try {
+      final detail =
+          await _service.regeoDetail(point).timeout(const Duration(seconds: 5));
+      full = detail.adminPath;
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.of(context).pop(
+      LocationSelection(
+        name: name,
+        point: point,
+        fullAddress: full.isEmpty ? null : full,
+      ),
+    );
+  }
+
+  /// “创建新的位置”行（钱迹式）：搜索结果末尾的自定义入口
+  Widget _buildCreateItem() {
+    return InkWell(
+      onTap: () => _createCustom(_keyword),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '没有找到你的位置？',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '创建新的位置：$_keyword',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 选中地点的处理：
   /// 有坐标（店铺等精确地点）→ 直接带回地名与坐标；
   /// 无坐标（行政区类，如"四川省成都市"）→ 当作导航入口，地理编码
@@ -505,14 +568,21 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     final point = entry.location;
     if (point != null) {
       // 完整定位信息：条目自带（当前选择点逆地理）优先；POI/搜索条目
-      // 缺省市，现场逆地理补全后拼上点名，任何一段都能被搜索命中。
-      // 超时/失败静默降级（fullAddress 为空由记一笔页兜底），不阻塞选点
+      // 现场逆地理补全——优先"省市区街道"结构化拼接（纯行政区划，
+      // 天然不含地标名），四段全空才退回 formatted 整串；追加点名前
+      // 先查重（高德逆地理串末尾常自带地标，如"…紫云阁酒店 紫云阁
+      // 酒店"），重叠时不再追加。超时/失败静默降级（fullAddress 为空
+      // 由记一笔页兜底），不阻塞选点
       var full = entry.fullAddress;
       if (full == null) {
         try {
-          final regeo =
-              await _service.regeoAddress(point).timeout(const Duration(seconds: 5));
-          if (regeo.isNotEmpty) full = '$regeo ${entry.title}';
+          final detail =
+              await _service.regeoDetail(point).timeout(const Duration(seconds: 5));
+          final base =
+              detail.adminPath.isNotEmpty ? detail.adminPath : detail.formatted;
+          if (base.isNotEmpty) {
+            full = base.contains(entry.title) ? base : '$base ${entry.title}';
+          }
         } catch (_) {}
       }
       if (!mounted) return;
@@ -816,9 +886,25 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       );
     }
     if (entries.isEmpty) {
+      // 搜索无结果时"创建新的位置"是唯一出路，空态也要提供
+      if (_keyword.isNotEmpty) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 24),
+            const Text(
+              '没有找到相关地点',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            _buildCreateItem(),
+          ],
+        );
+      }
       return Center(
         child: Text(
-          _keyword.isEmpty ? '附近没有找到地点' : '没有找到相关地点',
+          '附近没有找到地点',
           style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
       );
@@ -829,6 +915,8 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   /// 列表区整体（顶部刷新进度条 + 条目列表）
   Widget _buildListBody() {
     final entries = _entries!;
+    // 搜索模式在结果末尾追加"创建新的位置"入口（关键词即位置名）
+    final showCreate = _keyword.isNotEmpty;
     return Column(
       children: [
         // 刷新中在列表顶部显示细进度条，不遮盖已有内容
@@ -840,8 +928,13 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
           ),
         Expanded(
           child: ListView.builder(
-            itemCount: entries.length,
-            itemBuilder: (context, index) => _buildEntryItem(entries[index]),
+            itemCount: entries.length + (showCreate ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (showCreate && index == entries.length) {
+                return _buildCreateItem();
+              }
+              return _buildEntryItem(entries[index]);
+            },
           ),
         ),
       ],

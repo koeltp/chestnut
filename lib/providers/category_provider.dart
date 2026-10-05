@@ -20,6 +20,21 @@ class CategoryProvider extends ChangeNotifier {
   Stream<Map<int, Category>> categoriesMapStream() =>
       _repo.watchAllCategories().map((list) => {for (final c in list) c.id: c});
 
+  /// 兄弟重名检查：同层下是否已有同名分类（0 级 = 收/支，
+  /// 一级查同 type 全部一级，二级查同一父下的全部二级）
+  Future<bool> siblingNameExists({
+    required String name,
+    required BillType type,
+    required int? parentId,
+    int? excludeId,
+  }) =>
+      _repo.siblingNameExists(
+        name: name,
+        type: type,
+        parentId: parentId,
+        excludeId: excludeId,
+      );
+
   /// 新增分类
   Future<void> addCategory(CategoriesCompanion entry) =>
       _repo.addCategory(entry);

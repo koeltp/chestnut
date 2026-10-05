@@ -22,4 +22,17 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setBool(_kBillLocationEnabled, value);
     notifyListeners();
   }
+
+  /// 进入预算页时是否自动沿用上月预算（当月未设时）
+  static const _kAutoBudgetCarryEnabled = 'auto_budget_carry_enabled';
+
+  bool get autoBudgetCarryEnabled =>
+      _prefs.getBool(_kAutoBudgetCarryEnabled) ?? false;
+
+  /// 切换自动沿用上月预算开关
+  Future<void> setAutoBudgetCarryEnabled(bool value) async {
+    if (value == autoBudgetCarryEnabled) return;
+    await _prefs.setBool(_kAutoBudgetCarryEnabled, value);
+    notifyListeners();
+  }
 }

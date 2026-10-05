@@ -10,10 +10,11 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/date_label_util.dart';
 import '../../utils/money_util.dart';
+import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
-import '../add_bill/add_bill_page.dart';
+import '../stats/stats_page.dart';
 import 'period_picker_dialog.dart';
 
 /// 首页：当前查看范围（月/年/全部）的收支汇总 + 按日分组的账单卡片列表
@@ -331,7 +332,7 @@ class _DayCard extends StatelessWidget {
     );
   }
 
-  /// 单条账单（点击编辑、长按删除）
+  /// 单条账单（点击弹详情、长按删除）
   Widget _buildItem(BuildContext context, Bill bill) {
     final category = categories[bill.categoryId];
     return BillListItem(
@@ -342,8 +343,16 @@ class _DayCard extends StatelessWidget {
       amountCents: bill.amountCents,
       note: bill.note,
       location: bill.location,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => AddBillPage(editBill: bill)),
+      onTap: () => showBillDetailSheet(
+        context,
+        bill: bill,
+        categories: categories,
+        // 详情里点分类：跳转到该分类的统计页
+        onCategoryTap: (c) => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => StatsPage(initialCategory: c),
+          ),
+        ),
       ),
       onLongPress: () => _confirmDelete(context, bill),
     );

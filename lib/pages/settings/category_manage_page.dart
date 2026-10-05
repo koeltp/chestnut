@@ -6,6 +6,7 @@ import '../../data/database.dart';
 import '../../models/enums.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/category_avatar.dart';
 import '../../widgets/section_card.dart';
 import '../stats/stats_page.dart';
 import 'category_edit_page.dart';
@@ -365,12 +366,28 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
   }
 
   /// 将分类移动为某个一级分类的二级分类（排到目标子级末尾）
+  ///
+  /// 覆盖"改为二级分类"（一级降级）与"移动到其它一级分类"两个入口，
+  /// 落位前查目标父下的兄弟重名，重名拒绝并提示
   Future<void> _moveToParentSub(
     CategoryProvider provider,
     Category category,
   ) async {
     final target = await _pickParent(provider, excludeId: category.id);
     if (target == null || !mounted) return;
+    final dup = await provider.siblingNameExists(
+      name: category.name,
+      type: _type,
+      parentId: target.id,
+      excludeId: category.id,
+    );
+    if (!mounted) return;
+    if (dup) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${target.name}"下已存在同名分类"${category.name}"')),
+      );
+      return;
+    }
     final all = await provider.categoriesStream(_type).first;
     if (!mounted) return;
     final subCount = all.where((c) => c.parentId == target.id).length;
@@ -403,6 +420,20 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
           'parentId=${sub.parentId} type=${sub.type}');
       final all = await provider.categoriesStream(_type).first;
       if (!mounted) return;
+      // 升级落位 0 级：查同 type 全部一级的兄弟重名（排除自己）
+      final dup = await provider.siblingNameExists(
+        name: sub.name,
+        type: _type,
+        parentId: null,
+        excludeId: sub.id,
+      );
+      if (!mounted) return;
+      if (dup) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已存在同名一级分类"${sub.name}"')),
+        );
+        return;
+      }
       final parentCount = all.where((c) => c.parentId == null).length;
       final updated = sub.copyWith(
         parentId: const Value(null),
@@ -552,9 +583,6 @@ class _ParentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Color(category.colorValue);
-    // ignore: non_const_argument_for_const_parameter
-    final icon = IconData(category.iconCode, fontFamily: 'MaterialIcons');
     return SectionCard(
       padding: EdgeInsets.zero,
       child: Material(
@@ -571,15 +599,11 @@ class _ParentCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    // 圆形彩色图标：与记一笔页分类格子一致（浅色底 + 分类色图标）
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.13),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(icon, color: color, size: 21),
+                    // 圆形彩色头像：与记一笔页分类格子一致，文字图标显首字
+                    CategoryAvatar(
+                      name: category.name,
+                      iconCode: category.iconCode,
+                      color: category.colorValue,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -840,27 +864,17 @@ class _SubCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Color(sub.colorValue);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // 圆形彩色图标：与记一笔页子分类格子一致
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.13),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              // ignore: non_const_argument_for_const_parameter
-              IconData(sub.iconCode, fontFamily: 'MaterialIcons'),
-              color: color,
-              size: 21,
-            ),
+          // 圆形彩色头像：与记一笔页子分类格子一致，文字图标显首字
+          CategoryAvatar(
+            name: sub.name,
+            iconCode: sub.iconCode,
+            color: sub.colorValue,
           ),
           const SizedBox(height: 5),
           Text(

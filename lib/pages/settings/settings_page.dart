@@ -116,6 +116,18 @@ class SettingsPage extends StatelessWidget {
                 context.read<SettingsProvider>().setBillLocationEnabled(v),
           ),
           const Divider(indent: 16, endIndent: 16),
+          _switchItem(
+            context,
+            icon: Icons.savings_outlined,
+            color: AppColors.primary,
+            title: '自动沿用上月预算',
+            subtitle: '进入预算页时，当月未设预算则自动沿用上月',
+            value: context.watch<SettingsProvider>().autoBudgetCarryEnabled,
+            onChanged: (v) => context
+                .read<SettingsProvider>()
+                .setAutoBudgetCarryEnabled(v),
+          ),
+          const Divider(indent: 16, endIndent: 16),
           _menuItem(
             context,
             icon: Icons.file_download_outlined,

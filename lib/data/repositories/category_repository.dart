@@ -24,6 +24,34 @@ class CategoryRepository {
     )..orderBy([(c) => OrderingTerm.asc(c.sortOrder)])).watch();
   }
 
+  /// 兄弟重名检查：同层下是否已有同名分类
+  ///
+  /// 层级口径（0 级 = 收/支类型）：一级分类查"同 type 的全部一级"，
+  /// 二级分类查"同一父分类下的全部二级"；不同 0 级/不同父下允许重名。
+  /// [excludeId] 编辑改名时排除自身。名字 trim + 转小写比较（首尾空格
+  /// 与英文大小写不算差异，与搜索关键词口径一致）。分类总量很小，
+  /// 取兄弟集合内存过滤即可，无需 SQL lower()。
+  Future<bool> siblingNameExists({
+    required String name,
+    required BillType type,
+    required int? parentId,
+    int? excludeId,
+  }) async {
+    final norm = name.trim().toLowerCase();
+    if (norm.isEmpty) return false;
+    final query = _db.select(_db.categories)
+      ..where((c) => c.type.equalsValue(type));
+    if (parentId == null) {
+      query.where((c) => c.parentId.isNull());
+    } else {
+      query.where((c) => c.parentId.equals(parentId));
+    }
+    final siblings = await query.get();
+    return siblings.any(
+      (c) => c.id != excludeId && c.name.trim().toLowerCase() == norm,
+    );
+  }
+
   /// 新增分类
   Future<int> addCategory(CategoriesCompanion entry) =>
       _db.into(_db.categories).insert(entry);

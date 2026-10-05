@@ -4,26 +4,33 @@ import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
 import '../../models/enums.dart';
+import '../../models/summaries.dart';
 import '../../pages/settings/category_manage_page.dart';
 import '../../providers/bill_provider.dart';
+import '../../providers/budget_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
+import '../../widgets/category_avatar.dart';
 import '../../widgets/number_keyboard.dart';
 import 'location_picker_page.dart';
 import 'wheel_date_picker.dart';
 
 /// 记一笔页面
 ///
-/// 新增与编辑共用：传入 [editBill] 时进入编辑模式并预填数据。
+/// 新增、编辑与复制共用：传入 [editBill] 进入编辑模式（保存覆盖原记录）；
+/// 传入 [copyOf] 进入复制模式（预填数据，保存生成一条新记录，见详情弹窗"复制"）。
 /// 布局自上而下：顶栏（关闭/类型Tab/删除）→ 分类区（分组展开）→
 /// 备注与金额行 → 日期/定位胶囊 → 数字键盘。
 class AddBillPage extends StatefulWidget {
-  const AddBillPage({super.key, this.editBill});
+  const AddBillPage({super.key, this.editBill, this.copyOf});
 
   final Bill? editBill;
+
+  /// 复制模式的源账单：仅用于预填，保存时走新增分支
+  final Bill? copyOf;
 
   @override
   State<AddBillPage> createState() => _AddBillPageState();
@@ -102,7 +109,7 @@ class _AddBillPageState extends State<AddBillPage> {
     super.initState();
     final now = DateTime.now();
     final nowMinute = now.hour * 60 + now.minute;
-    final bill = widget.editBill;
+    final bill = widget.editBill ?? widget.copyOf;
     if (bill != null) {
       _type = bill.type;
       // 零头为 0 时省略小数：用户输入整数保存，回填时不显示 xxx.00
@@ -410,10 +417,10 @@ class _AddBillPageState extends State<AddBillPage> {
       2 => '前天 $hh:$mm',
       _ => '${_date.month}月${_date.day}日 $hh:$mm',
     };
-    // 定位开关关闭时隐藏入口；编辑已有位置的账单除外，保留清除能力
+    // 定位开关关闭时隐藏入口；编辑/复制已有位置的账单除外，保留清除能力
     final showLocation =
         context.watch<SettingsProvider>().billLocationEnabled ||
-            (widget.editBill?.location != null);
+            (widget.editBill ?? widget.copyOf)?.location != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppDimens.pagePadding,
@@ -825,6 +832,8 @@ class _AddBillPageState extends State<AddBillPage> {
         ),
       );
     }
+    // 记账成功后检查预算用量（仅支出记账会占预算）
+    if (_type == BillType.expense) await _checkBudgetHint();
     if (stay) {
       // 再记：重置金额与备注，继续记录下一笔
       if (!mounted) return;
@@ -835,6 +844,85 @@ class _AddBillPageState extends State<AddBillPage> {
     } else if (mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  /// 已提示过的预算级别（会话内去重）：如 'total-2'（总预算超支）、
+  /// 'cat-12-1'（分类 12 用量超 80%）
+  final Set<String> _budgetHintKeys = {};
+
+  /// 记账后预算提醒：支出落库后检查账单所在月的总预算与该分类
+  /// （二级归并到一级）预算用量，越过 80% 或超支时轻提示。
+  /// 总预算与分类预算同时越线时只提示总预算，避免连弹。
+  Future<void> _checkBudgetHint() async {
+    final provider = context.read<BudgetProvider>();
+    final month = DateTime(_date.year, _date.month);
+    // 分类归并：账单挂在二级分类时按一级分类的预算检查
+    final categories =
+        await context.read<CategoryProvider>().categoriesMapStream().first;
+    final cat = categories[_selectedCategoryId];
+    // ?? 0 兜底类型：0 不会匹配任何分类预算（categoryId > 0），
+    // 正常路径下 _selectedCategoryId 在保存时已校验非空
+    final topId = cat?.parentId ?? _selectedCategoryId ?? 0;
+    if (!mounted) return;
+    final topName = cat == null
+        ? '该分类'
+        : categories[topId]?.name ?? cat.name;
+
+    // 总预算优先
+    String? hint;
+    final budget = await provider.getBudget(month);
+    if (budget != null && budget.amountCents > 0) {
+      final spent = (await provider.summaryStream(month).first).expenseCents;
+      hint = _budgetHintText('total', 0, '本月预算', spent, budget.amountCents);
+    }
+    // 总预算未越线时才检查分类预算
+    if (hint == null) {
+      final budgets = await provider.categoryBudgetsStream(month).first;
+      final target =
+          budgets.where((b) => b.categoryId == topId && b.amountCents > 0);
+      if (target.isNotEmpty) {
+        final summaries = await provider.categorySummaryStream(month).first;
+        final spent = summaries
+            .firstWhere((s) => s.categoryId == topId,
+                orElse: () => CategorySummary(
+                      categoryId: topId,
+                      name: topName,
+                      iconCode: 0,
+                      colorValue: 0,
+                      type: BillType.expense,
+                      totalCents: 0,
+                    ))
+            .totalCents;
+        hint = _budgetHintText(
+            'cat', topId, '「$topName」预算', spent, target.first.amountCents);
+      }
+    }
+    if (hint != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(hint), behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
+  /// 组装预算提示文案并做级别去重；越线但同级别已提示过则返回 null
+  String? _budgetHintText(
+    String prefix,
+    int categoryId,
+    String label,
+    int spent,
+    int budget,
+  ) {
+    final ratio = budget > 0 ? spent / budget : 0.0;
+    if (ratio > 1) {
+      if (_budgetHintKeys.add('$prefix-${categoryId}_2')) {
+        return '$label已超支 ¥${MoneyUtil.centsToYuanGroupedTrimmed(spent - budget)}';
+      }
+    } else if (ratio > 0.8) {
+      if (_budgetHintKeys.add('$prefix-${categoryId}_1')) {
+        return '$label已用 ${(ratio * 100).toStringAsFixed(0)}%，注意控制开销';
+      }
+    }
+    return null;
   }
 
   /// 编辑模式：删除账单（二次确认）
@@ -909,12 +997,24 @@ class _ParentCell extends StatelessWidget {
                   color: selected ? color : color.withValues(alpha: 0.13),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  // ignore: non_const_argument_for_const_parameter
-                  IconData(category.iconCode, fontFamily: 'MaterialIcons'),
-                  color: selected ? Colors.white : color,
-                  size: 21,
-                ),
+                child: category.iconCode == kTextIconCode
+                    ? Text(
+                        category.name.isEmpty
+                            ? '?'
+                            : category.name.characters.first,
+                        style: TextStyle(
+                          color: selected ? Colors.white : color,
+                          fontSize: 21,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : Icon(
+                        // ignore: non_const_argument_for_const_parameter
+                        IconData(category.iconCode, fontFamily: 'MaterialIcons'),
+                        color: selected ? Colors.white : color,
+                        size: 21,
+                      ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -988,12 +1088,24 @@ class _CategoryCell extends StatelessWidget {
               color: selected ? color : color.withValues(alpha: 0.13),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              // ignore: non_const_argument_for_const_parameter
-              IconData(category.iconCode, fontFamily: 'MaterialIcons'),
-              color: selected ? Colors.white : color,
-              size: 21,
-            ),
+            child: category.iconCode == kTextIconCode
+                ? Text(
+                    category.name.isEmpty
+                        ? '?'
+                        : category.name.characters.first,
+                    style: TextStyle(
+                      color: selected ? Colors.white : color,
+                      fontSize: 21,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                : Icon(
+                    // ignore: non_const_argument_for_const_parameter
+                    IconData(category.iconCode, fontFamily: 'MaterialIcons'),
+                    color: selected ? Colors.white : color,
+                    size: 21,
+                  ),
           ),
           const SizedBox(height: 5),
           Text(

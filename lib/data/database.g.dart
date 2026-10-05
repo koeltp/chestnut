@@ -1217,7 +1217,6 @@ class $BudgetsTable extends Budgets with TableInfo<$BudgetsTable, Budget> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
   static const VerificationMeta _amountCentsMeta = const VerificationMeta(
     'amountCents',
@@ -1230,8 +1229,20 @@ class $BudgetsTable extends Budgets with TableInfo<$BudgetsTable, Budget> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, month, amountCents];
+  late final GeneratedColumn<int> categoryId = GeneratedColumn<int>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, month, amountCents, categoryId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1266,11 +1277,21 @@ class $BudgetsTable extends Budgets with TableInfo<$BudgetsTable, Budget> {
     } else if (isInserting) {
       context.missing(_amountCentsMeta);
     }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    }
     return context;
   }
 
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {month, categoryId},
+  ];
   @override
   Budget map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -1286,6 +1307,10 @@ class $BudgetsTable extends Budgets with TableInfo<$BudgetsTable, Budget> {
       amountCents: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}amount_cents'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}category_id'],
       )!,
     );
   }
@@ -1304,10 +1329,14 @@ class Budget extends DataClass implements Insertable<Budget> {
 
   /// 预算金额，单位：分
   final int amountCents;
+
+  /// 预算归属：0 = 月度总预算；> 0 = 该分类（一级）当月预算
+  final int categoryId;
   const Budget({
     required this.id,
     required this.month,
     required this.amountCents,
+    required this.categoryId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1315,6 +1344,7 @@ class Budget extends DataClass implements Insertable<Budget> {
     map['id'] = Variable<int>(id);
     map['month'] = Variable<String>(month);
     map['amount_cents'] = Variable<int>(amountCents);
+    map['category_id'] = Variable<int>(categoryId);
     return map;
   }
 
@@ -1323,6 +1353,7 @@ class Budget extends DataClass implements Insertable<Budget> {
       id: Value(id),
       month: Value(month),
       amountCents: Value(amountCents),
+      categoryId: Value(categoryId),
     );
   }
 
@@ -1335,6 +1366,7 @@ class Budget extends DataClass implements Insertable<Budget> {
       id: serializer.fromJson<int>(json['id']),
       month: serializer.fromJson<String>(json['month']),
       amountCents: serializer.fromJson<int>(json['amountCents']),
+      categoryId: serializer.fromJson<int>(json['categoryId']),
     );
   }
   @override
@@ -1344,13 +1376,20 @@ class Budget extends DataClass implements Insertable<Budget> {
       'id': serializer.toJson<int>(id),
       'month': serializer.toJson<String>(month),
       'amountCents': serializer.toJson<int>(amountCents),
+      'categoryId': serializer.toJson<int>(categoryId),
     };
   }
 
-  Budget copyWith({int? id, String? month, int? amountCents}) => Budget(
+  Budget copyWith({
+    int? id,
+    String? month,
+    int? amountCents,
+    int? categoryId,
+  }) => Budget(
     id: id ?? this.id,
     month: month ?? this.month,
     amountCents: amountCents ?? this.amountCents,
+    categoryId: categoryId ?? this.categoryId,
   );
   Budget copyWithCompanion(BudgetsCompanion data) {
     return Budget(
@@ -1359,6 +1398,9 @@ class Budget extends DataClass implements Insertable<Budget> {
       amountCents: data.amountCents.present
           ? data.amountCents.value
           : this.amountCents,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
     );
   }
 
@@ -1367,46 +1409,53 @@ class Budget extends DataClass implements Insertable<Budget> {
     return (StringBuffer('Budget(')
           ..write('id: $id, ')
           ..write('month: $month, ')
-          ..write('amountCents: $amountCents')
+          ..write('amountCents: $amountCents, ')
+          ..write('categoryId: $categoryId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, month, amountCents);
+  int get hashCode => Object.hash(id, month, amountCents, categoryId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Budget &&
           other.id == this.id &&
           other.month == this.month &&
-          other.amountCents == this.amountCents);
+          other.amountCents == this.amountCents &&
+          other.categoryId == this.categoryId);
 }
 
 class BudgetsCompanion extends UpdateCompanion<Budget> {
   final Value<int> id;
   final Value<String> month;
   final Value<int> amountCents;
+  final Value<int> categoryId;
   const BudgetsCompanion({
     this.id = const Value.absent(),
     this.month = const Value.absent(),
     this.amountCents = const Value.absent(),
+    this.categoryId = const Value.absent(),
   });
   BudgetsCompanion.insert({
     this.id = const Value.absent(),
     required String month,
     required int amountCents,
+    this.categoryId = const Value.absent(),
   }) : month = Value(month),
        amountCents = Value(amountCents);
   static Insertable<Budget> custom({
     Expression<int>? id,
     Expression<String>? month,
     Expression<int>? amountCents,
+    Expression<int>? categoryId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (month != null) 'month': month,
       if (amountCents != null) 'amount_cents': amountCents,
+      if (categoryId != null) 'category_id': categoryId,
     });
   }
 
@@ -1414,11 +1463,13 @@ class BudgetsCompanion extends UpdateCompanion<Budget> {
     Value<int>? id,
     Value<String>? month,
     Value<int>? amountCents,
+    Value<int>? categoryId,
   }) {
     return BudgetsCompanion(
       id: id ?? this.id,
       month: month ?? this.month,
       amountCents: amountCents ?? this.amountCents,
+      categoryId: categoryId ?? this.categoryId,
     );
   }
 
@@ -1434,6 +1485,9 @@ class BudgetsCompanion extends UpdateCompanion<Budget> {
     if (amountCents.present) {
       map['amount_cents'] = Variable<int>(amountCents.value);
     }
+    if (categoryId.present) {
+      map['category_id'] = Variable<int>(categoryId.value);
+    }
     return map;
   }
 
@@ -1442,7 +1496,8 @@ class BudgetsCompanion extends UpdateCompanion<Budget> {
     return (StringBuffer('BudgetsCompanion(')
           ..write('id: $id, ')
           ..write('month: $month, ')
-          ..write('amountCents: $amountCents')
+          ..write('amountCents: $amountCents, ')
+          ..write('categoryId: $categoryId')
           ..write(')'))
         .toString();
   }
@@ -2242,11 +2297,13 @@ typedef $$BudgetsTableCreateCompanionBuilder = BudgetsCompanion Function({
   Value<int> id,
   required String month,
   required int amountCents,
+  Value<int> categoryId,
 });
 typedef $$BudgetsTableUpdateCompanionBuilder = BudgetsCompanion Function({
   Value<int> id,
   Value<String> month,
   Value<int> amountCents,
+  Value<int> categoryId,
 });
 
 class $$BudgetsTableFilterComposer
@@ -2270,6 +2327,11 @@ class $$BudgetsTableFilterComposer
 
   ColumnFilters<int> get amountCents => $composableBuilder(
     column: $table.amountCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2297,6 +2359,11 @@ class $$BudgetsTableOrderingComposer
     column: $table.amountCents,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BudgetsTableAnnotationComposer
@@ -2316,6 +2383,11 @@ class $$BudgetsTableAnnotationComposer
 
   GeneratedColumn<int> get amountCents => $composableBuilder(
     column: $table.amountCents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
     builder: (column) => column,
   );
 }
@@ -2351,20 +2423,24 @@ class $$BudgetsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> month = const Value.absent(),
                 Value<int> amountCents = const Value.absent(),
+                Value<int> categoryId = const Value.absent(),
               }) => BudgetsCompanion(
                 id: id,
                 month: month,
                 amountCents: amountCents,
+                categoryId: categoryId,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String month,
                 required int amountCents,
+                Value<int> categoryId = const Value.absent(),
               }) => BudgetsCompanion.insert(
                 id: id,
                 month: month,
                 amountCents: amountCents,
+                categoryId: categoryId,
               ),
           withReferenceMapper: (p0) => p0
               .map(

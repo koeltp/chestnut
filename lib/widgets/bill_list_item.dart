@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'category_avatar.dart';
 import '../models/enums.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimens.dart';
@@ -39,7 +40,6 @@ class BillListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isExpense = type == BillType.expense;
-    final color = Color(colorValue);
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -50,7 +50,7 @@ class BillListItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _CategoryIcon(iconCode: iconCode, color: color),
+            CategoryAvatar(name: name, iconCode: iconCode, color: colorValue),
             const SizedBox(width: AppDimens.gapMd),
             Expanded(
               child: Column(
@@ -116,29 +116,6 @@ class BillListItem extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 分类圆形图标（列表条目与统计排行共用样式）
-class _CategoryIcon extends StatelessWidget {
-  const _CategoryIcon({required this.iconCode, required this.color});
-
-  final int iconCode;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: AppDimens.iconTile,
-      height: AppDimens.iconTile,
-      decoration: BoxDecoration(color: AppColors.tint(color), shape: BoxShape.circle),
-      child: Icon(
-        // ignore: non_const_argument_for_const_parameter
-        IconData(iconCode, fontFamily: 'MaterialIcons'),
-        color: color,
-        size: 21,
       ),
     );
   }

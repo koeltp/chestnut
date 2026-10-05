@@ -3,6 +3,38 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
+/// 逆地理结构化结果：formatted 整串 + 省市区街道独立字段
+class RegeoDetail {
+  const RegeoDetail({
+    required this.formatted,
+    required this.province,
+    required this.city,
+    required this.district,
+    required this.township,
+  });
+
+  /// 高德 formatted_address 整串（末尾常自带地标名，拼接 POI 名会重复，
+  /// 仅作结构化字段缺失时的兜底）
+  final String formatted;
+  final String province;
+  final String city;
+  final String district;
+
+  /// 乡镇/街道级（个别地区可能为空）
+  final String township;
+
+  /// "省+市+区+街道"逐级拼接：跳过空段与重复段（直辖市 province==city）。
+  /// 纯行政区划不含地标名，作为完整定位信息的前缀永不与 POI 名重复
+  String get adminPath {
+    final parts = <String>[];
+    for (final s in [province, city, district, township]) {
+      if (s.isEmpty || parts.contains(s)) continue;
+      parts.add(s);
+    }
+    return parts.join();
+  }
+}
+
 /// 高德 Web 服务 API 封装（逆地理 + 输入提示）
 ///
 /// 仅通过 HTTP 接口查询"坐标 → 附近地点"与"关键词 → 地点提示"，
@@ -51,17 +83,27 @@ class AmapService {
         .toList();
   }
 
-  /// 逆地理：坐标 → 格式化地址文本（如"湖南省衡阳市…人民医院"）
+  /// 逆地理（结构化）：坐标 → 省市区街道独立字段 + formatted 整串
   ///
-  /// 只承担列表首项"当前选择点"的地址解析；周边 POI 列表由 [around]
-  /// 负责，此处不再请求 extensions=all 的深度信息，响应更快。
-  Future<String> regeoAddress(Gcj02Point point) async {
+  /// [RegeoDetail.adminPath] 供完整定位信息拼接：纯行政区划不含
+  /// 地标名，追加 POI 名永不重复；formatted 仅作结构化字段缺失时兜底
+  Future<RegeoDetail> regeoDetail(Gcj02Point point) async {
     final uri = Uri.parse(
       '$_baseUrl/geocode/regeo?key=$_webKey&location=${point.lng},${point.lat}',
     );
     final data = await _get(uri);
     final regeocode = (data['regeocode'] as Map<String, dynamic>?) ?? const {};
-    return _str(regeocode['formatted_address']);
+    final comp =
+        (regeocode['addressComponent'] as Map<String, dynamic>?) ?? const {};
+    // 直辖市等场景 city 可能是空数组而非字符串，统一转空串
+    String pick(String key) => comp[key] is String ? comp[key] as String : '';
+    return RegeoDetail(
+      formatted: _str(regeocode['formatted_address']),
+      province: pick('province'),
+      city: pick('city'),
+      district: pick('district'),
+      township: pick('township'),
+    );
   }
 
   /// 地理编码：地名 → 坐标（取首个结果）。
