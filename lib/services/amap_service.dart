@@ -171,7 +171,8 @@ class AmapService {
     if (resp.statusCode != 200) {
       throw Exception('高德接口 HTTP ${resp.statusCode}');
     }
-    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final data =
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     // status=1 表示成功，info 字段是失败原因说明
     if (data['status'] != '1') {
       throw Exception('高德接口错误: ${data['info']}');
@@ -220,7 +221,10 @@ class Wgs84ToGcj02 {
 
   /// 转换；中国境外（含港澳台以外区域判断阈值）原样返回
   static Gcj02Point convert(double wgLat, double wgLng) {
-    if (wgLng < 72.004 || wgLng > 137.8347 || wgLat < 0.8293 || wgLat > 55.8271) {
+    if (wgLng < 72.004 ||
+        wgLng > 137.8347 ||
+        wgLat < 0.8293 ||
+        wgLat > 55.8271) {
       return Gcj02Point(lat: wgLat, lng: wgLng);
     }
     final dLat = _transformLat(wgLng - 105.0, wgLat - 35.0);
@@ -236,7 +240,8 @@ class Wgs84ToGcj02 {
   }
 
   static double _transformLat(double x, double y) {
-    var ret = -100.0 +
+    var ret =
+        -100.0 +
         2.0 * x +
         3.0 * y +
         0.2 * y * y +
@@ -249,15 +254,12 @@ class Wgs84ToGcj02 {
   }
 
   static double _transformLng(double x, double y) {
-    var ret = 300.0 +
-        x +
-        2.0 * y +
-        0.1 * x * x +
-        0.1 * x * y +
-        0.1 * sqrt(x.abs());
+    var ret =
+        300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * sqrt(x.abs());
     ret += (20.0 * sin(6.0 * x * pi) + 20.0 * sin(2.0 * x * pi)) * 2.0 / 3.0;
     ret += (20.0 * sin(x * pi) + 40.0 * sin(x / 3.0 * pi)) * 2.0 / 3.0;
-    ret += (150.0 * sin(x / 12.0 * pi) + 300.0 * sin(x / 30.0 * pi)) * 2.0 / 3.0;
+    ret +=
+        (150.0 * sin(x / 12.0 * pi) + 300.0 * sin(x / 30.0 * pi)) * 2.0 / 3.0;
     return ret;
   }
 }

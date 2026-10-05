@@ -28,7 +28,8 @@ class BudgetRepository {
   Stream<List<Budget>> watchCategoryBudgets(String month) {
     return (_db.select(_db.budgets)
           ..where(
-            (tbl) => tbl.month.equals(month) & tbl.categoryId.isBiggerThanValue(0),
+            (tbl) =>
+                tbl.month.equals(month) & tbl.categoryId.isBiggerThanValue(0),
           )
           ..orderBy([(b) => OrderingTerm.asc(b.categoryId)]))
         .watch();
@@ -36,11 +37,9 @@ class BudgetRepository {
 
   /// 一次性读取多个月份的总预算（预算历史用），key 为 `yyyy-MM`
   Future<Map<String, int>> getBudgetsOfMonths(List<String> months) async {
-    final rows = await (_db.select(_db.budgets)
-          ..where(
-            (b) => b.month.isIn(months) & b.categoryId.equals(0),
-          ))
-        .get();
+    final rows = await (_db.select(
+      _db.budgets,
+    )..where((b) => b.month.isIn(months) & b.categoryId.equals(0))).get();
     return {for (final r in rows) r.month: r.amountCents};
   }
 
@@ -50,7 +49,9 @@ class BudgetRepository {
   /// 修改已有预算会撞唯一约束抛 UNIQUE 异常（表现为保存没反应），
   /// 因此显式指定冲突目标为组合键。
   Future<void> setBudget(String month, int amountCents) {
-    return _db.into(_db.budgets).insert(
+    return _db
+        .into(_db.budgets)
+        .insert(
           BudgetsCompanion.insert(
             month: month,
             amountCents: amountCents,
@@ -64,15 +65,21 @@ class BudgetRepository {
   }
 
   /// 设置某分类当月预算；[amountCents] <= 0 时删除该行（清除预算）
-  Future<void> setCategoryBudget(String month, int categoryId, int amountCents) async {
+  Future<void> setCategoryBudget(
+    String month,
+    int categoryId,
+    int amountCents,
+  ) async {
     if (amountCents <= 0) {
-      await (_db.delete(_db.budgets)
-            ..where((b) =>
-                b.month.equals(month) & b.categoryId.equals(categoryId)))
+      await (_db.delete(_db.budgets)..where(
+            (b) => b.month.equals(month) & b.categoryId.equals(categoryId),
+          ))
           .go();
       return;
     }
-    await _db.into(_db.budgets).insert(
+    await _db
+        .into(_db.budgets)
+        .insert(
           BudgetsCompanion.insert(
             month: month,
             amountCents: amountCents,

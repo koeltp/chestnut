@@ -1509,6 +1509,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $BillsTable bills = $BillsTable(this);
   late final $BudgetsTable budgets = $BudgetsTable(this);
+  late final Index billsDateCreated = Index(
+    'bills_date_created',
+    'CREATE INDEX bills_date_created ON bills (date, created_at)',
+  );
+  late final Index billsCategory = Index(
+    'bills_category',
+    'CREATE INDEX bills_category ON bills (category_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1517,6 +1525,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     categories,
     bills,
     budgets,
+    billsDateCreated,
+    billsCategory,
   ];
 }
 

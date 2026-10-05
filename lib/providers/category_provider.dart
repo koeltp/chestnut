@@ -27,13 +27,12 @@ class CategoryProvider extends ChangeNotifier {
     required BillType type,
     required int? parentId,
     int? excludeId,
-  }) =>
-      _repo.siblingNameExists(
-        name: name,
-        type: type,
-        parentId: parentId,
-        excludeId: excludeId,
-      );
+  }) => _repo.siblingNameExists(
+    name: name,
+    type: type,
+    parentId: parentId,
+    excludeId: excludeId,
+  );
 
   /// 新增分类
   Future<void> addCategory(CategoriesCompanion entry) =>

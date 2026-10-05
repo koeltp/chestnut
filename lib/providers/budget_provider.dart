@@ -51,6 +51,5 @@ class BudgetProvider extends ChangeNotifier {
     DateTime month,
     int categoryId,
     int amountCents,
-  ) =>
-      _repo.setCategoryBudget(MonthUtil.toKey(month), categoryId, amountCents);
+  ) => _repo.setCategoryBudget(MonthUtil.toKey(month), categoryId, amountCents);
 }

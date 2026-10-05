@@ -420,7 +420,7 @@ class _AddBillPageState extends State<AddBillPage> {
     // 定位开关关闭时隐藏入口；编辑/复制已有位置的账单除外，保留清除能力
     final showLocation =
         context.watch<SettingsProvider>().billLocationEnabled ||
-            (widget.editBill ?? widget.copyOf)?.location != null;
+        (widget.editBill ?? widget.copyOf)?.location != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppDimens.pagePadding,
@@ -460,10 +460,7 @@ class _AddBillPageState extends State<AddBillPage> {
               ),
             ),
           ),
-          if (showLocation) ...[
-            const SizedBox(width: 8),
-            _buildLocationChip(),
-          ],
+          if (showLocation) ...[const SizedBox(width: 8), _buildLocationChip()],
         ],
       ),
     );
@@ -857,16 +854,16 @@ class _AddBillPageState extends State<AddBillPage> {
     final provider = context.read<BudgetProvider>();
     final month = DateTime(_date.year, _date.month);
     // 分类归并：账单挂在二级分类时按一级分类的预算检查
-    final categories =
-        await context.read<CategoryProvider>().categoriesMapStream().first;
+    final categories = await context
+        .read<CategoryProvider>()
+        .categoriesMapStream()
+        .first;
     final cat = categories[_selectedCategoryId];
     // ?? 0 兜底类型：0 不会匹配任何分类预算（categoryId > 0），
     // 正常路径下 _selectedCategoryId 在保存时已校验非空
     final topId = cat?.parentId ?? _selectedCategoryId ?? 0;
     if (!mounted) return;
-    final topName = cat == null
-        ? '该分类'
-        : categories[topId]?.name ?? cat.name;
+    final topName = cat == null ? '该分类' : categories[topId]?.name ?? cat.name;
 
     // 总预算优先
     String? hint;
@@ -878,23 +875,31 @@ class _AddBillPageState extends State<AddBillPage> {
     // 总预算未越线时才检查分类预算
     if (hint == null) {
       final budgets = await provider.categoryBudgetsStream(month).first;
-      final target =
-          budgets.where((b) => b.categoryId == topId && b.amountCents > 0);
+      final target = budgets.where(
+        (b) => b.categoryId == topId && b.amountCents > 0,
+      );
       if (target.isNotEmpty) {
         final summaries = await provider.categorySummaryStream(month).first;
         final spent = summaries
-            .firstWhere((s) => s.categoryId == topId,
-                orElse: () => CategorySummary(
-                      categoryId: topId,
-                      name: topName,
-                      iconCode: 0,
-                      colorValue: 0,
-                      type: BillType.expense,
-                      totalCents: 0,
-                    ))
+            .firstWhere(
+              (s) => s.categoryId == topId,
+              orElse: () => CategorySummary(
+                categoryId: topId,
+                name: topName,
+                iconCode: 0,
+                colorValue: 0,
+                type: BillType.expense,
+                totalCents: 0,
+              ),
+            )
             .totalCents;
         hint = _budgetHintText(
-            'cat', topId, '「$topName」预算', spent, target.first.amountCents);
+          'cat',
+          topId,
+          '「$topName」预算',
+          spent,
+          target.first.amountCents,
+        );
       }
     }
     if (hint != null && mounted) {
@@ -1010,8 +1015,11 @@ class _ParentCell extends StatelessWidget {
                         ),
                       )
                     : Icon(
-                        // ignore: non_const_argument_for_const_parameter
-                        IconData(category.iconCode, fontFamily: 'MaterialIcons'),
+                        IconData(
+                          // ignore: non_const_argument_for_const_parameter
+                          category.iconCode,
+                          fontFamily: 'MaterialIcons',
+                        ),
                         color: selected ? Colors.white : color,
                         size: 21,
                       ),

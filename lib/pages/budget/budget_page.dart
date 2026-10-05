@@ -51,8 +51,7 @@ class _BudgetPageState extends State<BudgetPage> {
     final cur = await provider.getBudget(_month);
     if (cur != null || !mounted) return;
     final now = DateTime.now();
-    final last =
-        await provider.getBudget(DateTime(now.year, now.month - 1));
+    final last = await provider.getBudget(DateTime(now.year, now.month - 1));
     if (last != null && mounted) {
       await provider.setBudget(_month, last.amountCents);
     }
@@ -61,9 +60,9 @@ class _BudgetPageState extends State<BudgetPage> {
   /// 手动沿用上月预算（沿用提示卡按钮）
   Future<void> _carryLastMonth() async {
     final now = DateTime.now();
-    final last = await context
-        .read<BudgetProvider>()
-        .getBudget(DateTime(now.year, now.month - 1));
+    final last = await context.read<BudgetProvider>().getBudget(
+      DateTime(now.year, now.month - 1),
+    );
     if (!mounted) return;
     if (last == null || last.amountCents <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -104,13 +103,11 @@ class _BudgetPageState extends State<BudgetPage> {
               stream: provider.budgetStream(_month),
               builder: (context, budgetSnapshot) {
                 final budget = budgetSnapshot.data;
-                final hasBudget =
-                    budget != null && budget.amountCents > 0;
+                final hasBudget = budget != null && budget.amountCents > 0;
                 return StreamBuilder<MonthSummary>(
                   stream: provider.summaryStream(_month),
                   builder: (context, summarySnapshot) {
-                    final summary =
-                        summarySnapshot.data ?? MonthSummary.empty;
+                    final summary = summarySnapshot.data ?? MonthSummary.empty;
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(
                         AppDimens.pagePadding,
@@ -133,12 +130,16 @@ class _BudgetPageState extends State<BudgetPage> {
                           const SizedBox(height: AppDimens.gapSection),
                         ],
                         _buildCategoryBudgetSection(
-                          totalBudgetCents:
-                              hasBudget ? budget.amountCents : null,
+                          totalBudgetCents: hasBudget
+                              ? budget.amountCents
+                              : null,
                         ),
                         const SizedBox(height: AppDimens.gapSection),
-                        _buildStatusBar(hasBudget, summary.expenseCents,
-                            budget?.amountCents ?? 0),
+                        _buildStatusBar(
+                          hasBudget,
+                          summary.expenseCents,
+                          budget?.amountCents ?? 0,
+                        ),
                         const SizedBox(height: AppDimens.gapSection),
                         _buildHistoryCard(),
                       ],
@@ -177,8 +178,8 @@ class _BudgetPageState extends State<BudgetPage> {
             hasBudget && progress > 1
                 ? Icons.error_outline
                 : hasBudget && progress > 0.8
-                    ? Icons.warning_amber_outlined
-                    : Icons.info_outline,
+                ? Icons.warning_amber_outlined
+                : Icons.info_outline,
             size: 18,
             color: color,
           ),
@@ -188,12 +189,14 @@ class _BudgetPageState extends State<BudgetPage> {
               !hasBudget
                   ? '本月还没设置预算，点击上方"设置"开始'
                   : progress > 1
-                      ? '本月已超支，尽量管住手哦'
-                      : progress > 0.8
-                          ? '预算即将用尽，请理性消费'
-                          : '预算使用状况良好，继续保持',
+                  ? '本月已超支，尽量管住手哦'
+                  : progress > 0.8
+                  ? '预算即将用尽，请理性消费'
+                  : '预算使用状况良好，继续保持',
               style: const TextStyle(
-                  fontSize: 13, color: AppColors.textSecondary),
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
         ],
@@ -244,8 +247,8 @@ class _BudgetPageState extends State<BudgetPage> {
       padding: const EdgeInsets.only(bottom: 4),
       child: StreamBuilder<List<Category>>(
         stream: context.read<CategoryProvider>().categoriesStream(
-              BillType.expense,
-            ),
+          BillType.expense,
+        ),
         builder: (context, catSnapshot) {
           final parents = (catSnapshot.data ?? const <Category>[])
               .where((c) => c.parentId == null)
@@ -265,11 +268,13 @@ class _BudgetPageState extends State<BudgetPage> {
                       b.categoryId: b.amountCents,
                   };
                   // 已分配 = 各分类预算之和（只累加正数，忽略清除残留）
-                  final allocated = budgetMap.values
-                      .fold<int>(0, (sum, v) => sum + (v > 0 ? v : 0));
+                  final allocated = budgetMap.values.fold<int>(
+                    0,
+                    (sum, v) => sum + (v > 0 ? v : 0),
+                  );
                   final anySet = allocated > 0;
-                  final over = totalBudgetCents != null &&
-                      allocated > totalBudgetCents;
+                  final over =
+                      totalBudgetCents != null && allocated > totalBudgetCents;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -298,9 +303,9 @@ class _BudgetPageState extends State<BudgetPage> {
                               child: Text(
                                 anySet
                                     ? (totalBudgetCents != null
-                                        ? '已分配 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)}'
-                                            ' / ¥${MoneyUtil.centsToYuanGroupedTrimmed(totalBudgetCents)}'
-                                        : '已分配 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)}')
+                                          ? '已分配 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)}'
+                                                ' / ¥${MoneyUtil.centsToYuanGroupedTrimmed(totalBudgetCents)}'
+                                          : '已分配 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)}')
                                     : '未分配',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -323,14 +328,15 @@ class _BudgetPageState extends State<BudgetPage> {
                           child: Text(
                             '暂无支出分类',
                             style: TextStyle(
-                                fontSize: 13, color: AppColors.textSecondary),
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
                           ),
                         )
-                      else
-                        ...[
-                          for (final c in parents)
-                            _categoryRow(c, spentMap, budgetMap),
-                        ],
+                      else ...[
+                        for (final c in parents)
+                          _categoryRow(c, spentMap, budgetMap),
+                      ],
                     ],
                   );
                 },
@@ -355,10 +361,10 @@ class _BudgetPageState extends State<BudgetPage> {
     final amountColor = !hasBudget
         ? AppColors.textSecondary
         : progress > 1
-            ? AppColors.expense
-            : progress > 0.8
-                ? AppColors.warning
-                : AppColors.textPrimary;
+        ? AppColors.expense
+        : progress > 0.8
+        ? AppColors.warning
+        : AppColors.textPrimary;
     return InkWell(
       onTap: () => _showCategoryBudgetSheet(c, hasBudget ? budget : null),
       child: Padding(
@@ -391,7 +397,7 @@ class _BudgetPageState extends State<BudgetPage> {
                       Text(
                         hasBudget
                             ? '¥${MoneyUtil.centsToYuanGroupedTrimmed(spent)}'
-                                ' / ¥${MoneyUtil.centsToYuanGroupedTrimmed(budget)}'
+                                  ' / ¥${MoneyUtil.centsToYuanGroupedTrimmed(budget)}'
                             : '未设置',
                         style: TextStyle(fontSize: 12, color: amountColor),
                       ),
@@ -403,16 +409,17 @@ class _BudgetPageState extends State<BudgetPage> {
                     child: LinearProgressIndicator(
                       value: hasBudget ? progress.clamp(0.0, 1.0) : 0,
                       minHeight: 4,
-                      backgroundColor:
-                          AppColors.textSecondary.withValues(alpha: 0.12),
+                      backgroundColor: AppColors.textSecondary.withValues(
+                        alpha: 0.12,
+                      ),
                       valueColor: AlwaysStoppedAnimation(
                         !hasBudget
                             ? AppColors.textSecondary.withValues(alpha: 0.3)
                             : progress > 1
-                                ? AppColors.expense
-                                : progress > 0.8
-                                    ? AppColors.warning
-                                    : Color(c.colorValue),
+                            ? AppColors.expense
+                            : progress > 0.8
+                            ? AppColors.warning
+                            : Color(c.colorValue),
                       ),
                     ),
                   ),
@@ -460,8 +467,9 @@ class _BudgetPageState extends State<BudgetPage> {
       isScrollControlled: true,
       builder: (ctx) => _BudgetSheet(
         title: '「${c.name}」${_month.year}年${_month.month}月预算',
-        initialText:
-            current == null ? '' : MoneyUtil.centsToYuanTrimmed(current),
+        initialText: current == null
+            ? ''
+            : MoneyUtil.centsToYuanTrimmed(current),
         showClear: current != null,
       ),
     );
@@ -508,8 +516,9 @@ class _BudgetPageState extends State<BudgetPage> {
       isScrollControlled: true,
       builder: (ctx) => _BudgetSheet(
         title: '设置${_month.year}年${_month.month}月预算',
-        initialText:
-            current == null ? '' : MoneyUtil.centsToYuanTrimmed(current),
+        initialText: current == null
+            ? ''
+            : MoneyUtil.centsToYuanTrimmed(current),
         showClear: false,
       ),
     );
@@ -582,7 +591,8 @@ class _BudgetPageState extends State<BudgetPage> {
               return Column(
                 children: [
                   for (var i = 0; i < rows.length; i++) ...[
-                    if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
+                    if (i > 0)
+                      const Divider(height: 1, indent: 16, endIndent: 16),
                     _historyRow(rows[i]),
                   ],
                 ],
@@ -602,11 +612,13 @@ class _BudgetPageState extends State<BudgetPage> {
     for (var i = 0; i < 6; i++) {
       final budget = await provider.getBudget(m);
       final summary = await provider.summaryStream(m).first;
-      rows.add(_HistoryRow(
-        month: m,
-        budgetCents: budget?.amountCents,
-        spentCents: summary.expenseCents,
-      ));
+      rows.add(
+        _HistoryRow(
+          month: m,
+          budgetCents: budget?.amountCents,
+          spentCents: summary.expenseCents,
+        ),
+      );
       m = DateTime(m.year, m.month - 1);
     }
     return rows.reversed.toList();
@@ -615,8 +627,9 @@ class _BudgetPageState extends State<BudgetPage> {
   /// 历史行：月份 + 预算额（未设灰"未设置"）+ 实际支出（超预算标红）
   Widget _historyRow(_HistoryRow row) {
     final cur = row.month;
-    final label =
-        cur.year == _month.year ? '${cur.month}月' : '${cur.year}年${cur.month}月';
+    final label = cur.year == _month.year
+        ? '${cur.month}月'
+        : '${cur.year}年${cur.month}月';
     final hasBudget = row.budgetCents != null && row.budgetCents! > 0;
     final over = hasBudget && row.spentCents > row.budgetCents!;
     return Padding(
@@ -631,7 +644,9 @@ class _BudgetPageState extends State<BudgetPage> {
             child: Text(
               label,
               style: const TextStyle(
-                  fontSize: 13, color: AppColors.textPrimary),
+                fontSize: 13,
+                color: AppColors.textPrimary,
+              ),
             ),
           ),
           Expanded(
@@ -701,16 +716,15 @@ class _BudgetHeader extends StatelessWidget {
 
     // 日均可用：仅当前月且有预算且未超支时有意义
     final now = DateTime.now();
-    final isCurrentMonth =
-        month.year == now.year && month.month == now.month;
+    final isCurrentMonth = month.year == now.year && month.month == now.month;
     final remainingCents = hasBudget ? budgetCents! - spentCents : 0;
     // 剩余天数含今天（今天还能花）
-    final remainingDays =
-        isCurrentMonth ? DateTime(now.year, now.month + 1).day - now.day + 1 : 0;
+    final remainingDays = isCurrentMonth
+        ? DateTime(now.year, now.month + 1).day - now.day + 1
+        : 0;
     final showDaily =
         hasBudget && isCurrentMonth && progress <= 1 && remainingDays > 0;
-    final dailyCents =
-        showDaily ? (remainingCents / remainingDays).round() : 0;
+    final dailyCents = showDaily ? (remainingCents / remainingDays).round() : 0;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -725,8 +739,7 @@ class _BudgetHeader extends StatelessWidget {
             children: [
               Text(
                 '${month.year}年${month.month}月预算',
-                style: TextStyle(
-                    fontSize: 14, color: AppColors.onHeader(0.85)),
+                style: TextStyle(fontSize: 14, color: AppColors.onHeader(0.85)),
               ),
               const Spacer(),
               InkWell(
@@ -737,12 +750,20 @@ class _BudgetHeader extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(hasBudget ? Icons.edit_outlined : Icons.add_circle_outline,
-                          size: 15, color: Colors.white),
+                      Icon(
+                        hasBudget
+                            ? Icons.edit_outlined
+                            : Icons.add_circle_outline,
+                        size: 15,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         hasBudget ? '修改' : '设置',
-                        style: const TextStyle(fontSize: 13, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -781,7 +802,10 @@ class _BudgetHeader extends StatelessWidget {
               children: [
                 Text(
                   '已用 ¥${MoneyUtil.centsToYuanGroupedTrimmed(spentCents)}（${(progress * 100).toStringAsFixed(0)}%）',
-                  style: TextStyle(fontSize: 12, color: AppColors.onHeader(0.85)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.onHeader(0.85),
+                  ),
                 ),
                 const Spacer(),
                 Text(
@@ -791,7 +815,9 @@ class _BudgetHeader extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: progress > 1 ? const Color(0xFFFFD6D0) : Colors.white,
+                    color: progress > 1
+                        ? const Color(0xFFFFD6D0)
+                        : Colors.white,
                   ),
                 ),
               ],
@@ -837,8 +863,9 @@ class _BudgetSheet extends StatefulWidget {
 }
 
 class _BudgetSheetState extends State<_BudgetSheet> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initialText);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialText,
+  );
 
   @override
   void dispose() {
@@ -854,7 +881,8 @@ class _BudgetSheetState extends State<_BudgetSheet> {
         left: AppDimens.pagePadding,
         right: AppDimens.pagePadding,
         top: 4,
-        bottom: MediaQuery.of(context).viewInsets.bottom + AppDimens.pagePadding,
+        bottom:
+            MediaQuery.of(context).viewInsets.bottom + AppDimens.pagePadding,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -872,22 +900,27 @@ class _BudgetSheetState extends State<_BudgetSheet> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('¥',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
-                  )),
+              const Text(
+                '¥',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   controller: _controller,
                   autofocus: true,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   maxLength: 12,
                   style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w700),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                  ),
                   decoration: const InputDecoration(
                     counterText: '',
                     hintText: '0',

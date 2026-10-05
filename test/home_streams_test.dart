@@ -18,25 +18,29 @@ void main() {
     repo = BillRepository(db);
     // 建库（含预置分类）
     await db.customSelect('SELECT 1').get();
-    final cat = await (db.select(db.categories)
-          ..where((c) => c.type.equalsValue(BillType.expense)))
-        .get();
+    final cat = await (db.select(
+      db.categories,
+    )..where((c) => c.type.equalsValue(BillType.expense))).get();
     final categoryId = cat.first.id;
     // 插入 2026-09-02 与 2026-10-01 两笔支出（对应用户场景）
-    await repo.addBill(BillsCompanion.insert(
-      categoryId: categoryId,
-      type: BillType.expense,
-      amountCents: 500,
-      date: DateTime(2026, 9, 2),
-      note: const Value('测试9月'),
-    ));
-    await repo.addBill(BillsCompanion.insert(
-      categoryId: categoryId,
-      type: BillType.expense,
-      amountCents: 300,
-      date: DateTime(2026, 10, 1),
-      note: const Value('测试10月'),
-    ));
+    await repo.addBill(
+      BillsCompanion.insert(
+        categoryId: categoryId,
+        type: BillType.expense,
+        amountCents: 500,
+        date: DateTime(2026, 9, 2),
+        note: const Value('测试9月'),
+      ),
+    );
+    await repo.addBill(
+      BillsCompanion.insert(
+        categoryId: categoryId,
+        type: BillType.expense,
+        amountCents: 300,
+        date: DateTime(2026, 10, 1),
+        note: const Value('测试10月'),
+      ),
+    );
   });
 
   tearDown(() => db.close());

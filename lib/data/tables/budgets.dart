@@ -20,5 +20,7 @@ class Budgets extends Table {
   IntColumn get categoryId => integer().withDefault(const Constant(0))();
 
   @override
-  List<Set<Column>> get uniqueKeys => [{month, categoryId}];
+  List<Set<Column>> get uniqueKeys => [
+    {month, categoryId},
+  ];
 }

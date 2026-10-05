@@ -46,12 +46,32 @@ class _MainPageState extends State<MainPage> {
           height: 56,
           child: Row(
             children: [
-              _buildTab(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: '明细', tabIndex: 0),
-              _buildTab(icon: Icons.pie_chart_outline, activeIcon: Icons.pie_chart, label: '统计', tabIndex: 1),
+              _buildTab(
+                icon: Icons.receipt_long_outlined,
+                activeIcon: Icons.receipt_long,
+                label: '明细',
+                tabIndex: 0,
+              ),
+              _buildTab(
+                icon: Icons.pie_chart_outline,
+                activeIcon: Icons.pie_chart,
+                label: '统计',
+                tabIndex: 1,
+              ),
               // 中央为记账按钮预留缺口
               const SizedBox(width: 64),
-              _buildTab(icon: Icons.savings_outlined, activeIcon: Icons.savings, label: '预算', tabIndex: 2),
-              _buildTab(icon: Icons.person_outline, activeIcon: Icons.person, label: '我的', tabIndex: 3),
+              _buildTab(
+                icon: Icons.savings_outlined,
+                activeIcon: Icons.savings,
+                label: '预算',
+                tabIndex: 2,
+              ),
+              _buildTab(
+                icon: Icons.person_outline,
+                activeIcon: Icons.person,
+                label: '我的',
+                tabIndex: 3,
+              ),
             ],
           ),
         ),
@@ -94,8 +114,7 @@ class _MainPageState extends State<MainPage> {
 
   /// 打开"记一笔"页面
   void _openAddBill() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const AddBillPage()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const AddBillPage()));
   }
 }

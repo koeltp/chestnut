@@ -16,11 +16,7 @@ import '../../theme/app_theme.dart';
 /// 下半当前中心附近地点列表；顶部支持关键词搜索。
 /// 选中后把 [LocationSelection]（地名 + 坐标）返回给记一笔页。
 class LocationPickerPage extends StatefulWidget {
-  const LocationPickerPage({
-    super.key,
-    this.initialName,
-    this.initialPoint,
-  });
+  const LocationPickerPage({super.key, this.initialName, this.initialPoint});
 
   /// 已保存的地名与坐标（编辑账单时传入）：
   /// 有坐标时地图直接回到老地点，列表首项显示"已保存的位置"
@@ -161,11 +157,13 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         context,
         apiKey: const AMapApiKey(androidKey: AmapService.androidMapKey),
       );
-      AMapInitializer.updatePrivacyAgree(const AMapPrivacyStatement(
-        hasContains: true,
-        hasShow: true,
-        hasAgree: true,
-      ));
+      AMapInitializer.updatePrivacyAgree(
+        const AMapPrivacyStatement(
+          hasContains: true,
+          hasShow: true,
+          hasAgree: true,
+        ),
+      );
     }
   }
 
@@ -197,11 +195,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       ..close();
     canvas.drawPath(path, paint);
     // 白色内孔
-    canvas.drawCircle(
-      center,
-      13,
-      ui.Paint()..color = Colors.white,
-    );
+    canvas.drawCircle(center, 13, ui.Paint()..color = Colors.white);
     final image = await recorder.endRecording().toImage(w, h);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
@@ -290,7 +284,9 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     //（避免跨城旧缓存误导读到错误城市）
     try {
       final last = await Geolocator.getLastKnownPosition();
-      final age = last == null ? null : DateTime.now().difference(last.timestamp);
+      final age = last == null
+          ? null
+          : DateTime.now().difference(last.timestamp);
       if (last != null && age != null && age < const Duration(minutes: 10)) {
         debugPrint('[定位] 系统缓存位置（${age.inSeconds}秒前）');
         _applyLocation(
@@ -420,7 +416,8 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       // 点击可原样带回；用户拖走地图后恢复显示中心点地址
       final saved = widget.initialPoint;
       final savedName = widget.initialName;
-      final atSaved = saved != null &&
+      final atSaved =
+          saved != null &&
           savedName != null &&
           _distanceMeters(point, saved) < 50;
       final entries = <_Entry>[
@@ -444,7 +441,8 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             title: p.name,
             subtitle: p.address,
             // 接口未带距离时按坐标现算（输入提示类数据无 distance 字段）
-            distance: p.distance ??
+            distance:
+                p.distance ??
                 (p.location != null
                     ? _distanceMeters(p.location!, point).round()
                     : null),
@@ -521,12 +519,15 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     }
     var full = '';
     try {
-      final detail =
-          await _service.regeoDetail(point).timeout(const Duration(seconds: 5));
+      final detail = await _service
+          .regeoDetail(point)
+          .timeout(const Duration(seconds: 5));
       // 与点店分支同款拼接：行政区划为底，追加点名（contains 查重防
       // "菜市场 菜市场"式重复）。fullAddress 缺名字会导致详情显示
       // 残缺、搜索（匹配 locationFull）搜不到自定义名
-      final base = detail.adminPath.isNotEmpty ? detail.adminPath : detail.formatted;
+      final base = detail.adminPath.isNotEmpty
+          ? detail.adminPath
+          : detail.formatted;
       if (base.isNotEmpty) {
         full = base.contains(name) ? base : '$base $name';
       }
@@ -587,10 +588,12 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       var full = entry.fullAddress;
       if (full == null) {
         try {
-          final detail =
-              await _service.regeoDetail(point).timeout(const Duration(seconds: 5));
-          final base =
-              detail.adminPath.isNotEmpty ? detail.adminPath : detail.formatted;
+          final detail = await _service
+              .regeoDetail(point)
+              .timeout(const Duration(seconds: 5));
+          final base = detail.adminPath.isNotEmpty
+              ? detail.adminPath
+              : detail.formatted;
           if (base.isNotEmpty) {
             full = base.contains(entry.title) ? base : '$base ${entry.title}';
           }
@@ -598,11 +601,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       }
       if (!mounted) return;
       Navigator.of(context).pop(
-        LocationSelection(
-          name: entry.title,
-          point: point,
-          fullAddress: full,
-        ),
+        LocationSelection(name: entry.title, point: point, fullAddress: full),
       );
       return;
     }
@@ -656,7 +655,11 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             // 编辑模式：有保存位置时单独一行，点击地图回到当时地点
             if (_hasSavedLocation) ...[
               _buildSavedBar(),
-              const Divider(height: 1, thickness: 0.5, color: Color(0xFFEEEEEE)),
+              const Divider(
+                height: 1,
+                thickness: 0.5,
+                color: Color(0xFFEEEEEE),
+              ),
             ],
             Expanded(flex: 5, child: _buildListArea()),
           ],
@@ -737,8 +740,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
 
   /// 编辑模式且账单带有保存的地名与坐标时，地图下方显示"上次保存位置"行
   bool get _hasSavedLocation =>
-      (widget.initialName?.isNotEmpty ?? false) &&
-      widget.initialPoint != null;
+      (widget.initialName?.isNotEmpty ?? false) && widget.initialPoint != null;
 
   /// "上次保存的位置"横条：整行可点，点击后地图回到当时的地点
   Widget _buildSavedBar() {
@@ -775,13 +777,11 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
 
   Widget _buildMapArea() {
     // 初始位置：优先当前中心，默认天安门，定位成功后 moveCamera 纠正
-    final initial = _center ?? const Gcj02Point(lat: 39.909187, lng: 116.397451);
+    final initial =
+        _center ?? const Gcj02Point(lat: 39.909187, lng: 116.397451);
     // 标记对象由 _ensureSavedMarker / _updateGpsMarker 缓存维护，
     // build 只复用——新建对象会导致原生层按 id 全删全建而闪烁
-    final markers = <Marker>{
-      ?_savedMarker,
-      ?_gpsMarker,
-    };
+    final markers = <Marker>{?_savedMarker, ?_gpsMarker};
     final map = AMapWidget(
       markers: markers,
       initialCameraPosition: CameraPosition(
@@ -812,11 +812,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         IgnorePointer(
           child: Transform.translate(
             offset: const Offset(0, -22),
-            child: const Icon(
-              Icons.place,
-              size: 44,
-              color: Color(0xFFE5484D),
-            ),
+            child: const Icon(Icons.place, size: 44, color: Color(0xFFE5484D)),
           ),
         ),
         // 右下角"回到当前位置"

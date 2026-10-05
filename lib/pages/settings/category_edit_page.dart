@@ -877,9 +877,8 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
       );
       if (!mounted) return;
       if (dup) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('同层级下已存在同名分类')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('同层级下已存在同名分类')));
         return;
       }
       // 编辑改名称、图标与颜色（颜色由图标固定映射决定）
@@ -924,13 +923,12 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
       }
       if (!mounted) return;
       if (added > 0 && skipped > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已添加 $added 个，跳过 $skipped 个重名')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已添加 $added 个，跳过 $skipped 个重名')));
       } else if (added == 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('所选名称均已存在，未添加')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('所选名称均已存在，未添加')));
       }
     } else {
       final name = _nameController.text.trim();
@@ -943,9 +941,8 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
       );
       if (!mounted) return;
       if (dup) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('同层级下已存在同名分类')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('同层级下已存在同名分类')));
         return;
       }
       final siblingCount = all.where((c) => c.parentId == parentId).length;

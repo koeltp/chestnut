@@ -86,8 +86,9 @@ class SettingsPage extends StatelessWidget {
 
   /// 功能菜单
   Widget _buildMenuCard(BuildContext context) {
-    final locationEnabled =
-        context.watch<SettingsProvider>().billLocationEnabled;
+    final locationEnabled = context
+        .watch<SettingsProvider>()
+        .billLocationEnabled;
     return SectionCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -123,9 +124,8 @@ class SettingsPage extends StatelessWidget {
             title: '自动沿用上月预算',
             subtitle: '进入预算页时，当月未设预算则自动沿用上月',
             value: context.watch<SettingsProvider>().autoBudgetCarryEnabled,
-            onChanged: (v) => context
-                .read<SettingsProvider>()
-                .setAutoBudgetCarryEnabled(v),
+            onChanged: (v) =>
+                context.read<SettingsProvider>().setAutoBudgetCarryEnabled(v),
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(

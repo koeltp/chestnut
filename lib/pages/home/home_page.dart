@@ -110,8 +110,7 @@ class _SummaryHeader extends StatelessWidget {
                       showArrows: false,
                       text: switch (period) {
                         HomePeriod.month => null,
-                        HomePeriod.year =>
-                          '${provider.selectedMonth.year}年',
+                        HomePeriod.year => '${provider.selectedMonth.year}年',
                         HomePeriod.all => '全部',
                       },
                       onTapText: () => _pickPeriod(context),
@@ -122,17 +121,23 @@ class _SummaryHeader extends StatelessWidget {
                     children: [
                       _SummaryItem(
                         label: '支出',
-                        amount: MoneyUtil.centsToYuanTrimmed(summary.expenseCents),
+                        amount: MoneyUtil.centsToYuanTrimmed(
+                          summary.expenseCents,
+                        ),
                       ),
                       _divider(),
                       _SummaryItem(
                         label: '收入',
-                        amount: MoneyUtil.centsToYuanTrimmed(summary.incomeCents),
+                        amount: MoneyUtil.centsToYuanTrimmed(
+                          summary.incomeCents,
+                        ),
                       ),
                       _divider(),
                       _SummaryItem(
                         label: '结余',
-                        amount: MoneyUtil.centsToYuanTrimmed(summary.balanceCents),
+                        amount: MoneyUtil.centsToYuanTrimmed(
+                          summary.balanceCents,
+                        ),
                       ),
                     ],
                   ),

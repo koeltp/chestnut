@@ -41,9 +41,11 @@ class BillRepository {
       ..addColumns([_db.categories.id])
       ..where(_db.categories.parentId.equals(categoryId));
     return (_db.select(_db.bills)
-          ..where((b) =>
-              b.categoryId.equals(categoryId) |
-              b.categoryId.isInQuery(subIds))
+          ..where(
+            (b) =>
+                b.categoryId.equals(categoryId) |
+                b.categoryId.isInQuery(subIds),
+          )
           ..orderBy([
             (b) => OrderingTerm.desc(b.date),
             (b) => OrderingTerm.desc(b.createdAt),
@@ -57,9 +59,11 @@ class BillRepository {
   /// 否则查 9 月时会把 10 月 1 日的账单（date 为当日 0 点）一并带出。
   Stream<List<Bill>> watchBillsBetween(DateTime start, DateTime end) {
     return (_db.select(_db.bills)
-          ..where((b) =>
-              b.date.isBiggerOrEqualValue(start) &
-              b.date.isSmallerThanValue(end))
+          ..where(
+            (b) =>
+                b.date.isBiggerOrEqualValue(start) &
+                b.date.isSmallerThanValue(end),
+          )
           ..orderBy([
             (b) => OrderingTerm.desc(b.date),
             (b) => OrderingTerm.desc(b.createdAt),
@@ -251,6 +255,7 @@ class BillRepository {
           date: Value(bill.date),
           timeMinute: Value(bill.timeMinute),
           location: Value(bill.location),
+          locationFull: Value(bill.locationFull),
           lat: Value(bill.lat),
           lng: Value(bill.lng),
         ),

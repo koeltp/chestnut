@@ -61,18 +61,19 @@ class CategoryRepository {
   /// 必须用显式 Companion 而非直接 write(category)：drift 的
   /// DataClass.toCompanion(true) 会把 null 字段转为 absent（UPDATE SET
   /// 不含该列），导致"改为一级分类"（parent_id 置 NULL）静默失效
-  Future<int> updateCategory(Category category) => (_db.update(
-    _db.categories,
-  )..where((c) => c.id.equals(category.id))).write(
-    CategoriesCompanion(
-      name: Value(category.name),
-      iconCode: Value(category.iconCode),
-      colorValue: Value(category.colorValue),
-      type: Value(category.type),
-      parentId: Value(category.parentId),
-      sortOrder: Value(category.sortOrder),
-    ),
-  );
+  Future<int> updateCategory(Category category) =>
+      (_db.update(
+        _db.categories,
+      )..where((c) => c.id.equals(category.id))).write(
+        CategoriesCompanion(
+          name: Value(category.name),
+          iconCode: Value(category.iconCode),
+          colorValue: Value(category.colorValue),
+          type: Value(category.type),
+          parentId: Value(category.parentId),
+          sortOrder: Value(category.sortOrder),
+        ),
+      );
 
   /// 拖动排序：按 UI 传入的同层新顺序批量写入 sortOrder
   ///

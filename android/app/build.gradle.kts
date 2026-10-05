@@ -27,10 +27,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "top.taipi.chestnut"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
@@ -58,6 +55,14 @@ android {
         }
         release {
             signingConfig = signingConfigs.getByName("release")
+            // R8 混淆 + 资源收缩：减小 APK 体积（高德 SDK 占比较大）。
+            // keep 规则见 proguard-rules.pro，改动后需真机回归地图/定位功能
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

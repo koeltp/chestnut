@@ -7,6 +7,11 @@ import 'categories.dart';
 ///
 /// 金额以"分"（整数）存储，从根本上避免浮点精度误差；
 /// 展示时统一除以 100 转为元。
+///
+/// 索引：所有账单查询都按 date 范围过滤 + (date, createdAt) 排序，
+/// 复合索引同时命中两者；分类详情页按 categoryId 过滤，单列索引足够。
+@TableIndex(name: 'bills_date_created', columns: {#date, #createdAt})
+@TableIndex(name: 'bills_category', columns: {#categoryId})
 class Bills extends Table {
   IntColumn get id => integer().autoIncrement()();
 

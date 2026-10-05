@@ -5,10 +5,7 @@ import '../models/enums.dart';
 
 /// 月度收支汇总
 class MonthSummary {
-  const MonthSummary({
-    required this.expenseCents,
-    required this.incomeCents,
-  });
+  const MonthSummary({required this.expenseCents, required this.incomeCents});
 
   /// 当月支出总额（分）
   final int expenseCents;
@@ -64,10 +61,7 @@ class MonthlyTrend {
 
 /// 单日汇总（首页按日分组的日期头）
 class DaySummary {
-  const DaySummary({
-    required this.expenseCents,
-    required this.incomeCents,
-  });
+  const DaySummary({required this.expenseCents, required this.incomeCents});
 
   final int expenseCents;
   final int incomeCents;

@@ -36,10 +36,7 @@ void main() {
 
   /// 单元格高度 44；负 offset = 前进（露出下一格）
   Future<void> dragWheel(WidgetTester tester, String key, int cells) async {
-    await tester.drag(
-      find.byKey(ValueKey(key)),
-      Offset(0, -44.0 * cells),
-    );
+    await tester.drag(find.byKey(ValueKey(key)), Offset(0, -44.0 * cells));
     await tester.pumpAndSettle();
   }
 

@@ -29,18 +29,22 @@ class ExportService {
 
     final rows = <List<dynamic>>[
       ['日期', '类型', '分类', '金额(元)', '备注'],
-      ...bills.map((b) => [
-            _formatDate(b.date),
-            b.type.label,
-            categories[b.categoryId]?.name ?? '未知分类',
-            MoneyUtil.centsToYuan(b.amountCents),
-            b.note ?? '',
-          ]),
+      ...bills.map(
+        (b) => [
+          _formatDate(b.date),
+          b.type.label,
+          categories[b.categoryId]?.name ?? '未知分类',
+          MoneyUtil.centsToYuan(b.amountCents),
+          b.note ?? '',
+        ],
+      ),
     ];
 
     final csv = const ListToCsvConverter().convert(rows);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/chestnut_${MonthUtil.toKey(DateTime.now())}.csv');
+    final file = File(
+      '${dir.path}/chestnut_${MonthUtil.toKey(DateTime.now())}.csv',
+    );
     // 字符串首部携带 UTF-8 BOM（\uFEFF），让 Excel 正确识别中文
     return file.writeAsString('\uFEFF$csv', encoding: utf8);
   }

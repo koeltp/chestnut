@@ -67,8 +67,7 @@ class NumberKeyboard extends StatelessWidget {
     return Row(
       children: [
         for (var i = 0; i < keys.length; i++) ...[
-          if (i > 0)
-            Container(width: 1, height: 40, color: AppColors.divider),
+          if (i > 0) Container(width: 1, height: 40, color: AppColors.divider),
           Expanded(child: keys[i]),
         ],
       ],

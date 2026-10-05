@@ -6,8 +6,7 @@ class MoneyUtil {
   MoneyUtil._();
 
   /// 分转元字符串，如 12345 -> "123.45"；零头为 0 时保留两位小数
-  static String centsToYuan(int cents) =>
-      _format(cents, grouped: false);
+  static String centsToYuan(int cents) => _format(cents, grouped: false);
 
   /// 分转元字符串，零头为 0 时省略小数部分（如 12300 -> "123"、12345
   /// -> "123.45"），跟随用户输入习惯，避免明明输入整数却看到 xxx.00
@@ -22,7 +21,11 @@ class MoneyUtil {
       _format(cents, grouped: true, trimFen: true);
 
   /// 统一格式化实现：[grouped] 千分位分组；[trimFen] 零头为 0 时省略小数
-  static String _format(int cents, {required bool grouped, bool trimFen = false}) {
+  static String _format(
+    int cents, {
+    required bool grouped,
+    bool trimFen = false,
+  }) {
     final negative = cents < 0;
     final abs = cents.abs();
     final yuan = abs ~/ 100;

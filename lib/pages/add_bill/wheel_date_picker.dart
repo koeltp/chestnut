@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -312,9 +312,9 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
                 ),
                 const SizedBox(width: 8),
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(
-                    (DateTime(_year, _month, _day), _minute),
-                  ),
+                  onPressed: () =>
+                      Navigator.of(context)
+                          .pop((DateTime(_year, _month, _day), _minute)),
                   child: const Text(
                     '确定',
                     style: TextStyle(
@@ -341,10 +341,8 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
       builder: (context) => Theme(
         // 钟面主色跟随应用主题色
         data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(context).colorScheme.copyWith(
-                primary: AppColors.primary,
-                onPrimary: Colors.white,
-              ),
+          colorScheme: Theme.of(context).colorScheme
+              .copyWith(primary: AppColors.primary, onPrimary: Colors.white),
           timePickerTheme: const TimePickerThemeData(
             backgroundColor: Colors.white,
             // 选中段数字不加背景色，文字层次沿用默认（未选蓝灰 / 选中黑）
@@ -399,7 +397,10 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
   /// （表现为"9月30 被跳过直接到 29"）。利用 resolver「最深命中者
   /// 先注册、赢者通吃」的规则，把每个 item 用 Listener 包住抢注
   /// 滚轮事件，改为按选中项 ±1 格精确滚动。
-  void _registerWheel(PointerSignalEvent event, FixedExtentScrollController controller) {
+  void _registerWheel(
+    PointerSignalEvent event,
+    FixedExtentScrollController controller,
+  ) {
     if (event is! PointerScrollEvent) return;
     GestureBinding.instance.pointerSignalResolver.register(event, (e) {
       if (e is! PointerScrollEvent) return;
@@ -494,4 +495,3 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
     );
   }
 }
-

@@ -416,8 +416,10 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
   Future<void> _changeToParent(Category sub) async {
     final provider = context.read<CategoryProvider>();
     try {
-      debugPrint('[分类] 升级开始: id=${sub.id} name=${sub.name} '
-          'parentId=${sub.parentId} type=${sub.type}');
+      debugPrint(
+        '[分类] 升级开始: id=${sub.id} name=${sub.name} '
+        'parentId=${sub.parentId} type=${sub.type}',
+      );
       final all = await provider.categoriesStream(_type).first;
       if (!mounted) return;
       // 升级落位 0 级：查同 type 全部一级的兄弟重名（排除自己）
@@ -429,9 +431,8 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
       );
       if (!mounted) return;
       if (dup) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已存在同名一级分类"${sub.name}"')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('已存在同名一级分类"${sub.name}"')));
         return;
       }
       final parentCount = all.where((c) => c.parentId == null).length;
@@ -439,20 +440,25 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
         parentId: const Value(null),
         sortOrder: parentCount,
       );
-      debugPrint('[分类] 升级写入: parentId=${updated.parentId} '
-          'sortOrder=${updated.sortOrder}');
+      debugPrint(
+        '[分类] 升级写入: parentId=${updated.parentId} '
+        'sortOrder=${updated.sortOrder}',
+      );
       final rows = await provider.updateCategoryCounted(updated);
       debugPrint('[分类] 升级完成，受影响行数: $rows');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(rows > 0 ? '已将"${sub.name}"改为一级分类' : '未找到该分类（id=${sub.id}），写入 0 行')),
+        SnackBar(
+          content: Text(
+            rows > 0 ? '已将"${sub.name}"改为一级分类' : '未找到该分类（id=${sub.id}），写入 0 行',
+          ),
+        ),
       );
     } catch (e) {
       debugPrint('[分类] 升级失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     }
   }
@@ -757,13 +763,15 @@ class _SubPanelState extends State<_SubPanel> {
     if (_dragging == null) return;
     final box = context.findRenderObject()! as RenderBox;
     final local = box.globalToLocal(global);
-    final col = ((local.dx + _gapX / 2) / (cellW + _gapX))
-        .floor()
-        .clamp(0, _columns - 1);
+    final col = ((local.dx + _gapX / 2) / (cellW + _gapX)).floor().clamp(
+      0,
+      _columns - 1,
+    );
     final maxRow = (_order.length - 1) ~/ _columns;
-    final row = ((local.dy + _gapY / 2) / (cellH + _gapY))
-        .floor()
-        .clamp(0, maxRow);
+    final row = ((local.dy + _gapY / 2) / (cellH + _gapY)).floor().clamp(
+      0,
+      maxRow,
+    );
     var slot = row * _columns + col;
     if (slot >= _order.length) slot = _order.length - 1;
     final cur = _order.indexOf(_dragging!);
