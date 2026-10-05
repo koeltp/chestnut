@@ -217,19 +217,19 @@ const _defaultCategories = <_CategorySeed>[
     _CategorySeed('天燃气', Icons.local_fire_department, 0xFF8D6E63, BillType.expense, 4),
     _CategorySeed('房贷', Icons.real_estate_agent, 0xFF8D6E63, BillType.expense, 5),
   ]),
-  _CategorySeed('娱乐', Icons.sports_esports, 0xFF9C88FF, BillType.expense, 4, children: [
-    _CategorySeed('住宿', Icons.hotel, 0xFF9C88FF, BillType.expense, 0),
-    _CategorySeed('景点', Icons.attractions, 0xFF9C88FF, BillType.expense, 1),
-    _CategorySeed('游戏', Icons.sports_esports, 0xFF9C88FF, BillType.expense, 2),
-    _CategorySeed('演出', Icons.theater_comedy, 0xFF9C88FF, BillType.expense, 3),
-    _CategorySeed('电影', Icons.theaters, 0xFF9C88FF, BillType.expense, 4),
-  ]),
-  _CategorySeed('日常', Icons.wb_sunny, 0xFF0984E3, BillType.expense, 5, children: [
+  _CategorySeed('日常', Icons.wb_sunny, 0xFF0984E3, BillType.expense, 4, children: [
     _CategorySeed('理发', Icons.content_cut, 0xFF0984E3, BillType.expense, 0),
     _CategorySeed('话费', Icons.smartphone, 0xFF0984E3, BillType.expense, 1),
     _CategorySeed('快递', Icons.local_shipping, 0xFF0984E3, BillType.expense, 2),
     _CategorySeed('网费', Icons.wifi, 0xFF0984E3, BillType.expense, 3),
     _CategorySeed('会员订阅', Icons.subscriptions, 0xFF0984E3, BillType.expense, 4),
+  ]),
+  _CategorySeed('娱乐', Icons.sports_esports, 0xFF9C88FF, BillType.expense, 5, children: [
+    _CategorySeed('住宿', Icons.hotel, 0xFF9C88FF, BillType.expense, 0),
+    _CategorySeed('景点', Icons.attractions, 0xFF9C88FF, BillType.expense, 1),
+    _CategorySeed('游戏', Icons.sports_esports, 0xFF9C88FF, BillType.expense, 2),
+    _CategorySeed('演出', Icons.theater_comedy, 0xFF9C88FF, BillType.expense, 3),
+    _CategorySeed('电影', Icons.theaters, 0xFF9C88FF, BillType.expense, 4),
   ]),
   _CategorySeed('医疗', Icons.medical_services, 0xFF4CD7D0, BillType.expense, 6, children: [
     _CategorySeed('药品', Icons.medication, 0xFF4CD7D0, BillType.expense, 0),
@@ -237,20 +237,19 @@ const _defaultCategories = <_CategorySeed>[
     _CategorySeed('体检', Icons.health_and_safety, 0xFF4CD7D0, BillType.expense, 2),
     _CategorySeed('门诊', Icons.local_hospital, 0xFF4CD7D0, BillType.expense, 3),
   ]),
-  _CategorySeed('教育', Icons.school, 0xFFFDCB6E, BillType.expense, 7, children: [
+  _CategorySeed('人情', Icons.card_giftcard, 0xFFFF8FAB, BillType.expense, 7, children: [
+    _CategorySeed('孝敬', Icons.volunteer_activism, 0xFFFF8FAB, BillType.expense, 0),
+    _CategorySeed('份子钱', Icons.connect_without_contact, 0xFFFF8FAB, BillType.expense, 1),
+    _CategorySeed('礼物', Icons.redeem, 0xFFFF8FAB, BillType.expense, 2),
+    _CategorySeed('压岁钱', Icons.currency_yen, 0xFFFF8FAB, BillType.expense, 3),
+  ]),
+  _CategorySeed('教育', Icons.school, 0xFFFDCB6E, BillType.expense, 8, children: [
     _CategorySeed('学费', Icons.school, 0xFFFDCB6E, BillType.expense, 0),
     _CategorySeed('书本', Icons.menu_book, 0xFFFDCB6E, BillType.expense, 1),
     _CategorySeed('培训', Icons.cast_for_education, 0xFFFDCB6E, BillType.expense, 2),
     _CategorySeed('文具', Icons.edit, 0xFFFDCB6E, BillType.expense, 3),
     _CategorySeed('网课', Icons.language, 0xFFFDCB6E, BillType.expense, 4),
   ]),
-  _CategorySeed('人情', Icons.card_giftcard, 0xFFFF8FAB, BillType.expense, 8, children: [
-    _CategorySeed('孝敬', Icons.volunteer_activism, 0xFFFF8FAB, BillType.expense, 0),
-    _CategorySeed('份子钱', Icons.connect_without_contact, 0xFFFF8FAB, BillType.expense, 1),
-    _CategorySeed('礼物', Icons.redeem, 0xFFFF8FAB, BillType.expense, 2),
-    _CategorySeed('压岁钱', Icons.currency_yen, 0xFFFF8FAB, BillType.expense, 3),
-  ]),
-  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 9),
   // 收入分类
   _CategorySeed('工资', Icons.work, 0xFF4E9E5F, BillType.income, 0),
   _CategorySeed('奖金', Icons.emoji_events, 0xFFF39C12, BillType.income, 1),

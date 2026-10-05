@@ -288,6 +288,18 @@ class _StatsPageState extends State<StatsPage> {
     return provider.billsInRangeStream(_period, _month);
   }
 
+  /// 去年同期对比流（柱状图灰色背景柱）：按月/按年整体平移一年；
+  /// 自定义区间、"全部"与分类视图无对比基准，给同步空流占位
+  Stream<List<Bill>> _compareStream(BillProvider provider) {
+    if (!_isAllView || _isCustom || _period == HomePeriod.all) {
+      return Stream.value(const <Bill>[]);
+    }
+    final anchor = _period == HomePeriod.year
+        ? DateTime(_month.year - 1)
+        : DateTime(_month.year - 1, _month.month);
+    return provider.billsInRangeStream(_period, anchor);
+  }
+
   /// 关键词过滤：定位完整信息/备注/分类名任一包含（英文统一转小写
   /// 比较，中文不受影响）
   List<Bill> _applyKeyword(List<Bill> bills, Map<int, Category> categories) {
@@ -412,7 +424,19 @@ class _StatsPageState extends State<StatsPage> {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              return _buildBody(snapshot.data!, categories);
+              // 去年同期对比流（柱状图灰色背景柱）：换流空窗直接当
+              // 空列表——只影响灰色对比柱的显示，不会产生"暂无账单"
+              // 空态误导，不值得整页转圈（与主流约定场景不同）
+              return StreamBuilder<List<Bill>>(
+                stream: _compareStream(provider),
+                builder: (context, prevSnapshot) {
+                  return _buildBody(
+                    snapshot.data!,
+                    categories,
+                    prevSnapshot.data ?? const <Bill>[],
+                  );
+                },
+              );
             },
           );
         },
@@ -421,7 +445,11 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   /// 页面主体：pinned 头部（类型分段器 + 年月条）+ 汇总/图表/明细
-  Widget _buildBody(List<Bill> bills, Map<int, Category> categories) {
+  Widget _buildBody(
+    List<Bill> bills,
+    Map<int, Category> categories,
+    List<Bill> prevBills,
+  ) {
     // 范围过滤（数据层为全量流，内存过滤足够）
     final (start, end) = _range;
     var filtered = bills.where((b) {
@@ -528,13 +556,15 @@ class _StatsPageState extends State<StatsPage> {
             avgPerMonthCents: avgPerMonth,
           ),
         ),
-        // 柱状图：年范围 12 月柱（带金额标注），月范围当月每日柱
+        // 柱状图：年范围 12 月柱（带金额标注），月范围当月每日柱；
+        // 去年同期数据画成灰色背景柱辅助对比（按当前收支类型过滤）
         if (!_isCustom && _period != HomePeriod.all)
           SliverToBoxAdapter(
             child: _RangeBarChart(
               period: _period,
               anchor: _month,
               bills: typeBills,
+              prevBills: prevBills.where((b) => b.type == _type).toList(),
               color: amountColor,
             ),
           ),
@@ -939,13 +969,15 @@ class _SummaryCard extends StatelessWidget {
 }
 
 /// 柱状图卡片：年范围 12 月柱 + 顶部金额标注；月范围当月每日柱
-/// （日柱密集不标金额，日期标签每 2 天显示一次）
+/// （日柱密集不标金额，日期标签每 2 天显示一次）。
+/// [prevBills]（去年同期）画成灰色背景柱辅助同比对比
 class _RangeBarChart extends StatelessWidget {
   const _RangeBarChart({
     required this.period,
     required this.anchor,
     required this.bills,
     required this.color,
+    this.prevBills = const [],
   });
 
   final HomePeriod period;
@@ -953,6 +985,7 @@ class _RangeBarChart extends StatelessWidget {
   /// 年模式取该年；月模式取该月
   final DateTime anchor;
   final List<Bill> bills;
+  final List<Bill> prevBills;
   final Color color;
 
   /// 金额标注：1.4K / 800 等短格式
@@ -966,12 +999,19 @@ class _RangeBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     List<int> bars;
+    List<int> prevBars;
     List<String> labels;
     bool showValues;
     if (period == HomePeriod.year) {
       bars = List<int>.filled(12, 0);
       for (final b in bills) {
         if (b.date.year == anchor.year) bars[b.date.month - 1] += b.amountCents;
+      }
+      prevBars = List<int>.filled(12, 0);
+      for (final b in prevBills) {
+        if (b.date.year == anchor.year - 1) {
+          prevBars[b.date.month - 1] += b.amountCents;
+        }
       }
       labels = [for (var i = 1; i <= 12; i++) '$i月'];
       showValues = true;
@@ -983,11 +1023,24 @@ class _RangeBarChart extends StatelessWidget {
           bars[b.date.day - 1] += b.amountCents;
         }
       }
+      prevBars = List<int>.filled(days, 0);
+      for (final b in prevBills) {
+        if (b.date.year == anchor.year - 1 &&
+            b.date.month == anchor.month) {
+          prevBars[b.date.day - 1] += b.amountCents;
+        }
+      }
       // 每 2 天显示一次日期标签（2、4、6…），否则挤成一团
       labels = [for (var i = 1; i <= days; i++) i % 2 == 0 ? '$i' : ''];
       showValues = false;
     }
-    final maxCents = bars.fold(0, math.max);
+    // 高度比例基于两年数据的共同最大值，保证灰柱与彩柱同一比例尺
+    final maxCents = math.max(
+      bars.fold(0, math.max),
+      prevBars.fold(0, math.max),
+    );
+    // 去年同期无任何数据时跳过灰柱与图例（去年还没开始记账的场景）
+    final hasPrev = prevBars.any((c) => c > 0);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -1008,6 +1061,7 @@ class _RangeBarChart extends StatelessWidget {
               color: color,
               labelFmt: _fmtShort,
               showValues: showValues,
+              prevBars: hasPrev ? prevBars : null,
             ),
           ),
         ),
@@ -1016,7 +1070,8 @@ class _RangeBarChart extends StatelessWidget {
   }
 }
 
-/// 柱状图绘制：柱体 + 顶部金额（年模式）+ 底部标签（空串不画）
+/// 柱状图绘制：柱体 + 顶部金额（年模式）+ 底部标签（空串不画）；
+/// [prevBars]（去年同期）以浅灰背景柱先画一层，今年彩柱叠于其前
 class _BarChartPainter extends CustomPainter {
   _BarChartPainter({
     required this.bars,
@@ -1025,9 +1080,13 @@ class _BarChartPainter extends CustomPainter {
     required this.color,
     required this.labelFmt,
     required this.showValues,
+    this.prevBars,
   });
 
   final List<int> bars;
+
+  /// 去年同期柱（null = 无对比数据，不画灰柱与图例）
+  final List<int>? prevBars;
   final List<String> labels;
   final int maxCents;
   final Color color;
@@ -1041,6 +1100,33 @@ class _BarChartPainter extends CustomPainter {
     final chartHeight = size.height - chartTop - labelHeight;
     final slot = size.width / bars.length;
     final barWidth = slot * 0.5;
+
+    // 灰色背景柱（去年同期）：无对比数据时跳过
+    final hasPrev = prevBars != null && prevBars!.any((c) => c > 0);
+    if (hasPrev) {
+      final prevPaint = Paint()
+        ..color = AppColors.textSecondary.withValues(alpha: 0.25);
+      for (var i = 0; i < prevBars!.length; i++) {
+        final cents = prevBars![i];
+        if (cents == 0 || maxCents == 0) continue;
+        final cx = slot * i + slot / 2;
+        final h = chartHeight * cents / maxCents;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              cx - barWidth / 2,
+              chartTop + chartHeight - h,
+              barWidth,
+              h,
+            ),
+            const Radius.circular(3),
+          ),
+          prevPaint,
+        );
+      }
+      // 图例：右上角灰方块 + "去年同期"
+      _legend(canvas, size);
+    }
 
     final paint = Paint()..color = color;
     for (var i = 0; i < bars.length; i++) {
@@ -1087,6 +1173,41 @@ class _BarChartPainter extends CustomPainter {
     }
   }
 
+  /// 图例：右上角"灰方块 + 去年同期"
+  void _legend(Canvas canvas, Size size) {
+    const text = '去年同期';
+    final tp = TextPainter(
+      text: const TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: 10,
+          color: AppColors.textSecondary,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    const swatch = 8.0;
+    const gap = 4.0;
+    const margin = 4.0;
+    // 右对齐：文字右缘贴卡片内边距，方块在文字左侧
+    final textX = size.width - margin - tp.width;
+    final cy = margin + tp.height / 2;
+    tp.paint(canvas, Offset(textX, margin));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          textX - gap - swatch,
+          cy - swatch / 2,
+          swatch,
+          swatch,
+        ),
+        const Radius.circular(2),
+      ),
+      Paint()
+        ..color = AppColors.textSecondary.withValues(alpha: 0.25),
+    );
+  }
+
   void _text(
     Canvas canvas,
     String text,
@@ -1112,6 +1233,7 @@ class _BarChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BarChartPainter oldDelegate) =>
       oldDelegate.bars != bars ||
+      oldDelegate.prevBars != prevBars ||
       oldDelegate.maxCents != maxCents ||
       oldDelegate.color != color;
 }

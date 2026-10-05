@@ -52,6 +52,7 @@ class _Entry {
     this.distance,
     this.location,
     this.fullAddress,
+    this.highlight = false,
   });
 
   final String title;
@@ -62,6 +63,9 @@ class _Entry {
   /// 条目自带的完整地址（当前选择点的逆地理结果）；POI/搜索条目
   /// 通常缺省市，选中时在 _select 中现场逆地理补全
   final String? fullAddress;
+
+  /// 高亮标红（首项"已保存的位置"）：提醒用户点它可原样保留旧位置
+  final bool highlight;
 }
 
 class _LocationPickerPageState extends State<LocationPickerPage> {
@@ -425,6 +429,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             title: savedName,
             subtitle: '已保存的位置',
             location: saved,
+            highlight: true,
           )
         else if (address.isNotEmpty)
           _Entry(
@@ -518,7 +523,13 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     try {
       final detail =
           await _service.regeoDetail(point).timeout(const Duration(seconds: 5));
-      full = detail.adminPath;
+      // 与点店分支同款拼接：行政区划为底，追加点名（contains 查重防
+      // "菜市场 菜市场"式重复）。fullAddress 缺名字会导致详情显示
+      // 残缺、搜索（匹配 locationFull）搜不到自定义名
+      final base = detail.adminPath.isNotEmpty ? detail.adminPath : detail.formatted;
+      if (base.isNotEmpty) {
+        full = base.contains(name) ? base : '$base $name';
+      }
     } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pop(
@@ -956,9 +967,12 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                     entry.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
-                      color: AppColors.textPrimary,
+                      // "已保存的位置"条目整体标红，突出"点它保留旧位置"
+                      color: entry.highlight
+                          ? AppColors.expense
+                          : AppColors.textPrimary,
                     ),
                   ),
                   if (entry.subtitle.isNotEmpty) ...[
@@ -967,9 +981,11 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                       entry.subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: entry.highlight
+                            ? AppColors.expense
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ],

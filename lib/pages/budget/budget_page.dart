@@ -132,7 +132,10 @@ class _BudgetPageState extends State<BudgetPage> {
                           _buildCarryCard(),
                           const SizedBox(height: AppDimens.gapSection),
                         ],
-                        _buildCategoryBudgetSection(),
+                        _buildCategoryBudgetSection(
+                          totalBudgetCents:
+                              hasBudget ? budget.amountCents : null,
+                        ),
                         const SizedBox(height: AppDimens.gapSection),
                         _buildStatusBar(hasBudget, summary.expenseCents,
                             budget?.amountCents ?? 0),
@@ -232,86 +235,109 @@ class _BudgetPageState extends State<BudgetPage> {
     );
   }
 
-  /// 分类预算卡：列出全部一级支出分类，点行设置/清除当月金额
-  Widget _buildCategoryBudgetSection() {
+  /// 分类预算卡：列出全部一级支出分类，点行设置/清除当月金额。
+  /// [totalBudgetCents] 为当月总预算（未设为 null）：标题右侧显示
+  /// "已分配"总和，超过总预算时整段转橙色警示
+  Widget _buildCategoryBudgetSection({required int? totalBudgetCents}) {
     final provider = context.read<BudgetProvider>();
     return SectionCard(
       padding: const EdgeInsets.only(bottom: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(
-              AppDimens.pagePadding,
-              AppDimens.gapMd,
-              AppDimens.pagePadding,
-              8,
+      child: StreamBuilder<List<Category>>(
+        stream: context.read<CategoryProvider>().categoriesStream(
+              BillType.expense,
             ),
-            child: Row(
-              children: [
-                Text(
-                  '分类预算',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Spacer(),
-                Text(
-                  '点分类设置当月金额',
-                  style:
-                      TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          StreamBuilder<List<Category>>(
-            stream: context.read<CategoryProvider>().categoriesStream(
-                  BillType.expense,
-                ),
-            builder: (context, catSnapshot) {
-              final parents = (catSnapshot.data ?? const <Category>[])
-                  .where((c) => c.parentId == null)
-                  .toList();
-              if (parents.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(AppDimens.pagePadding),
-                  child: Text(
-                    '暂无支出分类',
-                    style: TextStyle(
-                        fontSize: 13, color: AppColors.textSecondary),
-                  ),
-                );
-              }
-              return StreamBuilder<List<CategorySummary>>(
-                stream: provider.categorySummaryStream(_month),
-                builder: (context, spentSnapshot) {
-                  final spentMap = {
-                    for (final s in spentSnapshot.data ?? const <CategorySummary>[])
-                      s.categoryId: s.totalCents,
+        builder: (context, catSnapshot) {
+          final parents = (catSnapshot.data ?? const <Category>[])
+              .where((c) => c.parentId == null)
+              .toList();
+          return StreamBuilder<List<CategorySummary>>(
+            stream: provider.categorySummaryStream(_month),
+            builder: (context, spentSnapshot) {
+              final spentMap = {
+                for (final s in spentSnapshot.data ?? const <CategorySummary>[])
+                  s.categoryId: s.totalCents,
+              };
+              return StreamBuilder<List<Budget>>(
+                stream: provider.categoryBudgetsStream(_month),
+                builder: (context, budgetSnapshot) {
+                  final budgetMap = {
+                    for (final b in budgetSnapshot.data ?? const <Budget>[])
+                      b.categoryId: b.amountCents,
                   };
-                  return StreamBuilder<List<Budget>>(
-                    stream: provider.categoryBudgetsStream(_month),
-                    builder: (context, budgetSnapshot) {
-                      final budgetMap = {
-                        for (final b in budgetSnapshot.data ?? const <Budget>[])
-                          b.categoryId: b.amountCents,
-                      };
-                      return Column(
-                        children: [
+                  // 已分配 = 各分类预算之和（只累加正数，忽略清除残留）
+                  final allocated = budgetMap.values
+                      .fold<int>(0, (sum, v) => sum + (v > 0 ? v : 0));
+                  final anySet = allocated > 0;
+                  final over = totalBudgetCents != null &&
+                      allocated > totalBudgetCents;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppDimens.pagePadding,
+                          AppDimens.gapMd,
+                          AppDimens.pagePadding,
+                          8,
+                        ),
+                        child: Row(
+                          children: [
+                            const Text(
+                              '分类预算',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            // 详情弹窗同款结构：label 后 Expanded 铺满剩余
+                            // 宽度、右对齐，Spacer+Flexible 会平分剩余
+                            // 空间把长文字拦腰截成"..."
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                anySet
+                                    ? (totalBudgetCents != null
+                                        ? '已分配 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)}'
+                                            ' / ¥${MoneyUtil.centsToYuanGroupedTrimmed(totalBudgetCents)}'
+                                        : '已分配 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)}')
+                                    : '未分配',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: over
+                                      ? AppColors.warning
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      if (parents.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(AppDimens.pagePadding),
+                          child: Text(
+                            '暂无支出分类',
+                            style: TextStyle(
+                                fontSize: 13, color: AppColors.textSecondary),
+                          ),
+                        )
+                      else
+                        ...[
                           for (final c in parents)
                             _categoryRow(c, spentMap, budgetMap),
                         ],
-                      );
-                    },
+                    ],
                   );
                 },
               );
             },
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -399,8 +425,36 @@ class _BudgetPageState extends State<BudgetPage> {
     );
   }
 
+  /// 软提醒确认框：分类预算总和超过总预算时弹一次，允许强行保存
+  /// （照顾"先设高分类、总预算回头再调"的操作顺序）
+  Future<bool> _confirmOverTotal(int allocated, int total) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('分配超过总预算'),
+        content: Text(
+          '分类预算总和 ¥${MoneyUtil.centsToYuanGroupedTrimmed(allocated)} '
+          '已超过总预算 ¥${MoneyUtil.centsToYuanGroupedTrimmed(total)}，'
+          '仍要保存吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   /// 弹出分类预算编辑弹层（含清除入口）
   Future<void> _showCategoryBudgetSheet(Category c, int? current) async {
+    final provider = context.read<BudgetProvider>();
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -413,9 +467,7 @@ class _BudgetPageState extends State<BudgetPage> {
     );
     if (result == null || !mounted) return;
     if (result == 'clear') {
-      await context
-          .read<BudgetProvider>()
-          .setCategoryBudget(_month, c.id, 0);
+      await provider.setCategoryBudget(_month, c.id, 0);
       return;
     }
     final cents = MoneyUtil.yuanToCents(result);
@@ -428,11 +480,29 @@ class _BudgetPageState extends State<BudgetPage> {
       );
       return;
     }
-    await context.read<BudgetProvider>().setCategoryBudget(_month, c.id, cents);
+    // 软提醒：本分类新值替换旧值后，全部分类预算之和超过总预算时确认
+    final total = await provider.getBudget(_month);
+    if (!mounted) return;
+    if (total != null && total.amountCents > 0) {
+      final budgets = await provider.categoryBudgetsStream(_month).first;
+      if (!mounted) return;
+      final others = budgets.fold<int>(
+        0,
+        (sum, b) => b.categoryId == c.id
+            ? sum
+            : sum + (b.amountCents > 0 ? b.amountCents : 0),
+      );
+      if (others + cents > total.amountCents) {
+        final ok = await _confirmOverTotal(others + cents, total.amountCents);
+        if (!ok || !mounted) return;
+      }
+    }
+    await provider.setCategoryBudget(_month, c.id, cents);
   }
 
   /// 弹出总预算编辑底部弹层
   Future<void> _showEditSheet({int? current}) async {
+    final provider = context.read<BudgetProvider>();
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -454,7 +524,18 @@ class _BudgetPageState extends State<BudgetPage> {
       );
       return;
     }
-    await context.read<BudgetProvider>().setBudget(_month, cents);
+    // 软提醒：新总预算小于现有分类预算总和时确认（与分类端对称）
+    final budgets = await provider.categoryBudgetsStream(_month).first;
+    if (!mounted) return;
+    final allocated = budgets.fold<int>(
+      0,
+      (sum, b) => sum + (b.amountCents > 0 ? b.amountCents : 0),
+    );
+    if (allocated > cents) {
+      final ok = await _confirmOverTotal(allocated, cents);
+      if (!ok || !mounted) return;
+    }
+    await provider.setBudget(_month, cents);
   }
 
   /// 近 6 个月预算历史卡（含当前查看月，往前推 5 个月）
