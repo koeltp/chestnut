@@ -13,6 +13,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/update_dialog.dart';
+import 'about_page.dart';
 import 'category_manage_page.dart';
 import 'backup_page.dart';
 import 'passcode_settings_page.dart';
@@ -195,8 +196,10 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.info_outline,
             color: AppColors.expense,
             title: '关于',
-            subtitle: '了解栗子记账',
-            onTap: () => _showAbout(context),
+            subtitle: '版本、隐私政策与开源信息',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AboutPage()),
+            ),
           ),
         ],
       ),
@@ -360,30 +363,6 @@ class _SettingsPageState extends State<SettingsPage> {
       Navigator.of(context).pop();
       showAppToast(context, e.message);
     }
-  }
-
-  /// 关于对话框
-  void _showAbout(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('关于栗子记账'),
-        content: Text(
-          '栗子记账（Chestnut）是一款简洁精致的个人记账应用。\n\n'
-          '· 收支记录与分类管理\n'
-          '· 月度统计图表\n'
-          '· 预算管理\n'
-          '· 数据本地存储，安全私密\n\n'
-          '版本：${_versionName.isEmpty ? '-' : _versionName}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

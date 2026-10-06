@@ -2,7 +2,7 @@ name: chestnut
 description: "栗子记账 - 一款简洁精致的记账 App"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.4
@@ -48,6 +48,7 @@ dependencies:
   map_launcher: ^6.0.0
   package_info_plus: ^10.2.2
   open_filex: ^4.7.0
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

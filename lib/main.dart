@@ -1,4 +1,6 @@
+import 'package:amap_map/amap_map.dart';
 import 'package:flutter/material.dart';
+import 'package:x_amap_base/x_amap_base.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +13,7 @@ import 'data/repositories/category_repository.dart';
 import 'pages/db_error_page.dart';
 import 'pages/lock/lock_screen.dart';
 import 'pages/main_page.dart';
+import 'pages/privacy/privacy_consent_page.dart';
 import 'providers/bill_provider.dart';
 import 'providers/budget_provider.dart';
 import 'providers/category_provider.dart';
@@ -18,6 +21,17 @@ import 'providers/lock_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/backup_service.dart';
 import 'theme/app_theme.dart';
+
+/// 隐私政策同意标记：未同意前不初始化高德等第三方 SDK、不进入主界面
+const String kPrivacyAgreedKey = 'privacy_policy_agreed';
+
+/// 向高德 SDK 声明隐私状态（政策已包含、已弹窗、已同意）。
+/// 必须在任何地图组件创建前调用，否则地图白屏且不合规。
+void _declareAmapPrivacyAgreed() {
+  AMapInitializer.updatePrivacyAgree(
+    const AMapPrivacyStatement(hasContains: true, hasShow: true, hasAgree: true),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +43,10 @@ Future<void> main() async {
   await BackupService().cleanupExportTemp();
   // 预加载设置存储，UI 各处可同步读取开关状态
   final prefs = await SharedPreferences.getInstance();
+  // 已同意过隐私政策：启动即完成高德 SDK 合规声明（首启由同意页触发）
+  if (prefs.getBool(kPrivacyAgreedKey) ?? false) {
+    _declareAmapPrivacyAgreed();
+  }
   // 只读健康探测：主库损坏时走兜底页，避免白屏或崩溃
   final dbHealthy = await BackupService().checkDatabaseHealth();
   // 每日自动备份：用户开启开关后每天首次启动执行（库不健康时跳过）
@@ -158,7 +176,36 @@ class _ProvidersApp extends StatelessWidget {
           create: (ctx) => LockProvider(ctx.read<SettingsProvider>()),
         ),
       ],
-      child: const _MaterialShell(home: MainPage(), lockGate: true),
+      child: _MaterialShell(home: _StartupGate(prefs: prefs), lockGate: true),
     );
+  }
+}
+
+/// 启动门：首次启动未同意隐私政策时只显示同意页（MainPage 不构建，
+/// 因此首页的更新检测等网络行为在同意前均不会发生）；同意后切换进主页
+class _StartupGate extends StatefulWidget {
+  const _StartupGate({required this.prefs});
+
+  final SharedPreferences prefs;
+
+  @override
+  State<_StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<_StartupGate> {
+  late bool _agreed =
+      widget.prefs.getBool(kPrivacyAgreedKey) ?? false;
+
+  Future<void> _agree() async {
+    await widget.prefs.setBool(kPrivacyAgreedKey, true);
+    _declareAmapPrivacyAgreed();
+    if (mounted) setState(() => _agreed = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _agreed
+        ? const MainPage()
+        : PrivacyConsentPage(onAgree: _agree);
   }
 }

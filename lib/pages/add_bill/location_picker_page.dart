@@ -149,21 +149,14 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 高德隐私合规：SDK 要求创建地图/定位前完成授权配置。
-    // init 内部会读取 MediaQuery，initState 阶段不允许依赖 InheritedWidget，
+    // 高德 SDK 初始化：隐私合规声明已在启动门（main.dart）用户同意后统一设置，
+    // 此处只需注册 Key。init 内部会读取 MediaQuery，不能放 initState，
     // 必须放到 didChangeDependencies；标记防止依赖变化时重复初始化。
     if (!_initializerRan) {
       _initializerRan = true;
       AMapInitializer.init(
         context,
         apiKey: const AMapApiKey(androidKey: AmapService.androidMapKey),
-      );
-      AMapInitializer.updatePrivacyAgree(
-        const AMapPrivacyStatement(
-          hasContains: true,
-          hasShow: true,
-          hasAgree: true,
-        ),
       );
     }
   }
