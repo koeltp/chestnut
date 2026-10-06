@@ -447,6 +447,9 @@ class _StatsPageState extends State<StatsPage> {
                       ),
                       child: Center(
                         child: AppSegmented<BillType>(
+                          // 等分风格：两项各占一半无缝贴合，
+                          // 总宽仍为内容自然宽（窄条居中不变）
+                          fit: AppSegmentedFit.equal,
                           options: [
                             for (final t in BillType.values) (t, t.label),
                           ],

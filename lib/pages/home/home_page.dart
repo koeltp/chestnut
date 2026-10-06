@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
 import '../../models/enums.dart';
@@ -18,8 +19,45 @@ import '../stats/stats_page.dart';
 import 'period_picker_dialog.dart';
 
 /// 首页：当前查看范围（月/年/全部）的收支汇总 + 按日分组的账单卡片列表
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  @override
+  void initState() {
+    super.initState();
+    // 数据库为惰性打开：首页账单流订阅即触发打开，降级发生时才写入
+    // 标记，延迟 2 秒检查确保标记已落盘
+    Future<void>.delayed(const Duration(seconds: 2), _showDowngradeNotice);
+  }
+
+  /// 降级重建后的恢复引导：告知数据已留底、去哪恢复，弹一次即清除
+  Future<void> _showDowngradeNotice() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(kDowngradeDetectedKey) != true) return;
+    await prefs.remove(kDowngradeDetectedKey);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('数据已安全备份'),
+        content: const Text(
+          '检测到应用数据版本异常，您的账单数据已自动备份了一份。\n\n'
+          '可在「我的 → 备份与恢复 → 历史备份」中查看与恢复。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -32,6 +32,13 @@ class BillRepository {
         .watch();
   }
 
+  /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；
+  /// 账单被删时发 null，弹窗据此自动关闭
+  Stream<Bill?> watchBillById(int id) {
+    return (_db.select(_db.bills)..where((b) => b.id.equals(id)))
+        .watchSingleOrNull();
+  }
+
   /// 某分类（含其全部子分类）的账单流（分类统计详情页）
   ///
   /// 一级分类的账单可能挂在子分类上，用子查询把子分类账单一并取回，

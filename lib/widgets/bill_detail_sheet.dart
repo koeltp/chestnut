@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -40,7 +42,7 @@ Future<void> showBillDetailSheet(
   );
 }
 
-class _DetailBody extends StatelessWidget {
+class _DetailBody extends StatefulWidget {
   const _DetailBody({
     required this.bill,
     required this.categories,
@@ -49,6 +51,8 @@ class _DetailBody extends StatelessWidget {
     required this.provider,
   });
 
+  /// 点击条目时的账单快照：仅作初始显示值与订阅键，
+  /// 之后展示一律以单条流推送的最新值为准
   final Bill bill;
   final Map<int, Category> categories;
   final void Function(Category category) onCategoryTap;
@@ -58,17 +62,52 @@ class _DetailBody extends StatelessWidget {
   final BuildContext hostContext;
   final BillProvider provider;
 
-  /// 打开记一笔页：修改 = 编辑该笔；复制 = 预填数据保存为新记录
+  @override
+  State<_DetailBody> createState() => _DetailBodyState();
+}
+
+class _DetailBodyState extends State<_DetailBody> {
+  /// 最新账单：创建时取宿主传入的快照，之后由单条流推送覆盖；
+  /// 编辑/复制/删除都必须操作它，避免拿到关闭弹窗前的旧数据
+  late Bill _current = widget.bill;
+  StreamSubscription<Bill?>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    // 订阅单条账单流：编辑保存后弹窗自动刷新；
+    // 账单被删（null）时自动关闭弹窗，避免展示已不存在的数据
+    _sub = widget.provider.watchBillById(widget.bill.id).listen((bill) {
+      if (!mounted) return;
+      if (bill == null) {
+        Navigator.of(context).pop();
+      } else {
+        setState(() => _current = bill);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  /// 打开记一笔页：修改 = 编辑该笔；复制 = 预填数据保存为新记录。
+  /// 必须用最新值 _current：若操作前数据库已被其它路径改过，
+  /// 用打开弹窗时的旧快照进编辑页会回显过期数据
   void _openEditor(bool edit) {
-    Navigator.of(hostContext).push(
+    Navigator.of(widget.hostContext).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            edit ? AddBillPage(editBill: bill) : AddBillPage(copyOf: bill),
+        builder: (_) => edit
+            ? AddBillPage(editBill: _current)
+            : AddBillPage(copyOf: _current),
       ),
     );
   }
 
-  /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新
+  /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新；
+  /// 弹窗已关闭、订阅已取消，删除不会触发本页的 null 自动 pop
   Future<void> _confirmDelete(BuildContext sheetContext) async {
     final confirmed = await showDialog<bool>(
       context: sheetContext,
@@ -90,15 +129,15 @@ class _DetailBody extends StatelessWidget {
     if (confirmed != true) return;
     if (!sheetContext.mounted) return;
     Navigator.of(sheetContext).pop();
-    await provider.deleteBill(bill.id);
+    await widget.provider.deleteBill(_current.id);
   }
 
   /// 点击分类行：先关详情再交给宿主跳转，避免返回时又回到已关闭的弹窗
   void _tapCategory(BuildContext sheetContext) {
-    final c = categories[bill.categoryId];
+    final c = widget.categories[_current.categoryId];
     if (c == null) return;
     Navigator.of(sheetContext).pop();
-    onCategoryTap(c);
+    widget.onCategoryTap(c);
   }
 
   /// 时间显示格式：2026-10-02 18:08
@@ -113,11 +152,11 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isExpense = bill.type == BillType.expense;
+    final isExpense = _current.type == BillType.expense;
     final amountColor = isExpense ? AppColors.expense : AppColors.income;
-    final category = categories[bill.categoryId];
+    final category = widget.categories[_current.categoryId];
     // 位置展示用完整地址（含店名），无完整地址退回短地名
-    final location = bill.locationFull ?? bill.location;
+    final location = _current.locationFull ?? _current.location;
     return SafeArea(
       // 内容可滚动：超长地址/备注撑满屏幕时滚动查看，不截断不溢出
       child: SingleChildScrollView(
@@ -151,7 +190,7 @@ class _DetailBody extends StatelessWidget {
                 label: '金额',
                 child: Text(
                   '${isExpense ? '-' : '+'}¥'
-                  '${MoneyUtil.centsToYuanGroupedTrimmed(bill.amountCents)}',
+                  '${MoneyUtil.centsToYuanGroupedTrimmed(_current.amountCents)}',
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     fontSize: 20,
@@ -223,7 +262,7 @@ class _DetailBody extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      _format(bill.date, bill.timeMinute),
+                      _format(_current.date, _current.timeMinute),
                       style: const TextStyle(
                         fontSize: 15,
                         color: AppColors.textPrimary,
@@ -232,7 +271,7 @@ class _DetailBody extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '记录于 ${_format(bill.createdAt, null)}',
+                      '记录于 ${_format(_current.createdAt, null)}',
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -246,11 +285,11 @@ class _DetailBody extends StatelessWidget {
               _Row(
                 label: '备注',
                 child: Text(
-                  bill.note ?? '未添加备注',
+                  _current.note ?? '未添加备注',
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     fontSize: 15,
-                    color: bill.note == null
+                    color: _current.note == null
                         ? AppColors.textSecondary.withValues(alpha: 0.7)
                         : AppColors.textPrimary,
                   ),

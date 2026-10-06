@@ -7,6 +7,7 @@ import '../../models/enums.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/category_avatar.dart';
+import '../../widgets/help_sheet.dart';
 import '../../widgets/section_card.dart';
 import '../stats/stats_page.dart';
 import 'category_edit_page.dart';
@@ -210,30 +211,38 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     ];
   }
 
-  /// 帮助说明弹窗
+  /// 帮助说明：底部弹出面板（图标化要点，替代系统默认弹窗）
   void _showHelp() {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('分类管理说明'),
-        content: const Text(
-          '· 单击一级分类或子分类，可修改名称与图标\n'
-          '· 长按一级或二级分类拖动，可直接调整排序\n'
-          '· 点击一级分类右侧箭头，展开或收起子分类\n'
-          '· 面板内"添加子类"可为该一级分类新增子分类\n'
-          '· 右下角 + 按钮新增一级分类，支持批量添加\n'
-          '· 删除分类会连带删除其子分类下的账单',
+    HelpSheet.show(
+      context,
+      title: '分类管理说明',
+      items: [
+        HelpSheetItem(
+          icon: Icons.touch_app_outlined,
+          title: '单击修改',
+          description: '单击一级分类或子分类，可修改名称与图标',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              '知道了',
-              style: TextStyle(color: AppColors.primary),
-            ),
-          ),
-        ],
-      ),
+        HelpSheetItem(
+          icon: Icons.drag_indicator,
+          title: '长按排序',
+          description: '长按一级或二级分类拖动，可直接调整排序',
+        ),
+        HelpSheetItem(
+          icon: Icons.unfold_more,
+          title: '展开/收起',
+          description: '点击一级分类右侧箭头，展开或收起子分类',
+        ),
+        HelpSheetItem(
+          icon: Icons.add_circle_outline,
+          title: '新增分类',
+          description: '面板内"添加子类"可为该一级分类新增子分类；右下角 + 新增一级分类，支持批量添加',
+        ),
+        HelpSheetItem(
+          icon: Icons.delete_outline,
+          title: '删除连带',
+          description: '删除分类会连带删除其子分类下的账单',
+        ),
+      ],
     );
   }
 

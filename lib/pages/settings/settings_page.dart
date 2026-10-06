@@ -8,6 +8,8 @@ import '../../services/export_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/section_card.dart';
 import 'category_manage_page.dart';
+import 'backup_page.dart';
+import 'passcode_settings_page.dart';
 
 /// 我的页：分类管理、记账定位开关、数据导出、关于
 class SettingsPage extends StatelessWidget {
@@ -106,6 +108,24 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           const Divider(indent: 16, endIndent: 16),
+          _menuItem(
+            context,
+            icon: Icons.lock_outline,
+            color: AppColors.primary,
+            title: '密码保护',
+            subtitle: '数字密码与指纹/面容解锁',
+            onTap: () {
+              // 未设密码时直达设置流程，跳过未设置态主界面
+              final settings = context.read<SettingsProvider>();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      PasscodeSettingsPage(startSetup: !settings.passcodeEnabled),
+                ),
+              );
+            },
+          ),
+          const Divider(indent: 16, endIndent: 16),
           _switchItem(
             context,
             icon: Icons.place_outlined,
@@ -117,17 +137,6 @@ class SettingsPage extends StatelessWidget {
                 context.read<SettingsProvider>().setBillLocationEnabled(v),
           ),
           const Divider(indent: 16, endIndent: 16),
-          _switchItem(
-            context,
-            icon: Icons.savings_outlined,
-            color: AppColors.primary,
-            title: '自动沿用上月预算',
-            subtitle: '进入预算页时，当月未设预算则自动沿用上月',
-            value: context.watch<SettingsProvider>().autoBudgetCarryEnabled,
-            onChanged: (v) =>
-                context.read<SettingsProvider>().setAutoBudgetCarryEnabled(v),
-          ),
-          const Divider(indent: 16, endIndent: 16),
           _menuItem(
             context,
             icon: Icons.file_download_outlined,
@@ -135,6 +144,17 @@ class SettingsPage extends StatelessWidget {
             title: '导出账单',
             subtitle: '导出全部账单为 CSV 文件',
             onTap: () => _exportCsv(context),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _menuItem(
+            context,
+            icon: Icons.backup_outlined,
+            color: AppColors.primary,
+            title: '备份与恢复',
+            subtitle: '导出完整备份 / 导入备份恢复数据',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const BackupPage()),
+            ),
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(

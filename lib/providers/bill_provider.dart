@@ -80,6 +80,9 @@ class BillProvider extends ChangeNotifier {
   Stream<List<Bill>> categoryBillsStream(int categoryId) =>
       _repo.watchBillsInCategory(categoryId);
 
+  /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；被删发 null
+  Stream<Bill?> watchBillById(int id) => _repo.watchBillById(id);
+
   /// 新增账单
   Future<void> addBill(BillsCompanion entry) => _repo.addBill(entry);
 

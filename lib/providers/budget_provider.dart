@@ -34,6 +34,11 @@ class BudgetProvider extends ChangeNotifier {
   Stream<List<CategorySummary>> categorySummaryStream(DateTime month) =>
       _billRepo.watchCategorySummary(BillType.expense, month);
 
+  /// 一次性读取某月按一级分类聚合的支出快照
+  /// （预算模式B：取上月实际消费作为本月分类预算）
+  Future<List<CategorySummary>> categorySummaries(DateTime month) =>
+      _billRepo.watchCategorySummary(BillType.expense, month).first;
+
   /// 读取某月总预算（一次性）
   Future<Budget?> getBudget(DateTime month) =>
       _repo.getBudget(MonthUtil.toKey(month));

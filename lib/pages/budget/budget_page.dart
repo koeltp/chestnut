@@ -9,6 +9,7 @@ import '../../providers/category_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
+import '../../widgets/app_segmented.dart';
 import '../../widgets/category_avatar.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
@@ -17,8 +18,8 @@ import '../../widgets/section_card.dart';
 ///
 /// 支持切换月份查看历史预算；预算进度以"当月支出 / 预算"呈现，
 /// 用量超过 80% 转橙色警示、超支转红色。页面结构：
-/// 总预算头部卡（含日均可用）→ 沿用上月提示 → 分类预算卡 →
-/// 状态说明条 → 近 6 个月预算历史。
+/// 总预算头部卡（含日均可用）→ 预算模式卡 → 沿用上月提示 →
+/// 分类预算卡 → 状态说明条 → 近 6 个月预算历史。
 class BudgetPage extends StatefulWidget {
   const BudgetPage({super.key});
 
@@ -32,8 +33,8 @@ class _BudgetPageState extends State<BudgetPage> {
   @override
   void initState() {
     super.initState();
-    // 开关开启时：进入页面静默沿用上月预算（仅当前月、当月未设时）
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoCarry());
+    // 按当前预算模式自动填充（仅当前月）：沿用上月预算 / 按上月消费
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyBudgetMode());
   }
 
   /// 是否正在查看当前月份（沿用逻辑只作用于当前月，历史月不自动改动）
@@ -42,18 +43,75 @@ class _BudgetPageState extends State<BudgetPage> {
     return _month.year == now.year && _month.month == now.month;
   }
 
-  /// 预算历史行模型
-  Future<void> _autoCarry() async {
+  /// 按当前预算模式自动填充（仅当前月，历史月不改动）：
+  /// A 沿用上月预算——未设的总预算/分类预算写上月对应值；
+  /// B 按上月消费——未设的分类预算写上月实际消费，总预算未设时写各分类之和
+  Future<void> _applyBudgetMode() async {
+    if (!mounted || !_isCurrentMonth) return;
+    final mode = context.read<SettingsProvider>().budgetMode;
+    if (mode == BudgetMode.carryLastMonth) {
+      await _carryLastMonthBudgets();
+    } else {
+      await _fillFromLastMonthSpend();
+    }
+  }
+
+  /// 把 [sourceById]（categoryId → 金额）写入本月未设的分类预算，
+  /// 已设的不覆盖（手动值优先），金额 <= 0 的源跳过
+  Future<void> _fillMissingCategoryBudgets(Map<int, int> sourceById) async {
     if (!mounted) return;
-    if (!context.read<SettingsProvider>().autoBudgetCarryEnabled) return;
-    if (!_isCurrentMonth) return;
     final provider = context.read<BudgetProvider>();
+    final existing = await provider.categoryBudgetsStream(_month).first;
+    final existingIds = {for (final b in existing) b.categoryId};
+    for (final entry in sourceById.entries) {
+      if (entry.value <= 0 || existingIds.contains(entry.key)) continue;
+      await provider.setCategoryBudget(_month, entry.key, entry.value);
+    }
+  }
+
+  /// 模式A：未设的总预算沿用上月总预算，未设的分类预算沿用上月分类预算
+  Future<void> _carryLastMonthBudgets() async {
+    if (!mounted) return;
+    final provider = context.read<BudgetProvider>();
+    final now = DateTime.now();
+    final lastMonth = DateTime(now.year, now.month - 1);
+    // 分类预算：未设的沿用上月
+    final lastCategories = await provider
+        .categoryBudgetsStream(lastMonth)
+        .first;
+    await _fillMissingCategoryBudgets({
+      for (final b in lastCategories) b.categoryId: b.amountCents,
+    });
+    // 总预算：未设的沿用上月
+    if (!mounted) return;
     final cur = await provider.getBudget(_month);
     if (cur != null || !mounted) return;
-    final now = DateTime.now();
-    final last = await provider.getBudget(DateTime(now.year, now.month - 1));
-    if (last != null && mounted) {
+    final last = await provider.getBudget(lastMonth);
+    if (last != null && last.amountCents > 0 && mounted) {
       await provider.setBudget(_month, last.amountCents);
+    }
+  }
+
+  /// 模式B：未设的分类预算自动写入上月实际消费（上月无消费的跳过），
+  /// 手动已设的不覆盖；总预算未设时写全部分类预算之和
+  Future<void> _fillFromLastMonthSpend() async {
+    if (!mounted) return;
+    final provider = context.read<BudgetProvider>();
+    final now = DateTime.now();
+    final summaries = await provider.categorySummaries(
+      DateTime(now.year, now.month - 1),
+    );
+    await _fillMissingCategoryBudgets({
+      for (final s in summaries) s.categoryId: s.totalCents,
+    });
+    // 总预算 = 各分类预算合计（未设时才写，手动已设不动）
+    if (!mounted) return;
+    final all = await provider.categoryBudgetsStream(_month).first;
+    final sum = all.fold<int>(0, (total, b) => total + b.amountCents);
+    if (sum <= 0 || !mounted) return;
+    final total = await provider.getBudget(_month);
+    if (total == null && mounted) {
+      await provider.setBudget(_month, sum);
     }
   }
 
@@ -125,6 +183,10 @@ class _BudgetPageState extends State<BudgetPage> {
                           ),
                         ),
                         const SizedBox(height: AppDimens.gapSection),
+                        if (_isCurrentMonth) ...[
+                          _buildModeCard(),
+                          const SizedBox(height: AppDimens.gapSection),
+                        ],
                         if (!hasBudget && _isCurrentMonth) ...[
                           _buildCarryCard(),
                           const SizedBox(height: AppDimens.gapSection),
@@ -198,6 +260,81 @@ class _BudgetPageState extends State<BudgetPage> {
                 color: AppColors.textSecondary,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 预算模式卡（仅当前月显示，历史月切换无效所以不展示）。
+  /// 三行结构：标题+随模式说明 / 分段开关铺满 / 条下固定"！"说明行——
+  /// 行为规则（只补未设、不动已设）常驻展示而不是切换时弹提示
+  Widget _buildModeCard() {
+    final mode = context.watch<SettingsProvider>().budgetMode;
+    return SectionCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimens.pagePadding,
+        vertical: AppDimens.gapMd,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(
+              text: '预算模式：',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              children: [
+                TextSpan(
+                  text: mode == BudgetMode.carryLastMonth
+                      ? '未设的总预算和分类预算自动沿用上月'
+                      : '未设分类预算取上月实际消费，总预算取各分类之和',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppDimens.gapMd),
+          AppSegmented<BudgetMode>(
+            options: const [
+              (BudgetMode.carryLastMonth, '沿用上月预算'),
+              (BudgetMode.lastMonthSpend, '按上月消费'),
+            ],
+            selected: mode,
+            fit: AppSegmentedFit.stretch,
+            onChanged: (m) async {
+              await context.read<SettingsProvider>().setBudgetMode(m);
+              // 切换即生效：当前月按新模式立即补全未设项
+              if (mounted) await _applyBudgetMode();
+            },
+          ),
+          const SizedBox(height: AppDimens.gapSm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.info_outline,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '切换后立即补全本月未设项，已设置的金额不会被自动改动',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

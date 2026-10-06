@@ -3,8 +3,11 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart' show Icons, IconData;
+import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import '../models/enums.dart';
 import 'tables/bills.dart';
@@ -13,18 +16,40 @@ import 'tables/categories.dart';
 
 part 'database.g.dart';
 
+/// 当前数据库结构版本
+///
+/// 开发期 v1~v8 的历史迁移已在发布前整体重置归一，自 v1 起每次结构
+/// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
+const int kSchemaVersion = 1;
+
+/// 数据库主文件名（备份服务与启动恢复共用）
+const String kDatabaseFileName = 'chestnut.sqlite';
+
+/// WAL 模式附属文件：替换主库文件时必须一并删除，否则旧 WAL 内容
+/// 会叠加到新主文件上导致数据库损坏
+const List<String> kDatabaseSidecarFiles = [
+  'chestnut.sqlite-wal',
+  'chestnut.sqlite-shm',
+];
+
+/// 降级发生标记（SharedPreferences key）
+///
+/// 降级重建后 App 内数据被清空，用户极易误以为数据全丢；首页启动
+/// 后检测此标记弹恢复引导，读取后即清除（只弹一次）。
+const String kDowngradeDetectedKey = 'db_downgrade_detected';
+
 /// 应用数据库
 ///
 /// 单例式入口：负责建库、迁移与首次预置默认分类。
 @DriftDatabase(tables: [Categories, Bills, Budgets])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : super(_openConnection(kSchemaVersion));
 
   /// 仅测试使用：注入内存执行器，不落盘
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => kSchemaVersion;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -33,60 +58,26 @@ class AppDatabase extends _$AppDatabase {
       // 建库时预置内置分类（含子分类），避免新用户面对空分类列表
       await _seedDefaultCategories();
     },
+    // 升级与降级统一在此处理（drift 把升降级都送进 onUpgrade）：
+    // from > to 即降级——用户装回旧版 App，旧代码无法识别新结构，
+    // drift 默认抛异常导致启动崩溃死循环，这里改为重建空库保证可用，
+    // 高版本数据已在打开连接前由 _backupBeforeOpen 留底。
+    // from < to 的正常升级暂无分支，未来结构变更时在这里追加。
     onUpgrade: (m, from, to) async {
-      // v1 → v2：分类表增加两级支持（parentId 列），并补预置子分类
-      if (from < 2) {
-        await m.addColumn(categories, categories.parentId);
-        await _seedDefaultSubCategories();
-      }
-      // v2 → v3：账单表增加时间列（当日分钟数，可空）
-      if (from < 3) {
-        await m.addColumn(bills, bills.timeMinute);
-      }
-      // v3 → v4：账单表增加定位地名列（可空）
-      if (from < 4) {
-        await m.addColumn(bills, bills.location);
-      }
-      // v4 → v5：账单表增加定位坐标列（可空），编辑时地图回到原地点
-      if (from < 5) {
-        await m.addColumn(bills, bills.lat);
-        await m.addColumn(bills, bills.lng);
-      }
-      // v5 → v6：账单表增加定位完整信息列（可空），专供搜索；
-      // 历史账单回填现有 location（GPS 逆地理本就是完整地址）
-      if (from < 6) {
-        await m.addColumn(bills, bills.locationFull);
-        await customStatement(
-          "UPDATE bills SET location_full = location "
-          "WHERE location IS NOT NULL",
-        );
-      }
-      // v6 → v7：预算表支持分类预算——新增 category_id 列（0 = 总预算），
-      // 唯一约束由 month 单列改为 (month, category_id) 组合。SQLite
-      // 无法直接修改表约束，走"建新表 → 搬数据 → 换名"重建，旧预算
-      // 全部作为总预算（category_id = 0）保留
-      if (from < 7) {
-        await customStatement(
-          'CREATE TABLE budgets_new ('
-          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
-          'month TEXT NOT NULL, '
-          'amount_cents INTEGER NOT NULL, '
-          'category_id INTEGER NOT NULL DEFAULT 0, '
-          'UNIQUE (month, category_id))',
-        );
-        await customStatement(
-          'INSERT INTO budgets_new (id, month, amount_cents, category_id) '
-          'SELECT id, month, amount_cents, 0 FROM budgets',
-        );
-        await customStatement('DROP TABLE budgets');
-        await customStatement('ALTER TABLE budgets_new RENAME TO budgets');
-      }
-      // v7 → v8：账单表加查询索引——月/年/全部查询按 date 范围
-      // 过滤并按 (date, createdAt) 排序，分类详情页按 categoryId 过滤。
-      // 纯索引变更无数据改写，建索引即可（onCreate 由 createAll 统一建）
-      if (from < 8) {
-        await m.createIndex(billsDateCreated);
-        await m.createIndex(billsCategory);
+      if (from > to) {
+        // 删除所有实体（表/索引/触发器）后按当前代码结构重建
+        for (final entity in allSchemaEntities) {
+          await m.drop(entity);
+        }
+        await m.createAll();
+        await _seedDefaultCategories();
+        // 标记降级已发生，首页据此弹恢复引导（留底文件已在打开前生成）
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(kDowngradeDetectedKey, true);
+        } catch (_) {
+          // 标记失败只影响提示，不影响重建结果
+        }
       }
     },
   );
@@ -124,50 +115,67 @@ class AppDatabase extends _$AppDatabase {
       }
     }
   }
-
-  /// 为已升级的旧库补充预置子分类（幂等：同父下同名子分类跳过）
-  Future<void> _seedDefaultSubCategories() async {
-    for (final seed in _defaultCategories) {
-      if (seed.children.isEmpty) continue;
-      // 按名称匹配旧库中的同名一级分类
-      final parents = await (select(
-        categories,
-      )..where((c) => c.name.equals(seed.name) & c.parentId.isNull())).get();
-      for (final parent in parents) {
-        final existing = await (select(
-          categories,
-        )..where((c) => c.parentId.equals(parent.id))).get();
-        final names = existing.map((e) => e.name).toSet();
-        final rows = <CategoriesCompanion>[];
-        for (var i = 0; i < seed.children.length; i++) {
-          final child = seed.children[i];
-          if (names.contains(child.name)) continue;
-          rows.add(
-            CategoriesCompanion.insert(
-              name: child.name,
-              iconCode: child.icon.codePoint,
-              colorValue: child.color,
-              type: child.type,
-              parentId: Value(parent.id),
-              sortOrder: Value(i),
-            ),
-          );
-        }
-        if (rows.isNotEmpty) {
-          await batch((b) => b.insertAll(categories, rows));
-        }
-      }
-    }
-  }
 }
 
 /// 数据库连接：后台线程执行 SQLite 操作，避免阻塞 UI 线程
-LazyDatabase _openConnection() {
+///
+/// 打开前先做版本预检（[schemaVersion] 由调用方传入）：升级与降级
+/// 都先生成旧库快照，再交给 drift 正常打开。
+LazyDatabase _openConnection(int schemaVersion) {
   return LazyDatabase(() async {
     final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'chestnut.sqlite'));
+    final file = File(p.join(dir.path, kDatabaseFileName));
+    await _backupBeforeOpen(file, schemaVersion);
     return NativeDatabase.createInBackground(file);
   });
+}
+
+/// drift 打开连接前的版本预检与快照备份
+///
+/// 此时库文件尚未被 drift 占用，VACUUM INTO 不受迁移事务限制：
+/// · fileVersion < 代码版本：正常升级，备份旧库（保留最近 2 份），
+///   迁移翻车时可回退；
+/// · fileVersion > 代码版本：降级（装回旧版 App），高版本数据留底
+///   后由 onUpgrade 的降级分支重建空库。
+Future<void> _backupBeforeOpen(File file, int schemaVersion) async {
+  if (!await file.exists()) return;
+  Database? raw;
+  try {
+    raw = sqlite3.open(file.path);
+    final fileVersion = raw.userVersion;
+    // 0 = 未初始化的新文件，交给 drift 的 onCreate
+    if (fileVersion == schemaVersion || fileVersion == 0) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final name = fileVersion < schemaVersion
+        ? 'chestnut_backup_v${fileVersion}_$stamp.sqlite'
+        : 'chestnut_downgrade_v${fileVersion}_$stamp.sqlite';
+    raw.execute("VACUUM INTO '${p.join(dir.path, name)}'");
+    if (fileVersion < schemaVersion) _pruneOldBackups(dir);
+  } catch (_) {
+    // 预检/备份失败放行：升级有事务保护，降级仍有重建兜底
+  } finally {
+    raw?.dispose();
+  }
+}
+
+/// 升级前备份只保留最近 [keep] 份（文件名含时间戳，字典序即时间序）
+void _pruneOldBackups(Directory dir, {int keep = 2}) {
+  final files =
+      dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => p.basename(f.path).startsWith('chestnut_backup_v'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+  if (files.length <= keep) return;
+  for (final f in files.take(files.length - keep)) {
+    try {
+      f.deleteSync();
+    } catch (_) {
+      // 单个清理失败忽略
+    }
+  }
 }
 
 /// 内置分类种子定义
@@ -193,20 +201,8 @@ class _CategorySeed {
 
 const _defaultCategories = <_CategorySeed>[
   // 支出分类：名称与图标均与编辑页图标库一一对应，子分类按高频排序
-  _CategorySeed(
-    '餐饮',
-    Icons.restaurant,
-    0xFFFF9F43,
-    BillType.expense,
-    0,
-    children: [
-      _CategorySeed(
-        '早餐',
-        Icons.free_breakfast,
-        0xFFFF9F43,
-        BillType.expense,
-        0,
-      ),
+  _CategorySeed(   '餐饮',    Icons.restaurant,    0xFFFF9F43,    BillType.expense,    0,
+    children: [      _CategorySeed(        '早餐',        Icons.free_breakfast,        0xFFFF9F43,        BillType.expense,        0,      ),
       _CategorySeed('午餐', Icons.rice_bowl, 0xFFFF9F43, BillType.expense, 1),
       _CategorySeed('晚餐', Icons.ramen_dining, 0xFFFF9F43, BillType.expense, 2),
       _CategorySeed(

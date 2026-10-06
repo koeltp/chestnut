@@ -8,25 +8,113 @@ import 'data/database.dart';
 import 'data/repositories/bill_repository.dart';
 import 'data/repositories/budget_repository.dart';
 import 'data/repositories/category_repository.dart';
+import 'pages/db_error_page.dart';
+import 'pages/lock/lock_screen.dart';
 import 'pages/main_page.dart';
 import 'providers/bill_provider.dart';
 import 'providers/budget_provider.dart';
 import 'providers/category_provider.dart';
+import 'providers/lock_provider.dart';
 import 'providers/settings_provider.dart';
+import 'services/backup_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 固定竖屏，记账场景无横屏需求
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // 启动早期执行待定数据恢复：必须在数据库首次打开前完成文件替换
+  await BackupService().restoreIfNeeded();
+  // 清理上次会话遗留的导出临时文件（分享时微信异步读取，不能当场删）
+  await BackupService().cleanupExportTemp();
   // 预加载设置存储，UI 各处可同步读取开关状态
   final prefs = await SharedPreferences.getInstance();
-  runApp(ChestnutApp(prefs: prefs));
+  // 只读健康探测：主库损坏时走兜底页，避免白屏或崩溃
+  final dbHealthy = await BackupService().checkDatabaseHealth();
+  // 每日自动备份：用户开启开关后每天首次启动执行（库不健康时跳过）
+  if (dbHealthy) await BackupService().autoBackupIfNeeded(prefs);
+  runApp(ChestnutApp(prefs: prefs, dbHealthy: dbHealthy));
 }
 
-/// 应用根组件：完成依赖注入（数据库 → 仓储 → Provider）
+/// 应用根组件：主库健康时进入依赖注入与主页，损坏时展示兜底页
 class ChestnutApp extends StatelessWidget {
-  const ChestnutApp({super.key, required this.prefs});
+  const ChestnutApp({super.key, required this.prefs, this.dbHealthy = true});
+
+  final SharedPreferences prefs;
+
+  /// 主库健康探测结果；false 时展示数据库错误兜底页，
+  /// 不注入数据库依赖，避免打开损坏库引发更严重的错误
+  final bool dbHealthy;
+
+  @override
+  Widget build(BuildContext context) {
+    return dbHealthy
+        ? _ProvidersApp(prefs: prefs)
+        : const _MaterialShell(home: DatabaseErrorPage());
+  }
+}
+
+/// MaterialApp 公共壳：中文本地化 + 主题，主页与兜底页两处复用
+class _MaterialShell extends StatelessWidget {
+  const _MaterialShell({required this.home, this.lockGate = false});
+
+  final Widget home;
+
+  /// 是否注入密码锁遮罩：仅依赖注入壳启用；
+  /// 兜底页无 provider 且数据库已损坏，锁屏无意义
+  final bool lockGate;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: '栗子记账',
+      debugShowCheckedModeBanner: false,
+      // 中文本地化：钟面时间选择器、日期选择器等内置控件显示中文
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('zh'), Locale('en')],
+      locale: const Locale('zh'),
+      theme: AppTheme.light,
+      home: home,
+      // 锁定遮罩挂在 builder 上：位于 Navigator 之上，任何页面都会被盖住
+      builder: lockGate
+          ? (context, child) =>
+                _LockGate(child: child ?? const SizedBox.shrink())
+          : null,
+    );
+  }
+}
+
+/// 密码锁遮罩：启用密码且处于锁定态时全屏盖锁屏页；
+/// Stack 保留下层 Navigator，解锁瞬间无需整树重建
+class _LockGate extends StatelessWidget {
+  const _LockGate({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final needLock = context.watch<SettingsProvider>().passcodeEnabled &&
+        context.watch<LockProvider>().locked;
+    return Stack(
+      children: [
+        child,
+        if (needLock) const Positioned.fill(child: LockScreen()),
+      ],
+    );
+  }
+}
+
+/// 依赖注入容器：数据库 → 仓储 → Provider → 主页
+///
+/// MultiProvider 必须包在 MaterialApp 之上：push 出的二级页面是
+/// Navigator 里与 home 平级的兄弟 OverlayEntry，provider 若注入在
+/// home 内部，二级页面沿树向上找不到，会报 Provider not found。
+class _ProvidersApp extends StatelessWidget {
+  const _ProvidersApp({required this.prefs});
 
   final SharedPreferences prefs;
 
@@ -65,21 +153,12 @@ class ChestnutApp extends StatelessWidget {
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(prefs),
         ),
+        // 密码锁：读取设置开关与超时配置，冷启动即决定是否进入锁定态
+        ChangeNotifierProvider<LockProvider>(
+          create: (ctx) => LockProvider(ctx.read<SettingsProvider>()),
+        ),
       ],
-      child: MaterialApp(
-        title: '栗子记账',
-        debugShowCheckedModeBanner: false,
-        // 中文本地化：钟面时间选择器、日期选择器等内置控件显示中文
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [Locale('zh'), Locale('en')],
-        locale: const Locale('zh'),
-        theme: AppTheme.light,
-        home: const MainPage(),
-      ),
+      child: const _MaterialShell(home: MainPage(), lockGate: true),
     );
   }
 }
