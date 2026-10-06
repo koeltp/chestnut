@@ -103,14 +103,30 @@ class _AddBillPageState extends State<AddBillPage> {
   /// 金额上限（分）：约 999 万，防御性限制输入长度
   static const int _maxAmountCents = 999999999;
 
+  /// 按类型缓存分类查询流：drift 的 watch() 每次调用都生成新 Stream，
+  /// 若在 build 中现取现用，金额键入等高频 rebuild 会让 StreamBuilder
+  /// 反复换流重订阅（分类区空窗闪烁、重复查询）；缓存后只有切换
+  /// 收/支类型才真正换流
+  late final Map<BillType, Stream<List<Category>>> _categoryStreams = {
+    for (final t in BillType.values)
+      t: context.read<CategoryProvider>().categoriesStream(t),
+  };
+
+  /// 已提示过的预算级别（会话内去重）：如 'total-2'（总预算超支）、
+  /// 'cat-12-1'（分类 12 用量超 80%）
+  final Set<String> _budgetHintKeys = {};
+
   bool get _isEditing => widget.editBill != null;
+
+  /// 编辑/复制模式的源账单（复制模式仅用于预填，保存仍走新增分支）
+  Bill? get _sourceBill => widget.editBill ?? widget.copyOf;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     final nowMinute = now.hour * 60 + now.minute;
-    final bill = widget.editBill ?? widget.copyOf;
+    final bill = _sourceBill;
     if (bill != null) {
       _type = bill.type;
       // 零头为 0 时省略小数：用户输入整数保存，回填时不显示 xxx.00
@@ -421,7 +437,7 @@ class _AddBillPageState extends State<AddBillPage> {
     // 定位开关关闭时隐藏入口；编辑/复制已有位置的账单除外，保留清除能力
     final showLocation =
         context.watch<SettingsProvider>().billLocationEnabled ||
-        (widget.editBill ?? widget.copyOf)?.location != null;
+        _sourceBill?.location != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppDimens.pagePadding,
@@ -559,9 +575,14 @@ class _AddBillPageState extends State<AddBillPage> {
   /// 直接选中，不展开面板。
   Widget _buildCategoryGrid() {
     return StreamBuilder<List<Category>>(
-      stream: context.read<CategoryProvider>().categoriesStream(_type),
+      stream: _categoryStreams[_type],
       builder: (context, snapshot) {
-        final categories = snapshot.data ?? const <Category>[];
+        // 切换收/支类型换流后的空窗显示转圈，不能把空窗当成空列表，
+        // 否则会闪现"暂无分类"误导用户
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final categories = snapshot.data!;
         if (categories.isEmpty) {
           return const Center(
             child: Text(
@@ -641,10 +662,17 @@ class _AddBillPageState extends State<AddBillPage> {
     return Row(
       children: [
         for (final parent in row)
-          _ParentCell(
-            category: parent,
-            selected: parent.id == activeParentId,
-            onTap: () => _selectParent(parent, subsMap),
+          Expanded(
+            child: _CategoryTile(
+              category: parent,
+              selected: parent.id == activeParentId,
+              onTap: () => _selectParent(parent, subsMap),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              nameFontSize: 11,
+              nameLineHeight: 1,
+              nameToAvatarGap: 4,
+              ellipsis: true,
+            ),
           ),
         for (var i = row.length; i < 5; i++) const Expanded(child: SizedBox()),
       ],
@@ -696,10 +724,12 @@ class _AddBillPageState extends State<AddBillPage> {
             itemCount: subs.length,
             itemBuilder: (context, index) {
               final sub = subs[index];
-              return _CategoryCell(
+              return _CategoryTile(
                 category: sub,
                 selected: sub.id == _selectedCategoryId,
                 onTap: () => setState(() => _selectedCategoryId = sub.id),
+                nameFontSize: 12,
+                nameToAvatarGap: 5,
               );
             },
           ),
@@ -726,12 +756,9 @@ class _AddBillPageState extends State<AddBillPage> {
   void _onAmountKey(String key) {
     setState(() {
       if (key == '.') {
-        // 已含小数点或为空时不可再输入（空时填 0.）
-        if (_amountText.contains('.') || _amountText.isEmpty) {
-          if (_amountText.isEmpty) _amountText = '0.';
-          return;
-        }
-        _amountText += '.';
+        // 已含小数点忽略；空文本补前导 0（输入 "." 视为 "0."）
+        if (_amountText.contains('.')) return;
+        _amountText = _amountText.isEmpty ? '0.' : '$_amountText.';
         return;
       }
       // 输入首个非零数字时替换掉前导 0
@@ -787,11 +814,11 @@ class _AddBillPageState extends State<AddBillPage> {
   Future<void> _save({bool stay = false}) async {
     final cents = MoneyUtil.yuanToCents(_amountText);
     if (cents == null || cents == 0) {
-      _toast('请输入正确的金额');
+      showAppToast(context, '请输入正确的金额');
       return;
     }
     if (_selectedCategoryId == null) {
-      _toast('请选择分类');
+      showAppToast(context, '请选择分类');
       return;
     }
     final note = _noteController.text.trim();
@@ -843,10 +870,6 @@ class _AddBillPageState extends State<AddBillPage> {
       Navigator.of(context).pop();
     }
   }
-
-  /// 已提示过的预算级别（会话内去重）：如 'total-2'（总预算超支）、
-  /// 'cat-12-1'（分类 12 用量超 80%）
-  final Set<String> _budgetHintKeys = {};
 
   /// 记账后预算提醒：支出落库后检查账单所在月的总预算与该分类
   /// （二级归并到一级）预算用量，越过 80% 或超支时轻提示。
@@ -953,92 +976,6 @@ class _AddBillPageState extends State<AddBillPage> {
       if (mounted) Navigator.of(context).pop();
     }
   }
-
-  /// 轻提示
-  void _toast(String message) {
-    showAppToast(context, message);
-  }
-}
-
-/// 一级分类单元：圆形浅底图标，选中时分类色实底白图标，
-/// 与子分类面板内的选中风格保持一致
-class _ParentCell extends StatelessWidget {
-  const _ParentCell({
-    required this.category,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Category category;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Color(category.colorValue);
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        // 去掉方形水波/高亮：选中反馈只由图标底色渐变承担
-        splashFactory: NoSplash.splashFactory,
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  // 选中：分类色实底白图标；未选中：分类色浅底
-                  color: selected ? color : color.withValues(alpha: 0.13),
-                  shape: BoxShape.circle,
-                ),
-                child: category.iconCode == kTextIconCode
-                    ? Text(
-                        category.name.isEmpty
-                            ? '?'
-                            : category.name.characters.first,
-                        style: TextStyle(
-                          color: selected ? Colors.white : color,
-                          fontSize: 21,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    : Icon(
-                        IconData(
-                          // ignore: non_const_argument_for_const_parameter
-                          category.iconCode,
-                          fontFamily: 'MaterialIcons',
-                        ),
-                        color: selected ? Colors.white : color,
-                        size: 21,
-                      ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                category.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1,
-                  color: selected ? color : AppColors.textPrimary,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// 面板顶部三角指示器：与面板同色，营造"气泡指向选中一级分类"的效果
@@ -1058,70 +995,102 @@ class _TrianglePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// 分类网格单元（子分类面板内使用）
-class _CategoryCell extends StatelessWidget {
-  const _CategoryCell({
+/// 分类选择格子：一级分类行与子分类面板共用。
+/// 头像未选中为分类色 13% 浅底，选中为实底白前景；点击反馈只由
+/// 头像底色 150ms 渐变承担（禁用水波/高亮）。
+/// 一级格子需由调用方在外层包 Expanded 实现每行 5 等分。
+class _CategoryTile extends StatelessWidget {
+  const _CategoryTile({
     required this.category,
     required this.selected,
     required this.onTap,
+    required this.nameFontSize,
+    required this.nameToAvatarGap,
+    this.contentPadding = EdgeInsets.zero,
+    this.nameLineHeight,
+    this.ellipsis = false,
   });
 
   final Category category;
   final bool selected;
   final VoidCallback onTap;
 
+  /// 名称字号（一级 11 / 子级 12）
+  final double nameFontSize;
+
+  /// 头像与名称之间的距离（一级 4 / 子级 5）
+  final double nameToAvatarGap;
+
+  /// InkWell 内边距：一级行上下留白 8 以撑高点击区
+  final EdgeInsets contentPadding;
+
+  /// 名称行高；一级格子窄，传 1 收紧避免上下挤占
+  final double? nameLineHeight;
+
+  /// 名称是否单行省略（一级格子宽度固定需要，子级网格不需要）
+  final bool ellipsis;
+
   @override
   Widget build(BuildContext context) {
     final color = Color(category.colorValue);
+    final foreground = selected ? Colors.white : color;
     return InkWell(
       onTap: onTap,
-      // 去掉方形水波/高亮：选中反馈只由图标底色渐变承担
+      // 去掉方形水波/高亮：选中反馈只由头像底色渐变承担
       splashFactory: NoSplash.splashFactory,
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       borderRadius: BorderRadius.circular(12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              // 选中：分类色实底白图标；未选中：分类色浅底
-              color: selected ? color : color.withValues(alpha: 0.13),
-              shape: BoxShape.circle,
-            ),
-            child: category.iconCode == kTextIconCode
-                ? Text(
-                    category.name.isEmpty
-                        ? '?'
-                        : category.name.characters.first,
-                    style: TextStyle(
-                      color: selected ? Colors.white : color,
-                      fontSize: 21,
-                      height: 1.2,
-                      fontWeight: FontWeight.w600,
+      child: Padding(
+        padding: contentPadding,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                // 选中：分类色实底白图标；未选中：分类色浅底
+                color: selected ? color : color.withValues(alpha: 0.13),
+                shape: BoxShape.circle,
+              ),
+              child: category.iconCode == kTextIconCode
+                  ? Text(
+                      category.name.isEmpty
+                          ? '?'
+                          : category.name.characters.first,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 21,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  : Icon(
+                      // 图标码点存数据库、运行时动态取值，不是 const；
+                      // 故发布构建需 --no-tree-shake-icons 保留全量图标字体
+                      // ignore: non_const_argument_for_const_parameter
+                      IconData(category.iconCode, fontFamily: 'MaterialIcons'),
+                      color: foreground,
+                      size: 21,
                     ),
-                  )
-                : Icon(
-                    // ignore: non_const_argument_for_const_parameter
-                    IconData(category.iconCode, fontFamily: 'MaterialIcons'),
-                    color: selected ? Colors.white : color,
-                    size: 21,
-                  ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            category.name,
-            style: TextStyle(
-              fontSize: 12,
-              color: selected ? color : AppColors.textPrimary,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
             ),
-          ),
-        ],
+            SizedBox(height: nameToAvatarGap),
+            Text(
+              category.name,
+              maxLines: ellipsis ? 1 : null,
+              overflow: ellipsis ? TextOverflow.ellipsis : null,
+              style: TextStyle(
+                fontSize: nameFontSize,
+                height: nameLineHeight,
+                color: selected ? color : AppColors.textPrimary,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
