@@ -13,6 +13,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/backup_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
+import '../../utils/show_toast.dart';
 import '../../widgets/help_sheet.dart';
 import '../../widgets/section_card.dart';
 
@@ -29,7 +30,11 @@ class BackupPage extends StatefulWidget {
 }
 
 class _BackupPageState extends State<BackupPage> {
-  bool _busy = false;
+  /// 正在执行的备份操作（'share'/'save'/'import'），null = 空闲。
+  ///
+  /// 记录"谁在忙"而非单纯忙/不忙：转圈只给真正在干活的行，
+  /// 其余行显示灰箭头表示被锁；非空期间全部入口禁用防并发
+  String? _busyAction;
 
   /// 历史备份列表；null = 正在扫描。所有变更后统一走 _refresh 重扫
   List<InternalBackup>? _backups;
@@ -76,6 +81,7 @@ class _BackupPageState extends State<BackupPage> {
             child: Column(
               children: [
                 _menuItem(
+                  action: 'share',
                   icon: Icons.ios_share,
                   color: AppColors.primary,
                   title: '分享备份',
@@ -84,6 +90,7 @@ class _BackupPageState extends State<BackupPage> {
                 ),
                 const Divider(indent: 16, endIndent: 16),
                 _menuItem(
+                  action: 'save',
                   icon: Icons.download_outlined,
                   color: AppColors.income,
                   title: '保存到手机',
@@ -92,6 +99,7 @@ class _BackupPageState extends State<BackupPage> {
                 ),
                 const Divider(indent: 16, endIndent: 16),
                 _menuItem(
+                  action: 'import',
                   icon: Icons.restore_outlined,
                   color: AppColors.income,
                   title: '导入备份',
@@ -125,16 +133,22 @@ class _BackupPageState extends State<BackupPage> {
     );
   }
 
-  /// 单个菜单项（与我的页菜单同样式）
+  /// 单个菜单项（与我的页菜单同样式）。
+  ///
+  /// [action] 标识本行操作：页面有操作在执行时，本行是执行者则
+  /// 显示转圈，否则显示灰箭头（禁用态）；空闲时正常箭头
   Widget _menuItem({
+    required String action,
     required IconData icon,
     required Color color,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final pageBusy = _busyAction != null;
+    final rowBusy = _busyAction == action;
     return InkWell(
-      onTap: _busy ? null : onTap,
+      onTap: pageBusy ? null : onTap,
       borderRadius: BorderRadius.circular(AppDimens.radiusCard),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -176,13 +190,20 @@ class _BackupPageState extends State<BackupPage> {
                 ],
               ),
             ),
-            _busy
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            if (rowBusy)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Icon(
+                Icons.chevron_right,
+                color: pageBusy
+                    // 其他操作执行中：灰箭头表达"被锁住"，不转圈
+                    ? AppColors.textSecondary.withValues(alpha: 0.35)
+                    : AppColors.textSecondary,
+              ),
           ],
         ),
       ),
@@ -239,7 +260,7 @@ class _BackupPageState extends State<BackupPage> {
           ),
           Switch(
             value: enabled,
-            onChanged: _busy
+            onChanged: _busyAction != null
                 ? null
                 : (v) => context
                       .read<SettingsProvider>()
@@ -315,10 +336,10 @@ class _BackupPageState extends State<BackupPage> {
             // 时间精确到秒：一分钟内连续多次导入的留底也能分清先后
             : '${DateFormat('yyyy/MM/dd HH:mm:ss').format(backup.modifiedAt)} · '
             '${(backup.sizeBytes / 1024).toStringAsFixed(0)} KB';
-    final enabled = !blocked && !corrupted && !_busy;
+    final enabled = !blocked && !corrupted && _busyAction == null;
     return InkWell(
       onTap: enabled ? () => _restoreFromPath(backup.path) : null,
-      onLongPress: _busy ? null : () => _confirmDelete(backup),
+      onLongPress: _busyAction != null ? null : () => _confirmDelete(backup),
       borderRadius: BorderRadius.circular(AppDimens.radiusCard),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -480,7 +501,7 @@ class _BackupPageState extends State<BackupPage> {
   /// 微信从 FileProvider 异步读取，当场删会分享失败；下次启动时
   /// 由 cleanupExportTemp 统一清理。
   Future<void> _export() async {
-    setState(() => _busy = true);
+    setState(() => _busyAction = 'share');
     try {
       final db = context.read<AppDatabase>();
       final file = await BackupService().exportBackup(db);
@@ -498,7 +519,7 @@ class _BackupPageState extends State<BackupPage> {
     } catch (e) {
       _toast('导出失败：$e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyAction = null);
     }
   }
 
@@ -508,7 +529,7 @@ class _BackupPageState extends State<BackupPage> {
   /// 管理器看不到；SAF 保存的文件落在本机公开位置，卸载应用也不删。
   /// bytes 已读入内存写入目标，私有临时文件当场删除。
   Future<void> _saveToDevice() async {
-    setState(() => _busy = true);
+    setState(() => _busyAction = 'save');
     try {
       final db = context.read<AppDatabase>();
       final source = await BackupService().exportBackup(db);
@@ -531,7 +552,7 @@ class _BackupPageState extends State<BackupPage> {
     } catch (e) {
       _toast('保存失败：$e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyAction = null);
     }
   }
 
@@ -592,12 +613,12 @@ class _BackupPageState extends State<BackupPage> {
   ///
   /// 外部导入与"历史备份"列表点击共用（内部文件无需文件选择器）
   Future<void> _restoreFromPath(String path) async {
-    setState(() => _busy = true);
+    setState(() => _busyAction = 'import');
     String? error;
     try {
       error = await BackupService().validateBackup(path);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyAction = null);
     }
     if (!mounted) return;
     if (error != null) {
@@ -630,7 +651,7 @@ class _BackupPageState extends State<BackupPage> {
     );
     if (confirmed != true || !mounted) return;
 
-    setState(() => _busy = true);
+    setState(() => _busyAction = 'import');
     try {
       await BackupService().stageRestore(path);
       if (!mounted) return;
@@ -641,18 +662,12 @@ class _BackupPageState extends State<BackupPage> {
       exit(0);
     } catch (e) {
       _toast('导入失败：$e');
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyAction = null);
     }
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        // 带路径/结果说明的提示信息量大，8 秒保证读得完
-        duration: const Duration(seconds: 8),
-      ),
-    );
+    // 带路径/结果说明的提示信息量大，8 秒保证读得完
+    showAppToast(context, message, duration: const Duration(seconds: 8));
   }
 }

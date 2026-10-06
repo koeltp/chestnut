@@ -32,7 +32,7 @@ class LockProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 本机生物识别是否可用（设备支持且已录入）；
   /// 异步探测一次后缓存，锁屏页据此决定是否显示指纹按钮
   bool _biometricAvailable = false;
-  bool _biometricChecked = false;
+  Future<bool>? _biometricCheckFuture;
 
   bool get biometricAvailable => _biometricAvailable;
 
@@ -43,10 +43,16 @@ class LockProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get usesFace => _usesFace;
 
-  /// 探测本机生物识别可用性（锁屏页与设置页共用）
-  Future<void> ensureBiometricChecked() async {
-    if (_biometricChecked) return;
-    _biometricChecked = true;
+  /// 探测本机生物识别可用性（锁屏页与设置页共用）。
+  ///
+  /// 探测结果以 Future 形式缓存：冷启动时锁屏页首帧渲染远早于
+  /// platform channel 返回，自动弹框必须 await 本方法拿到最终结果，
+  /// 而不是读同步字段（那会永远拿到探测前的 false，导致弹框被跳过）
+  Future<bool> ensureBiometricChecked() {
+    return _biometricCheckFuture ??= _doBiometricCheck();
+  }
+
+  Future<bool> _doBiometricCheck() async {
     try {
       _biometricAvailable =
           await _auth.isDeviceSupported() && await _auth.canCheckBiometrics;
@@ -59,6 +65,7 @@ class LockProvider extends ChangeNotifier with WidgetsBindingObserver {
       _biometricAvailable = false;
     }
     notifyListeners();
+    return _biometricAvailable;
   }
 
   /// 弹出系统生物识别对话框，返回是否通过

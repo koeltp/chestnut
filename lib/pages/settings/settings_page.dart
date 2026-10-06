@@ -6,6 +6,7 @@ import '../../data/database.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/export_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
 import 'category_manage_page.dart';
 import 'backup_page.dart';
@@ -299,9 +300,7 @@ class SettingsPage extends StatelessWidget {
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导出失败：$e'), behavior: SnackBarBehavior.floating),
-      );
+      showAppToast(context, '导出失败：$e');
     }
   }
 

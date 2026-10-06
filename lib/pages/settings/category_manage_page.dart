@@ -6,6 +6,7 @@ import '../../data/database.dart';
 import '../../models/enums.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/show_toast.dart';
 import '../../widgets/category_avatar.dart';
 import '../../widgets/help_sheet.dart';
 import '../../widgets/section_card.dart';
@@ -392,9 +393,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     );
     if (!mounted) return;
     if (dup) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${target.name}"下已存在同名分类"${category.name}"')),
-      );
+      showAppToast(context, '"${target.name}"下已存在同名分类"${category.name}"');
       return;
     }
     final all = await provider.categoriesStream(_type).first;
@@ -413,9 +412,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     final all = await provider.categoriesStream(_type).first;
     if (!mounted) return;
     if (all.any((c) => c.parentId == parent.id)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('该分类下存在子分类，请先处理子分类后再改为二级分类')),
-      );
+      showAppToast(context, '该分类下存在子分类，请先处理子分类后再改为二级分类');
       return;
     }
     await _moveToParentSub(provider, parent);
@@ -440,8 +437,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
       );
       if (!mounted) return;
       if (dup) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('已存在同名一级分类"${sub.name}"')));
+        showAppToast(context, '已存在同名一级分类"${sub.name}"');
         return;
       }
       final parentCount = all.where((c) => c.parentId == null).length;
@@ -456,18 +452,14 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
       final rows = await provider.updateCategoryCounted(updated);
       debugPrint('[分类] 升级完成，受影响行数: $rows');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            rows > 0 ? '已将"${sub.name}"改为一级分类' : '未找到该分类（id=${sub.id}），写入 0 行',
-          ),
-        ),
+      showAppToast(
+        context,
+        rows > 0 ? '已将"${sub.name}"改为一级分类' : '未找到该分类（id=${sub.id}），写入 0 行',
       );
     } catch (e) {
       debugPrint('[分类] 升级失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('操作失败: $e')));
+        showAppToast(context, '操作失败: $e');
       }
     }
   }

@@ -9,6 +9,7 @@ import 'package:x_amap_base/x_amap_base.dart';
 
 import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/show_toast.dart';
 
 /// 位置选择页（京东式"选点"）
 ///
@@ -635,11 +636,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
-      );
+    showAppToast(context, message);
   }
 
   @override

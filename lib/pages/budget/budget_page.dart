@@ -9,6 +9,7 @@ import '../../providers/category_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
+import '../../utils/show_toast.dart';
 import '../../widgets/app_segmented.dart';
 import '../../widgets/category_avatar.dart';
 import '../../widgets/month_switcher.dart';
@@ -123,12 +124,7 @@ class _BudgetPageState extends State<BudgetPage> {
     );
     if (!mounted) return;
     if (last == null || last.amountCents <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('上月也未设置预算'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppToast(context, '上月也未设置预算');
       return;
     }
     await context.read<BudgetProvider>().setBudget(_month, last.amountCents);
@@ -617,12 +613,7 @@ class _BudgetPageState extends State<BudgetPage> {
     }
     final cents = MoneyUtil.yuanToCents(result);
     if (cents == null || cents <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请输入正确的预算金额'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppToast(context, '请输入正确的预算金额');
       return;
     }
     // 软提醒：本分类新值替换旧值后，全部分类预算之和超过总预算时确认
@@ -662,12 +653,7 @@ class _BudgetPageState extends State<BudgetPage> {
     if (result == null || !mounted) return;
     final cents = MoneyUtil.yuanToCents(result);
     if (cents == null || cents <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请输入正确的预算金额'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppToast(context, '请输入正确的预算金额');
       return;
     }
     // 软提醒：新总预算小于现有分类预算总和时确认（与分类端对称）

@@ -5,10 +5,7 @@ import '../theme/app_dimens.dart';
 
 /// 分段器布局模式
 enum AppSegmentedFit {
-  /// 紧凑：总宽 = 内容自然宽，项间 6px 缝隙（默认）
-  compact,
-
-  /// 等分不撑满：总宽 = 内容自然宽，各项严格等分、无缝贴合
+  /// 等分不撑满：总宽 = 内容自然宽，各项严格等分、无缝贴合（默认）
   equal,
 
   /// 撑满等分：铺满外部约束宽度，各项严格等分、无缝贴合
@@ -17,8 +14,9 @@ enum AppSegmentedFit {
 
 /// 统一分段切换器
 ///
-/// 记一笔页（支出/收入）、统计页、分类管理页共用的胶囊分段控件；
-/// [options] 与 [colors] 一一对应，选中项以对应语义色实底呈现。
+/// 记一笔页（支出/收入）、统计页、分类管理页共用的分段控件；
+/// 选中项以对应语义色**满格实底**呈现（完全遮住灰底），
+/// 圆角贴合容器：首段左两角圆、末段右两角圆、中间段直角。
 class AppSegmented<T> extends StatelessWidget {
   const AppSegmented({
     super.key,
@@ -26,7 +24,7 @@ class AppSegmented<T> extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.colors = const [AppColors.primary, AppColors.primary],
-    this.fit = AppSegmentedFit.compact,
+    this.fit = AppSegmentedFit.equal,
   });
 
   /// 选项与文案
@@ -46,41 +44,32 @@ class AppSegmented<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget row;
-    switch (fit) {
-      case AppSegmentedFit.compact:
-        // 紧凑：内容自适应宽 + 项间 6px 缝隙
-        final children = <Widget>[];
-        for (var i = 0; i < options.length; i++) {
-          children.add(_segment(i));
-          if (i != options.length - 1) {
-            children.add(const SizedBox(width: 6));
-          }
-        }
-        row = Row(mainAxisSize: MainAxisSize.min, children: children);
-      case AppSegmentedFit.equal:
-        // 等分不撑满：IntrinsicWidth 先测内容自然总宽，
-        // 再以该宽 tight 约束 Row，Expanded 各分一半（无缝）
-        row = IntrinsicWidth(
+    final row = switch (fit) {
+      // 等分不撑满：IntrinsicWidth 先测内容自然总宽，
+      // 再以该宽 tight 约束 Row，Expanded 各分一等份（无缝）
+      AppSegmentedFit.equal => IntrinsicWidth(
           child: Row(
             children: [
               for (var i = 0; i < options.length; i++)
                 Expanded(child: _segment(i)),
             ],
           ),
-        );
-      case AppSegmentedFit.stretch:
-        // 撑满：吃满外部约束宽度，Expanded 各分一半（无缝）
-        row = Row(
+        ),
+      // 撑满：吃满外部约束宽度，Expanded 各分一等份（无缝）
+      AppSegmentedFit.stretch => Row(
           children: [
             for (var i = 0; i < options.length; i++)
               Expanded(child: _segment(i)),
           ],
-        );
-    }
+        ),
+    };
 
+    // 无内边距：选中段才能满格遮住灰底
     return Container(
-      padding: const EdgeInsets.all(3),
+      // 裁切子元素：选中段满格直角块在容器圆角拐角处被裁成
+      // 与容器一致的圆角——圆角由裁切提供、恒定不参与动画，
+      // 避免切换时 BorderRadius 补间的"圆角先小后大"闪烁
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.fill,
         borderRadius: BorderRadius.circular(AppDimens.radiusControl),
@@ -128,7 +117,6 @@ class _Segment extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? color : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppDimens.radiusControl - 3),
         ),
         child: Text(
           label,

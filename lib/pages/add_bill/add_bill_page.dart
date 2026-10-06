@@ -13,6 +13,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
+import '../../utils/show_toast.dart';
 import '../../widgets/category_avatar.dart';
 import '../../widgets/number_keyboard.dart';
 import 'location_picker_page.dart';
@@ -903,9 +904,7 @@ class _AddBillPageState extends State<AddBillPage> {
       }
     }
     if (hint != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(hint), behavior: SnackBarBehavior.floating),
-      );
+      showAppToast(context, hint);
     }
   }
 
@@ -957,9 +956,7 @@ class _AddBillPageState extends State<AddBillPage> {
 
   /// 轻提示
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+    showAppToast(context, message);
   }
 }
 

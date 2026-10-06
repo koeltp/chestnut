@@ -5,9 +5,10 @@ import '../../providers/lock_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/passcode_util.dart';
+import '../../utils/show_toast.dart';
 import '../../widgets/app_segmented.dart';
+import '../../widgets/pin_pad_input.dart';
 import '../../widgets/section_card.dart';
-import '../lock/lock_screen.dart';
 
 /// 密码保护设置页：开启（PIN → 确认 → 安全问题）/ 修改 / 关闭
 ///
@@ -81,9 +82,7 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
   }
 
   void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+    showAppToast(context, message);
   }
 
   // ===== 主界面动作 =====
