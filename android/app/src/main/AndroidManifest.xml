@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 联网：高德 Web 接口（附近 POI/逆地理/输入提示）与地图瓦片必需。
+         debug 构建会由 Flutter 自动注入此权限，但 release 不会——必须
+         显式声明，否则正式包所有 HTTP 请求都会因无权限而失败 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 高德网络定位需要读取网络/Wi-Fi 状态（普通安装权限，无需运行时申请） -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <!-- 记账定位：精确定位获取坐标，粗略定位作为降级 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
