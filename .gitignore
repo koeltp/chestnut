@@ -61,3 +61,10 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# 本机数据库调试副本（含真实账目与位置，严禁入库）
+backup_local/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
