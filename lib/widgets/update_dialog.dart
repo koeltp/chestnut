@@ -55,15 +55,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           });
         },
       );
-      final valid = await _service.verifyApk(file, _info);
+      // 校验失败会抛 UpdateException，由下方统一 catch 转错误态
+      await _service.verifyApk(file, _info);
       if (!mounted) return;
-      if (!valid) {
-        setState(() {
-          _phase = _Phase.error;
-          _error = '安装包校验失败，请重试';
-        });
-        return;
-      }
       final launched = await _service.installApk(file);
       if (!mounted) return;
       if (launched) {

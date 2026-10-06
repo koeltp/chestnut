@@ -142,14 +142,25 @@ class UpdateService {
     if (await apkFile.exists()) await apkFile.delete();
 
     final client = http.Client();
+    // 提到 try 外：收流结束后还要核对实收字节与 Content-Length
+    var total = -1;
+    var received = 0;
     try {
-      final request = http.Request('GET', Uri.parse(info.apkUrl));
+      // CDN 按完整 URL（含查询串）缓存对象：同名 APK 被新版本替换后，
+      // 各边缘节点可能在缓存 TTL 内继续吐旧包，必须带时间戳强制回源
+      final original = Uri.parse(info.apkUrl);
+      final requestUrl = original.replace(
+        queryParameters: <String, String>{
+          ...original.queryParameters,
+          't': '${DateTime.now().millisecondsSinceEpoch}',
+        },
+      );
+      final request = http.Request('GET', requestUrl);
       final streamed = await client.send(request);
       if (streamed.statusCode != 200) {
         throw UpdateException('下载失败（HTTP ${streamed.statusCode}）');
       }
-      final total = streamed.contentLength ?? -1;
-      var received = 0;
+      total = streamed.contentLength ?? -1;
       final sink = apkFile.openWrite();
       try {
         await for (final chunk in streamed.stream) {
@@ -168,20 +179,29 @@ class UpdateService {
     } finally {
       client.close();
     }
+    // 连接提前断开时流可能"正常结束"却没收全，显式拦下，
+    // 给出明确提示而不是等哈希校验失败
+    if (total >= 0 && received != total) {
+      if (await apkFile.exists()) await apkFile.delete();
+      throw UpdateException('下载不完整（$received/$total 字节），请重试');
+    }
     return apkFile;
   }
 
-  /// 安装包完整性校验：清单给了大小/哈希就必校，任一不符拒绝安装。
-  /// 防止网络中断产生残包或中间链路被替换。
-  Future<bool> verifyApk(File file, UpdateInfo info) async {
+  /// 安装包完整性校验：清单给了大小/哈希就必校，任一不符抛 [UpdateException]。
+  /// 防止网络中断产生残包或中间链路被替换；错误信息带实际值，便于远程排查。
+  Future<void> verifyApk(File file, UpdateInfo info) async {
     final size = await file.length();
-    if (info.fileSize != null && size != info.fileSize) return false;
+    if (info.fileSize != null && size != info.fileSize) {
+      throw UpdateException('安装包大小不符（实得 $size / 应为 ${info.fileSize} 字节）');
+    }
     final expected = info.sha256;
     if (expected != null) {
       final digest = await sha256.bind(file.openRead()).last;
-      if (digest.toString() != expected) return false;
+      if (digest.toString() != expected) {
+        throw UpdateException('安装包哈希校验失败（$digest）');
+      }
     }
-    return true;
   }
 
   /// 拉起系统包安装器；未授权"未知来源"时 open_filex 会引导用户去设置页
