@@ -75,6 +75,10 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
   void _resetFlow() {
     setState(() {
       _flow = _Flow.none;
+      // _enabling 必须一并复位：开启成功后若遗留 true，之后再走
+      // "修改安全问题"会误入开启分支，用已被清空的 _pendingPin 触发
+      // 空断言异常，表现为点击保存按钮毫无反应
+      _enabling = false;
       _pendingPin = null;
       _pendingAction = null;
       _errorText = null;
@@ -189,7 +193,13 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
       return;
     }
     if (_enabling) {
-      final pin = _pendingPin!;
+      final pin = _pendingPin;
+      // 状态兜底：开启分支必须持有待写入的 PIN，缺失说明流程状态异常，
+      // 明确提示而不是让空断言静默崩溃（用户只会看到"点了没反应"）
+      if (pin == null) {
+        _showToast('操作状态异常，请返回重试');
+        return;
+      }
       final salt = PasscodeUtil.generateSalt();
       await settings.savePasscode(
         salt: salt,
@@ -215,13 +225,23 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _flow == _Flow.editQuestion ? '安全问题' : '密码保护',
+    // 流程是页内状态机（不 push 子页），默认 pop 会把整页弹回我的页；
+    // 拦截返回：流程进行中（输密码/安全问题）退回密码保护主界面，
+    // 主界面再按返回才真正退出
+    return PopScope(
+      canPop: _flow == _Flow.none,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _resetFlow();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            _flow == _Flow.editQuestion ? '安全问题' : '密码保护',
+          ),
         ),
+        body: SafeArea(child: _buildBody()),
       ),
-      body: SafeArea(child: _buildBody()),
     );
   }
 

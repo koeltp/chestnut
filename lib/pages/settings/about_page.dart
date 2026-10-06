@@ -75,20 +75,12 @@ class _AboutPageState extends State<AboutPage> {
   Widget _buildHeader() {
     return Column(
       children: [
-        Container(
-          width: 88,
-          height: 88,
-          decoration: BoxDecoration(
-            gradient: AppColors.headerGradient,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          padding: const EdgeInsets.all(14),
-          child: Image.asset(
-            'assets/images/logo.png',
-            width: 60,
-            height: 60,
-            fit: BoxFit.contain,
-          ),
+        // logo 原图直接展示（图片自带圆角），不加衬底避免叠色突兀
+        Image.asset(
+          'assets/images/logo.png',
+          width: 80,
+          height: 80,
+          fit: BoxFit.contain,
         ),
         const SizedBox(height: 14),
         const Text(
