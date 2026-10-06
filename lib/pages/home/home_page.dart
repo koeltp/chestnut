@@ -7,6 +7,8 @@ import '../../models/enums.dart';
 import '../../models/summaries.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/category_provider.dart';
+import '../../providers/lock_provider.dart';
+import '../../services/update_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/date_label_util.dart';
@@ -15,6 +17,7 @@ import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/update_dialog.dart';
 import '../stats/stats_page.dart';
 import 'period_picker_dialog.dart';
 
@@ -33,6 +36,30 @@ class _HomePageState extends State<HomePage> {
     // 数据库为惰性打开：首页账单流订阅即触发打开，降级发生时才写入
     // 标记，延迟 2 秒检查确保标记已落盘
     Future<void>.delayed(const Duration(seconds: 2), _showDowngradeNotice);
+    // 自更新检测：再延后 1.5 秒避开启动任务与降级提示，失败完全静默
+    Future<void>.delayed(const Duration(seconds: 4), _checkAppUpdate);
+  }
+
+  /// 启动自动更新检查。
+  ///
+  /// 打扰纪律：锁屏遮罩展示中 / 已有弹窗（如降级提示）压栈时放弃本次；
+  /// 该版本被用户点过"以后再说"不再自动弹（手动检查不受限）。
+  /// 网络或服务异常一律静默——自更新绝不能干扰记账主流程。
+  Future<void> _checkAppUpdate() async {
+    try {
+      final service = UpdateService();
+      final info = await service.checkForUpdate();
+      if (info == null || !mounted) return;
+      if (await service.isIgnored(info.versionCode)) return;
+      if (!mounted) return;
+      // 密码锁屏覆盖中（dialog 会盖到锁屏之上）；降级提示等弹窗正显示
+      final locked = context.read<LockProvider>().locked;
+      final homeRouteCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+      if (locked || !homeRouteCurrent) return;
+      await showUpdateDialog(context, info);
+    } catch (_) {
+      // 自动检查保持静默；错误提示只在手动检查时出现
+    }
   }
 
   /// 降级重建后的恢复引导：告知数据已留底、去哪恢复，弹一次即清除

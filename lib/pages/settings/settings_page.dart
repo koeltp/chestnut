@@ -1,20 +1,41 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/export_service.dart';
+import '../../services/update_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/update_dialog.dart';
 import 'category_manage_page.dart';
 import 'backup_page.dart';
 import 'passcode_settings_page.dart';
 
-/// 我的页：分类管理、记账定位开关、数据导出、关于
-class SettingsPage extends StatelessWidget {
+/// 我的页：分类管理、定位开关、数据导出、关于
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  /// 当前应用版本名（启动后异步获取，头部与关于框共用，不再硬编码）
+  String _versionName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _versionName = info.version);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +98,7 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Chestnut · v1.0.0',
+                _versionName.isEmpty ? 'Chestnut' : 'Chestnut · v$_versionName',
                 style: TextStyle(fontSize: 12, color: AppColors.onHeader(0.7)),
               ),
             ],
@@ -156,6 +177,17 @@ class SettingsPage extends StatelessWidget {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const BackupPage()),
             ),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _menuItem(
+            context,
+            icon: Icons.system_update_outlined,
+            color: AppColors.primaryDeep,
+            title: '检查更新',
+            subtitle: _versionName.isEmpty
+                ? '发现新版本可立即升级'
+                : '当前 v$_versionName · 检查新版本',
+            onTap: () => _checkUpdateManually(context),
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(
@@ -304,19 +336,45 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
+  /// 手动检查更新：转圈 → 有新版直接弹更新卡片；已是最新/失败给轻提示。
+  /// 与启动自动检查的区别：不受"以后再说"忽略记录限制，且失败要明示
+  Future<void> _checkUpdateManually(BuildContext context) async {
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _CheckingDialog(),
+      ),
+    );
+    try {
+      final info = await UpdateService().checkForUpdate();
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); // 关闭检查中弹窗
+      if (info == null) {
+        showAppToast(context, '已是最新版本');
+      } else {
+        await showUpdateDialog(context, info);
+      }
+    } on UpdateException catch (e) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      showAppToast(context, e.message);
+    }
+  }
+
   /// 关于对话框
   void _showAbout(BuildContext context) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('关于栗子记账'),
-        content: const Text(
+        content: Text(
           '栗子记账（Chestnut）是一款简洁精致的个人记账应用。\n\n'
           '· 收支记录与分类管理\n'
           '· 月度统计图表\n'
           '· 预算管理\n'
           '· 数据本地存储，安全私密\n\n'
-          '版本：1.0.0',
+          '版本：${_versionName.isEmpty ? '-' : _versionName}',
         ),
         actions: [
           TextButton(
@@ -324,6 +382,34 @@ class SettingsPage extends StatelessWidget {
             child: const Text('知道了'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "正在检查更新"小弹窗：白色圆角卡 + 转圈，不可点遮罩关闭
+class _CheckingDialog extends StatelessWidget {
+  const _CheckingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 80),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppColors.primary),
+            SizedBox(height: 16),
+            Text(
+              '正在检查更新…',
+              style: TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            ),
+          ],
+        ),
       ),
     );
   }

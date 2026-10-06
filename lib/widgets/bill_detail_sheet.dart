@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:map_launcher/map_launcher.dart';
 import 'package:provider/provider.dart';
 
 import '../data/database.dart';
@@ -9,6 +10,7 @@ import '../pages/add_bill/add_bill_page.dart';
 import '../providers/bill_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
+import '../utils/show_toast.dart';
 import 'category_avatar.dart';
 
 /// 账单详情底部弹窗：点击明细条目时展示完整信息，代替"直接进编辑页"
@@ -140,6 +142,107 @@ class _DetailBodyState extends State<_DetailBody> {
     widget.onCategoryTap(c);
   }
 
+  /// 点击位置行：拉起手机上已安装的地图 App，在该笔消费地点打点。
+  /// 只"查看位置"不直接开始导航——查旧账多为确认店在哪，导航动作过重。
+  ///
+  /// 库存坐标是 GCJ-02（高德系）：map_launcher 对高德/腾讯直传，
+  /// 对百度以 coord_type=gcj02 声明由百度自转 BD-09，无需手动纠偏。
+  Future<void> _tapLocation() async {
+    final lat = _current.lat;
+    final lng = _current.lng;
+    if (lat == null || lng == null) return;
+    final request = MapLauncher.marker(
+      LocationCoords(lat, lng, title: _current.location),
+    );
+    // 只提供国内主流四家；未安装原生 App 的不列：
+    // 高德/百度只有 scheme 没有网页兜底，谷歌网页版在国内打不开
+    final candidates = await request.getSupportedMaps(const [
+      MapApp.amap,
+      MapApp.baidu,
+      MapApp.tencent,
+      MapApp.google,
+    ]);
+    if (!mounted) return;
+    final installed = candidates.where((m) => m.isInstalled).toList();
+    if (installed.isEmpty) {
+      showAppToast(context, '未检测到已安装的地图应用');
+      return;
+    }
+    if (installed.length == 1) {
+      await _openMap(installed.single);
+      return;
+    }
+    final picked = await _showMapPicker(installed);
+    if (picked != null) await _openMap(picked);
+  }
+
+  /// 拉起指定地图；scheme 偶发失效时插件内部已尝试 universal link 兜底
+  Future<void> _openMap(SupportedMap map) async {
+    try {
+      await map.show();
+    } on MapLaunchException {
+      if (mounted) showAppToast(context, '打开地图失败，请重试');
+    }
+  }
+
+  /// 多地图选择面板：白色圆角底部弹窗，风格与详情弹窗一致
+  Future<SupportedMap?> _showMapPicker(List<SupportedMap> maps) {
+    return showModalBottomSheet<SupportedMap>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                '选择地图应用',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            for (final m in maps)
+              ListTile(
+                leading: Image.memory(m.iconBytes, width: 32, height: 32),
+                title: Text(_mapLabel(m)),
+                titleTextStyle: const TextStyle(
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                ),
+                onTap: () => Navigator.of(ctx).pop(m),
+              ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 地图 App 中文名映射：插件自带 name 是英文
+  String _mapLabel(SupportedMap m) => switch (m.map.id) {
+        'amap' => '高德地图',
+        'baidu' => '百度地图',
+        'tencent' => '腾讯地图',
+        'google' => 'Google 地图',
+        _ => m.name,
+      };
+
   /// 时间显示格式：2026-10-02 18:08
   String _format(DateTime t, int? timeMinute) {
     final tm = timeMinute ?? t.hour * 60 + t.minute;
@@ -157,6 +260,8 @@ class _DetailBodyState extends State<_DetailBody> {
     final category = widget.categories[_current.categoryId];
     // 位置展示用完整地址（含店名），无完整地址退回短地名
     final location = _current.locationFull ?? _current.location;
+    // 仅精确坐标的账单可跳地图；只有行政区地名的旧账保持纯文字
+    final hasLocationPoint = _current.lat != null && _current.lng != null;
     return SafeArea(
       // 内容可滚动：超长地址/备注撑满屏幕时滚动查看，不截断不溢出
       child: SingleChildScrollView(
@@ -299,13 +404,32 @@ class _DetailBodyState extends State<_DetailBody> {
                 const Divider(height: 1, color: AppColors.divider),
                 _Row(
                   label: '位置',
-                  child: Text(
-                    location,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
-                    ),
+                  onTap: hasLocationPoint ? _tapLocation : null,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          location,
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      // 地图跳转 affordance：暗示此行可点
+                      if (hasLocationPoint)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 1, left: 4),
+                          child: Icon(
+                            Icons.map_outlined,
+                            size: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],

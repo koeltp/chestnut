@@ -45,6 +45,9 @@ dependencies:
   crypto: ^3.0.6
   local_auth_android: ^1.0.56
   local_auth_darwin: ^1.6.1
+  map_launcher: ^6.0.0
+  package_info_plus: ^10.2.2
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
