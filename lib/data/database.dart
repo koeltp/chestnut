@@ -20,7 +20,7 @@ part 'database.g.dart';
 ///
 /// 开发期 v1~v8 的历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 1;
+const int kSchemaVersion = 2;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -62,7 +62,7 @@ class AppDatabase extends _$AppDatabase {
     // from > to 即降级——用户装回旧版 App，旧代码无法识别新结构，
     // drift 默认抛异常导致启动崩溃死循环，这里改为重建空库保证可用，
     // 高版本数据已在打开连接前由 _backupBeforeOpen 留底。
-    // from < to 的正常升级暂无分支，未来结构变更时在这里追加。
+    // from < to 的正常升级走 else 分支，逐版本追加列迁移。
     onUpgrade: (m, from, to) async {
       if (from > to) {
         // 删除所有实体（表/索引/触发器）后按当前代码结构重建
@@ -77,6 +77,12 @@ class AppDatabase extends _$AppDatabase {
           await prefs.setBool(kDowngradeDetectedKey, true);
         } catch (_) {
           // 标记失败只影响提示，不影响重建结果
+        }
+      } else {
+        // 正常升级：迁移只增不删。可空列直接 ADD COLUMN，
+        // 旧账单优惠额为 null（未使用优惠）
+        if (from < 2) {
+          await m.addColumn(bills, bills.discountCents);
         }
       }
     },

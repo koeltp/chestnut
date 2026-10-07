@@ -293,16 +293,62 @@ class _DetailBodyState extends State<_DetailBody> {
               const SizedBox(height: 6),
               _Row(
                 label: '金额',
-                child: Text(
-                  '${isExpense ? '-' : '+'}¥'
-                  '${MoneyUtil.centsToYuanGroupedTrimmed(_current.amountCents)}',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: amountColor,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // 免单（实付 0 且有优惠）显示绿色"免单"，不再显 -¥0
+                    (_current.amountCents == 0 &&
+                            _current.discountCents != null &&
+                            _current.discountCents! > 0)
+                        ? const Text(
+                            '免单',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.income,
+                            ),
+                          )
+                        : Text(
+                            '${isExpense ? '-' : '+'}¥'
+                            '${MoneyUtil.centsToYuanGroupedTrimmed(_current.amountCents)}',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: amountColor,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                    // 有优惠时在实付下方展示原价（划线）与省额
+                    if (_current.discountCents != null &&
+                        _current.discountCents! > 0) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '原价 ¥${MoneyUtil.centsToYuanGroupedTrimmed(_current.amountCents + _current.discountCents!)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '省 ¥${MoneyUtil.centsToYuanTrimmed(_current.discountCents!)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.income,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const Divider(height: 1, color: AppColors.divider),
@@ -409,6 +455,15 @@ class _DetailBodyState extends State<_DetailBody> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 与列表条目同款定位针图标，置于地址文字之前
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2, right: 4),
+                        child: Icon(
+                          Icons.place_outlined,
+                          size: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                       Flexible(
                         child: Text(
                           location,
@@ -419,16 +474,6 @@ class _DetailBodyState extends State<_DetailBody> {
                           ),
                         ),
                       ),
-                      // 地图跳转 affordance：暗示此行可点
-                      if (hasLocationPoint)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 1, left: 4),
-                          child: Icon(
-                            Icons.map_outlined,
-                            size: 16,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
                     ],
                   ),
                 ),

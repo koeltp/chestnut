@@ -18,6 +18,7 @@ class BillListItem extends StatelessWidget {
     required this.colorValue,
     required this.type,
     required this.amountCents,
+    this.discountCents,
     this.note,
     this.location,
     this.onTap,
@@ -29,6 +30,9 @@ class BillListItem extends StatelessWidget {
   final int colorValue;
   final BillType type;
   final int amountCents;
+
+  /// 优惠金额（分）；非空且 >0 时备注行前缀显示绿色"省 ¥x"
+  final int? discountCents;
   final String? note;
 
   /// 消费地点（记账定位），无则不显示
@@ -64,16 +68,47 @@ class BillListItem extends StatelessWidget {
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  if (note != null && note!.isNotEmpty) ...[
+                  // 优惠与备注同一行：省 ¥x（绿）｜ 备注（灰），
+                  // 只有二者至少其一时整行才出现
+                  if ((discountCents != null && discountCents! > 0) ||
+                      (note != null && note!.isNotEmpty)) ...[
                     const SizedBox(height: 2),
-                    Text(
-                      note!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                    Row(
+                      children: [
+                        if (discountCents != null && discountCents! > 0)
+                          Text(
+                            '省 ¥${MoneyUtil.centsToYuanTrimmed(discountCents!)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.income,
+                            ),
+                          ),
+                        if ((discountCents != null && discountCents! > 0) &&
+                            note != null &&
+                            note!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          const Text(
+                            '|',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.divider,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        if (note != null && note!.isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              note!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                   if (location != null && location!.isNotEmpty) ...[
@@ -105,15 +140,26 @@ class BillListItem extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppDimens.gapSm),
-            Text(
-              '${isExpense ? '-' : '+'}${MoneyUtil.centsToYuanTrimmed(amountCents)}',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                fontFeatures: const [FontFeature.tabularFigures()],
-                color: isExpense ? AppColors.textPrimary : AppColors.income,
-              ),
-            ),
+            // 免单（实付 0 且有优惠）直接显示绿色"免单"，比"¥0"直观
+            (amountCents == 0 && discountCents != null && discountCents! > 0)
+                ? const Text(
+                    '免单',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.income,
+                    ),
+                  )
+                : Text(
+                    '${isExpense ? '-' : '+'}${MoneyUtil.centsToYuanTrimmed(amountCents)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color:
+                          isExpense ? AppColors.textPrimary : AppColors.income,
+                    ),
+                  ),
           ],
         ),
       ),

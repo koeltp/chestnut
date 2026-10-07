@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,7 +37,10 @@ class _HomePageState extends State<HomePage> {
     // 数据库为惰性打开：首页账单流订阅即触发打开，降级发生时才写入
     // 标记，延迟 2 秒检查确保标记已落盘
     Future<void>.delayed(const Duration(seconds: 2), _showDowngradeNotice);
-    // 自更新检测：再延后 1.5 秒避开启动任务与降级提示，失败完全静默
+    // 自更新检测：再延后 1.5 秒避开启动任务与降级提示，失败完全静默。
+    // Dev 包跳过：应用内更新安装的是生产包（包名不同），在 Dev 包里
+    // 走下载安装只会多装出一个生产包，纯属误导
+    if (kDebugMode) return;
     Future<void>.delayed(const Duration(seconds: 4), _checkAppUpdate);
   }
 
@@ -182,6 +186,7 @@ class _SummaryHeader extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: AppDimens.gapLg),
+                  // 上行：流量（支出/收入），下行：结果（优惠节省/结余）
                   Row(
                     children: [
                       _SummaryItem(
@@ -196,6 +201,23 @@ class _SummaryHeader extends StatelessWidget {
                         amount: MoneyUtil.centsToYuanTrimmed(
                           summary.incomeCents,
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppDimens.gapMd),
+                  // 两行之间贯通横线
+                  Container(height: 1, color: AppColors.onHeader(0.2)),
+                  const SizedBox(height: AppDimens.gapMd),
+                  Row(
+                    children: [
+                      // 优惠节省是"正反馈"辅助指标：字号小一档、亮度略低，
+                      // 避免与支出/收入/结余三个主指标抢视觉权重
+                      _SummaryItem(
+                        label: '优惠节省',
+                        amount: MoneyUtil.centsToYuanTrimmed(
+                          summary.discountCents,
+                        ),
+                        small: true,
                       ),
                       _divider(),
                       _SummaryItem(
@@ -223,10 +245,17 @@ class _SummaryHeader extends StatelessWidget {
 
 /// 汇总单项
 class _SummaryItem extends StatelessWidget {
-  const _SummaryItem({required this.label, required this.amount});
+  const _SummaryItem({
+    required this.label,
+    required this.amount,
+    this.small = false,
+  });
 
   final String label;
   final String amount;
+
+  /// 辅助指标（优惠节省）：字号与亮度小一档
+  final bool small;
 
   @override
   Widget build(BuildContext context) {
@@ -235,18 +264,21 @@ class _SummaryItem extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(fontSize: 12, color: AppColors.onHeader(0.75)),
+            style: TextStyle(
+              fontSize: small ? 11 : 12,
+              color: AppColors.onHeader(small ? 0.65 : 0.75),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             amount,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 19,
+            style: TextStyle(
+              fontSize: small ? 16 : 19,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
-              fontFeatures: [FontFeature.tabularFigures()],
+              color: Colors.white.withValues(alpha: small ? 0.9 : 1),
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -411,6 +443,7 @@ class _DayCard extends StatelessWidget {
       colorValue: category?.colorValue ?? 0xFFA8A8A8,
       type: bill.type,
       amountCents: bill.amountCents,
+      discountCents: bill.discountCents,
       note: bill.note,
       location: bill.location,
       onTap: () => showBillDetailSheet(

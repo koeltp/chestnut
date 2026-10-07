@@ -216,6 +216,8 @@ class StatsSummaryCard extends StatelessWidget {
     required this.count,
     required this.avgPerBillCents,
     required this.avgPerMonthCents,
+    this.discountCount = 0,
+    this.discountCents = 0,
   });
 
   final bool isExpense;
@@ -224,6 +226,10 @@ class StatsSummaryCard extends StatelessWidget {
   final int count;
   final int avgPerBillCents;
   final int avgPerMonthCents;
+
+  /// 优惠笔数与节省总额（分）；仅支出视图可能 >0
+  final int discountCount;
+  final int discountCents;
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +292,31 @@ class StatsSummaryCard extends StatelessWidget {
                 ),
               ],
             ),
+            // 优惠行：仅支出视图且当前筛选范围内存在优惠账单时出现，
+            // 数据随筛选（日期范围/分类钻取）自动收窄
+            if (isExpense && discountCount > 0) ...[
+              const SizedBox(height: AppDimens.gapMd),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '共优惠 $discountCount 笔，省 ',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    '¥${MoneyUtil.centsToYuanGroupedTrimmed(discountCents)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.income,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -377,6 +408,7 @@ class StatsDayCard extends StatelessWidget {
                   colorValue: category?.colorValue ?? 0xFFA8A8A8,
                   type: bill.type,
                   amountCents: bill.amountCents,
+                  discountCents: bill.discountCents,
                   note: bill.note,
                   location: bill.location,
                   onTap: () => showBillDetailSheet(

@@ -51,6 +51,12 @@ android {
 
     buildTypes {
         debug {
+            // 双包共存：Dev 包名加 .debug 后缀，与生产包数据完全隔离，
+            // flutter run / 真机调试永远落在此包，绝不触碰生产包真实数据。
+            // 注意：高德 Android Key 按包名绑定，Dev 包需用控制台中
+            // chestnut_dev 这个 Key（Dart 侧 kReleaseMode 切换 +
+            // src/debug/AndroidManifest.xml 覆写 meta-data）
+            applicationIdSuffix = ".debug"
             signingConfig = signingConfigs.getByName("release")
         }
         release {

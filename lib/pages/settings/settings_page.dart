@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -340,8 +341,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 手动检查更新：转圈 → 有新版直接弹更新卡片；已是最新/失败给轻提示。
-  /// 与启动自动检查的区别：不受"以后再说"忽略记录限制，且失败要明示
+  /// 与启动自动检查的区别：不受"以后再说"忽略记录限制，且失败要明示。
+  /// Dev 包直接提示：更新装的是生产包，在 Dev 包里走只会多装一个包
   Future<void> _checkUpdateManually(BuildContext context) async {
+    if (kDebugMode) {
+      showAppToast(context, '开发版不支持应用内更新');
+      return;
+    }
     unawaited(
       showDialog<void>(
         context: context,

@@ -101,8 +101,10 @@ class BillRepository {
   /// 上界排除（与账单查询一致），避免把下期首日计入本期。
   Stream<MonthSummary> watchSummaryBetween(DateTime start, DateTime end) {
     final sum = _db.bills.amountCents.sum();
+    // 优惠只可能出现在支出账单（收入行该列恒 null，sum 自动忽略 null）
+    final discountSum = _db.bills.discountCents.sum();
     final query = _db.selectOnly(_db.bills)
-      ..addColumns([_db.bills.type, sum])
+      ..addColumns([_db.bills.type, sum, discountSum])
       ..where(
         _db.bills.date.isBiggerOrEqualValue(start) &
             _db.bills.date.isSmallerThanValue(end),
@@ -112,16 +114,22 @@ class BillRepository {
     return query.watch().map((rows) {
       var expense = 0;
       var income = 0;
+      var discount = 0;
       for (final row in rows) {
         final total = row.read(sum) ?? 0;
         // intEnum 列在 selectOnly 聚合场景读出的是原始 int，与枚举 index 比较
         if (row.read(_db.bills.type) == BillType.expense.index) {
           expense = total;
+          discount = row.read(discountSum) ?? 0;
         } else {
           income = total;
         }
       }
-      return MonthSummary(expenseCents: expense, incomeCents: income);
+      return MonthSummary(
+        expenseCents: expense,
+        incomeCents: income,
+        discountCents: discount,
+      );
     });
   }
 
@@ -257,6 +265,7 @@ class BillRepository {
         BillsCompanion(
           type: Value(bill.type),
           amountCents: Value(bill.amountCents),
+          discountCents: Value(bill.discountCents),
           categoryId: Value(bill.categoryId),
           note: Value(bill.note),
           date: Value(bill.date),

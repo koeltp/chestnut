@@ -5,13 +5,20 @@ import '../models/enums.dart';
 
 /// 月度收支汇总
 class MonthSummary {
-  const MonthSummary({required this.expenseCents, required this.incomeCents});
+  const MonthSummary({
+    required this.expenseCents,
+    required this.incomeCents,
+    this.discountCents = 0,
+  });
 
-  /// 当月支出总额（分）
+  /// 当月支出总额（分，实付口径）
   final int expenseCents;
 
   /// 当月收入总额（分）
   final int incomeCents;
+
+  /// 当月优惠节省总额（分，仅支出账单的 discountCents 求和）
+  final int discountCents;
 
   /// 结余 = 收入 - 支出
   int get balanceCents => incomeCents - expenseCents;

@@ -28,13 +28,20 @@ class ExportService {
     bills.sort((a, b) => a.date.compareTo(b.date));
 
     final rows = <List<dynamic>>[
-      ['日期', '类型', '分类', '金额(元)', '备注'],
+      ['日期', '类型', '分类', '金额(元)', '优惠(元)', '原价(元)', '备注'],
       ...bills.map(
         (b) => [
           _formatDate(b.date),
           b.type.label,
           categories[b.categoryId]?.name ?? '未知分类',
           MoneyUtil.centsToYuan(b.amountCents),
+          // 无优惠账单两列留空（空表示"无此概念"，区别于免单的 0）
+          b.discountCents == null
+              ? ''
+              : MoneyUtil.centsToYuan(b.discountCents!),
+          b.discountCents == null
+              ? ''
+              : MoneyUtil.centsToYuan(b.amountCents + b.discountCents!),
           b.note ?? '',
         ],
       ),

@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 高德 Android Key 按包名绑定：Dev 包（.debug 后缀）使用控制台
+         chestnut_dev 这个 Key，构建合并时覆写 main 里的正式 Key -->
+    <meta-data
+        android:name="com.amap.api.v2.apikey"
+        android:value="d18b05e54a3118e6eb4648b9f4358983" />
 </manifest>

@@ -18,8 +18,13 @@ class Bills extends Table {
   /// 账单类型（支出 / 收入）
   IntColumn get type => intEnum<BillType>()();
 
-  /// 金额，单位：分
+  /// 金额，单位：分（用户实际支付的金额，统计/预算一律以此为准）
   IntColumn get amountCents => integer()();
+
+  /// 优惠金额，单位：分；null = 该笔未使用优惠。
+  /// 原价不单独存储，= amountCents + discountCents。
+  /// 约束 0 < discountCents <= amountCents 由保存逻辑保证
+  IntColumn get discountCents => integer().nullable()();
 
   /// 所属分类
   IntColumn get categoryId => integer().references(Categories, #id)();

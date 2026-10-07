@@ -425,6 +425,15 @@ class _StatsPageState extends State<StatsPage> {
     // 年份按需显示：数据横跨多个年份时分组头带年份消歧
     final crossYear = typeBills.map((b) => b.date.year).toSet().length > 1;
     final emptyText = _keyword.trim().isEmpty ? '该范围内暂无账单' : '未找到匹配账单';
+    // 优惠统计（仅支出）：随当前筛选范围/分类钻取自动收窄
+    final discountBills = isExpense
+        ? typeBills.where((b) => (b.discountCents ?? 0) > 0).toList()
+        : const <Bill>[];
+    final discountCount = discountBills.length;
+    final discountTotal = discountBills.fold<int>(
+      0,
+      (sum, b) => sum + b.discountCents!,
+    );
 
     return CustomScrollView(
       slivers: [
@@ -479,6 +488,8 @@ class _StatsPageState extends State<StatsPage> {
             count: count,
             avgPerBillCents: avgPerBill,
             avgPerMonthCents: avgPerMonth,
+            discountCount: discountCount,
+            discountCents: discountTotal,
           ),
         ),
         // 柱状图：年范围 12 月柱（带金额标注），月范围当月每日柱；

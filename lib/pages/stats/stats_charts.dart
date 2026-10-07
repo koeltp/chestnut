@@ -8,7 +8,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/section_card.dart';
 
 /// 柱状图卡片：年范围 12 月柱（柱顶两行标注今年/去年）；
-/// 月范围当月每日柱（柱顶标注较大值，日期标签每 2 天显示一次）。
+/// 月范围当月每日柱（标签抽稀：仅显著柱标注较大值，日期标签每 2 天显示一次）。
 /// [prevBills]（去年同期）与彩柱同宽同位叠画成长短分段柱辅助同比对比
 class StatsRangeBarChart extends StatelessWidget {
   const StatsRangeBarChart({
@@ -153,9 +153,31 @@ class StatsBarChartPainter extends CustomPainter {
     final hasPrev = prevBars != null && prevBars!.any((c) => c > 0);
     final baselineY = chartTop + chartHeight;
 
-    // 月模式标注交错状态：上一根有标注的柱下标与是否高档
-    var lastLabeledBar = -2;
-    var lastLabeledHigh = false;
+    // 月模式标签抽稀：31 根日柱挤在一屏，每槽仅约 12px，连续有账时
+    // 相邻标签必然横向叠字。只标"显著柱"——金额达到共同最大值 35%
+    // （最高柱必然入选）；间距再兜底：两根待标柱槽位差 <3 时只留高者。
+    // 小柱不标数字，柱体本身仍在，高度节奏不受影响
+    final monthLabeled = <int>{};
+    if (period == HomePeriod.month) {
+      final threshold = maxCents * 0.35;
+      // 该槽位今年/去年两段中的较大值，作为显著性与冲突取舍依据
+      int valueOf(int i) => math.max(bars[i], hasPrev ? prevBars![i] : 0);
+      for (var i = 0; i < bars.length; i++) {
+        final v = valueOf(i);
+        if (v <= 0 || v < threshold) continue;
+        // 与已入选柱距离过近时，矮的让给高的
+        final conflict = monthLabeled
+            .where((j) => (j - i).abs() < 3)
+            .toList();
+        if (conflict.isEmpty) {
+          monthLabeled.add(i);
+        } else if (v > valueOf(conflict.first)) {
+          monthLabeled
+            ..remove(conflict.first)
+            ..add(i);
+        }
+      }
+    }
 
     for (var i = 0; i < bars.length; i++) {
       final cents = bars[i];
@@ -223,21 +245,17 @@ class StatsBarChartPainter extends CustomPainter {
             fontSize: 10,
           );
         }
-      } else if (cents > 0 || prevCents > 0) {
+      } else if (monthLabeled.contains(i)) {
         final bool nowLarger = cents >= prevCents;
         final hMax = math.max(h, hPrev);
-        final bool adjacent = i == lastLabeledBar + 1;
-        final bool high = adjacent ? !lastLabeledHigh : true;
         _text(
           canvas,
           labelFmt(nowLarger ? cents : prevCents),
-          Offset(cx, baselineY - hMax - 10 + (high ? 0 : 14.0)),
+          Offset(cx, baselineY - hMax - 10),
           fontSize: 9,
           color: nowLarger ? color : AppColors.textSecondary,
           fontWeight: nowLarger ? FontWeight.w600 : FontWeight.w400,
         );
-        lastLabeledBar = i;
-        lastLabeledHigh = high;
       }
 
       // 底部标签（空串跳过）：中心落在 labelHeight 区中央，

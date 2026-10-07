@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅 debug 构建生效：桌面应用名带 Dev 后缀，与生产包并排时一眼区分 -->
+<resources>
+    <string name="app_name">栗子记账 Dev</string>
+</resources>

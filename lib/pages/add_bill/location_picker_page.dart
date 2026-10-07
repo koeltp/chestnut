@@ -156,7 +156,8 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       _initializerRan = true;
       AMapInitializer.init(
         context,
-        apiKey: const AMapApiKey(androidKey: AmapService.androidMapKey),
+        // androidMapKey 是运行时 getter（按构建模式切 Key），无法 const
+        apiKey: AMapApiKey(androidKey: AmapService.androidMapKey),
       );
     }
   }

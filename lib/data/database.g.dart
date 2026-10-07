@@ -507,6 +507,17 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _discountCentsMeta = const VerificationMeta(
+    'discountCents',
+  );
+  @override
+  late final GeneratedColumn<int> discountCents = GeneratedColumn<int>(
+    'discount_cents',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _categoryIdMeta = const VerificationMeta(
     'categoryId',
   );
@@ -517,9 +528,6 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES categories (id)',
-    ),
   );
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
@@ -607,6 +615,7 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     id,
     type,
     amountCents,
+    discountCents,
     categoryId,
     note,
     date,
@@ -642,6 +651,15 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
       );
     } else if (isInserting) {
       context.missing(_amountCentsMeta);
+    }
+    if (data.containsKey('discount_cents')) {
+      context.handle(
+        _discountCentsMeta,
+        discountCents.isAcceptableOrUnknown(
+          data['discount_cents']!,
+          _discountCentsMeta,
+        ),
+      );
     }
     if (data.containsKey('category_id')) {
       context.handle(
@@ -727,6 +745,10 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
         DriftSqlType.int,
         data['${effectivePrefix}amount_cents'],
       )!,
+      discountCents: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}discount_cents'],
+      ),
       categoryId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}category_id'],
@@ -781,8 +803,13 @@ class Bill extends DataClass implements Insertable<Bill> {
   /// 账单类型（支出 / 收入）
   final BillType type;
 
-  /// 金额，单位：分
+  /// 金额，单位：分（用户实际支付的金额，统计/预算一律以此为准）
   final int amountCents;
+
+  /// 优惠金额，单位：分；null = 该笔未使用优惠。
+  /// 原价不单独存储，= amountCents + discountCents。
+  /// 约束 0 < discountCents <= amountCents 由保存逻辑保证
+  final int? discountCents;
 
   /// 所属分类
   final int categoryId;
@@ -815,6 +842,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     required this.id,
     required this.type,
     required this.amountCents,
+    this.discountCents,
     required this.categoryId,
     this.note,
     required this.date,
@@ -833,6 +861,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       map['type'] = Variable<int>($BillsTable.$convertertype.toSql(type));
     }
     map['amount_cents'] = Variable<int>(amountCents);
+    if (!nullToAbsent || discountCents != null) {
+      map['discount_cents'] = Variable<int>(discountCents);
+    }
     map['category_id'] = Variable<int>(categoryId);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
@@ -862,6 +893,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       id: Value(id),
       type: Value(type),
       amountCents: Value(amountCents),
+      discountCents: discountCents == null && nullToAbsent
+          ? const Value.absent()
+          : Value(discountCents),
       categoryId: Value(categoryId),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       date: Value(date),
@@ -891,6 +925,7 @@ class Bill extends DataClass implements Insertable<Bill> {
         serializer.fromJson<int>(json['type']),
       ),
       amountCents: serializer.fromJson<int>(json['amountCents']),
+      discountCents: serializer.fromJson<int?>(json['discountCents']),
       categoryId: serializer.fromJson<int>(json['categoryId']),
       note: serializer.fromJson<String?>(json['note']),
       date: serializer.fromJson<DateTime>(json['date']),
@@ -909,6 +944,7 @@ class Bill extends DataClass implements Insertable<Bill> {
       'id': serializer.toJson<int>(id),
       'type': serializer.toJson<int>($BillsTable.$convertertype.toJson(type)),
       'amountCents': serializer.toJson<int>(amountCents),
+      'discountCents': serializer.toJson<int?>(discountCents),
       'categoryId': serializer.toJson<int>(categoryId),
       'note': serializer.toJson<String?>(note),
       'date': serializer.toJson<DateTime>(date),
@@ -925,6 +961,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     int? id,
     BillType? type,
     int? amountCents,
+    Value<int?> discountCents = const Value.absent(),
     int? categoryId,
     Value<String?> note = const Value.absent(),
     DateTime? date,
@@ -938,6 +975,9 @@ class Bill extends DataClass implements Insertable<Bill> {
     id: id ?? this.id,
     type: type ?? this.type,
     amountCents: amountCents ?? this.amountCents,
+    discountCents: discountCents.present
+        ? discountCents.value
+        : this.discountCents,
     categoryId: categoryId ?? this.categoryId,
     note: note.present ? note.value : this.note,
     date: date ?? this.date,
@@ -955,6 +995,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       amountCents: data.amountCents.present
           ? data.amountCents.value
           : this.amountCents,
+      discountCents: data.discountCents.present
+          ? data.discountCents.value
+          : this.discountCents,
       categoryId: data.categoryId.present
           ? data.categoryId.value
           : this.categoryId,
@@ -979,6 +1022,7 @@ class Bill extends DataClass implements Insertable<Bill> {
           ..write('id: $id, ')
           ..write('type: $type, ')
           ..write('amountCents: $amountCents, ')
+          ..write('discountCents: $discountCents, ')
           ..write('categoryId: $categoryId, ')
           ..write('note: $note, ')
           ..write('date: $date, ')
@@ -997,6 +1041,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     id,
     type,
     amountCents,
+    discountCents,
     categoryId,
     note,
     date,
@@ -1014,6 +1059,7 @@ class Bill extends DataClass implements Insertable<Bill> {
           other.id == this.id &&
           other.type == this.type &&
           other.amountCents == this.amountCents &&
+          other.discountCents == this.discountCents &&
           other.categoryId == this.categoryId &&
           other.note == this.note &&
           other.date == this.date &&
@@ -1029,6 +1075,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
   final Value<int> id;
   final Value<BillType> type;
   final Value<int> amountCents;
+  final Value<int?> discountCents;
   final Value<int> categoryId;
   final Value<String?> note;
   final Value<DateTime> date;
@@ -1042,6 +1089,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     this.id = const Value.absent(),
     this.type = const Value.absent(),
     this.amountCents = const Value.absent(),
+    this.discountCents = const Value.absent(),
     this.categoryId = const Value.absent(),
     this.note = const Value.absent(),
     this.date = const Value.absent(),
@@ -1056,6 +1104,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     this.id = const Value.absent(),
     required BillType type,
     required int amountCents,
+    this.discountCents = const Value.absent(),
     required int categoryId,
     this.note = const Value.absent(),
     required DateTime date,
@@ -1073,6 +1122,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     Expression<int>? id,
     Expression<int>? type,
     Expression<int>? amountCents,
+    Expression<int>? discountCents,
     Expression<int>? categoryId,
     Expression<String>? note,
     Expression<DateTime>? date,
@@ -1087,6 +1137,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
       if (id != null) 'id': id,
       if (type != null) 'type': type,
       if (amountCents != null) 'amount_cents': amountCents,
+      if (discountCents != null) 'discount_cents': discountCents,
       if (categoryId != null) 'category_id': categoryId,
       if (note != null) 'note': note,
       if (date != null) 'date': date,
@@ -1103,6 +1154,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     Value<int>? id,
     Value<BillType>? type,
     Value<int>? amountCents,
+    Value<int?>? discountCents,
     Value<int>? categoryId,
     Value<String?>? note,
     Value<DateTime>? date,
@@ -1117,6 +1169,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
       id: id ?? this.id,
       type: type ?? this.type,
       amountCents: amountCents ?? this.amountCents,
+      discountCents: discountCents ?? this.discountCents,
       categoryId: categoryId ?? this.categoryId,
       note: note ?? this.note,
       date: date ?? this.date,
@@ -1140,6 +1193,9 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     }
     if (amountCents.present) {
       map['amount_cents'] = Variable<int>(amountCents.value);
+    }
+    if (discountCents.present) {
+      map['discount_cents'] = Variable<int>(discountCents.value);
     }
     if (categoryId.present) {
       map['category_id'] = Variable<int>(categoryId.value);
@@ -1177,6 +1233,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
           ..write('id: $id, ')
           ..write('type: $type, ')
           ..write('amountCents: $amountCents, ')
+          ..write('discountCents: $discountCents, ')
           ..write('categoryId: $categoryId, ')
           ..write('note: $note, ')
           ..write('date: $date, ')
@@ -1530,48 +1587,26 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   ];
 }
 
-typedef $$CategoriesTableCreateCompanionBuilder = CategoriesCompanion Function({
-  Value<int> id,
-  required String name,
-  required int iconCode,
-  required int colorValue,
-  required BillType type,
-  Value<int?> parentId,
-  Value<int> sortOrder,
-});
-typedef $$CategoriesTableUpdateCompanionBuilder = CategoriesCompanion Function({
-  Value<int> id,
-  Value<String> name,
-  Value<int> iconCode,
-  Value<int> colorValue,
-  Value<BillType> type,
-  Value<int?> parentId,
-  Value<int> sortOrder,
-});
-
-final class $$CategoriesTableReferences
-    extends BaseReferences<_$AppDatabase, $CategoriesTable, Category> {
-  $$CategoriesTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static MultiTypedResultKey<$BillsTable, List<Bill>> _billsRefsTable(
-    _$AppDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.bills,
-    aliasName: 'categories__id__bills__category_id',
-  );
-
-  $$BillsTableProcessedTableManager get billsRefs {
-    final manager = $$BillsTableTableManager(
-      $_db,
-      $_db.bills,
-    ).filter((f) => f.categoryId.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_billsRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-}
+typedef $$CategoriesTableCreateCompanionBuilder =
+    CategoriesCompanion Function({
+      Value<int> id,
+      required String name,
+      required int iconCode,
+      required int colorValue,
+      required BillType type,
+      Value<int?> parentId,
+      Value<int> sortOrder,
+    });
+typedef $$CategoriesTableUpdateCompanionBuilder =
+    CategoriesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> iconCode,
+      Value<int> colorValue,
+      Value<BillType> type,
+      Value<int?> parentId,
+      Value<int> sortOrder,
+    });
 
 class $$CategoriesTableFilterComposer
     extends Composer<_$AppDatabase, $CategoriesTable> {
@@ -1617,31 +1652,6 @@ class $$CategoriesTableFilterComposer
     column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
-
-  Expression<bool> billsRefs(
-    Expression<bool> Function($$BillsTableFilterComposer f) f,
-  ) {
-    final $$BillsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.bills,
-      getReferencedColumn: (t) => t.categoryId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BillsTableFilterComposer(
-            $db: $db,
-            $table: $db.bills,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$CategoriesTableOrderingComposer
@@ -1720,31 +1730,6 @@ class $$CategoriesTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
-
-  Expression<T> billsRefs<T extends Object>(
-    Expression<T> Function($$BillsTableAnnotationComposer a) f,
-  ) {
-    final $$BillsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.bills,
-      getReferencedColumn: (t) => t.categoryId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BillsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.bills,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$CategoriesTableTableManager
@@ -1758,9 +1743,9 @@ class $$CategoriesTableTableManager
           $$CategoriesTableAnnotationComposer,
           $$CategoriesTableCreateCompanionBuilder,
           $$CategoriesTableUpdateCompanionBuilder,
-          (Category, $$CategoriesTableReferences),
+          (Category, BaseReferences<_$AppDatabase, $CategoriesTable, Category>),
           Category,
-          PrefetchHooks Function({bool billsRefs})
+          PrefetchHooks Function()
         > {
   $$CategoriesTableTableManager(_$AppDatabase db, $CategoriesTable table)
     : super(
@@ -1810,35 +1795,9 @@ class $$CategoriesTableTableManager
                 sortOrder: sortOrder,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$CategoriesTable, Category>(table),
-                  $$CategoriesTableReferences(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
-          prefetchHooksCallback: ({billsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (billsRefs) db.bills],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (billsRefs)
-                    await $_getPrefetchedData<Category, $CategoriesTable, Bill>(
-                      currentTable: table,
-                      referencedTable: $$CategoriesTableReferences
-                          ._billsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$CategoriesTableReferences(db, table, p0).billsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.categoryId == item.id),
-                      typedResults: items,
-                    ),
-                ];
-              },
-            );
-          },
+          prefetchHooksCallback: null,
         ),
       );
 }
@@ -1853,60 +1812,42 @@ typedef $$CategoriesTableProcessedTableManager =
       $$CategoriesTableAnnotationComposer,
       $$CategoriesTableCreateCompanionBuilder,
       $$CategoriesTableUpdateCompanionBuilder,
-      (Category, $$CategoriesTableReferences),
+      (Category, BaseReferences<_$AppDatabase, $CategoriesTable, Category>),
       Category,
-      PrefetchHooks Function({bool billsRefs})
+      PrefetchHooks Function()
     >;
-typedef $$BillsTableCreateCompanionBuilder = BillsCompanion Function({
-  Value<int> id,
-  required BillType type,
-  required int amountCents,
-  required int categoryId,
-  Value<String?> note,
-  required DateTime date,
-  Value<int?> timeMinute,
-  Value<String?> location,
-  Value<String?> locationFull,
-  Value<double?> lat,
-  Value<double?> lng,
-  Value<DateTime> createdAt,
-});
-typedef $$BillsTableUpdateCompanionBuilder = BillsCompanion Function({
-  Value<int> id,
-  Value<BillType> type,
-  Value<int> amountCents,
-  Value<int> categoryId,
-  Value<String?> note,
-  Value<DateTime> date,
-  Value<int?> timeMinute,
-  Value<String?> location,
-  Value<String?> locationFull,
-  Value<double?> lat,
-  Value<double?> lng,
-  Value<DateTime> createdAt,
-});
-
-final class $$BillsTableReferences
-    extends BaseReferences<_$AppDatabase, $BillsTable, Bill> {
-  $$BillsTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $CategoriesTable _categoryIdTable(_$AppDatabase db) =>
-      db.categories.createAlias('bills__category_id__categories__id');
-
-  $$CategoriesTableProcessedTableManager get categoryId {
-    final $_column = $_itemColumn<int>('category_id')!;
-
-    final manager = $$CategoriesTableTableManager(
-      $_db,
-      $_db.categories,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_categoryIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
+typedef $$BillsTableCreateCompanionBuilder =
+    BillsCompanion Function({
+      Value<int> id,
+      required BillType type,
+      required int amountCents,
+      Value<int?> discountCents,
+      required int categoryId,
+      Value<String?> note,
+      required DateTime date,
+      Value<int?> timeMinute,
+      Value<String?> location,
+      Value<String?> locationFull,
+      Value<double?> lat,
+      Value<double?> lng,
+      Value<DateTime> createdAt,
+    });
+typedef $$BillsTableUpdateCompanionBuilder =
+    BillsCompanion Function({
+      Value<int> id,
+      Value<BillType> type,
+      Value<int> amountCents,
+      Value<int?> discountCents,
+      Value<int> categoryId,
+      Value<String?> note,
+      Value<DateTime> date,
+      Value<int?> timeMinute,
+      Value<String?> location,
+      Value<String?> locationFull,
+      Value<double?> lat,
+      Value<double?> lng,
+      Value<DateTime> createdAt,
+    });
 
 class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
   $$BillsTableFilterComposer({
@@ -1929,6 +1870,16 @@ class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
 
   ColumnFilters<int> get amountCents => $composableBuilder(
     column: $table.amountCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get discountCents => $composableBuilder(
+    column: $table.discountCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1971,29 +1922,6 @@ class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
-
-  $$CategoriesTableFilterComposer get categoryId {
-    final $$CategoriesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.categoryId,
-      referencedTable: $db.categories,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$CategoriesTableFilterComposer(
-            $db: $db,
-            $table: $db.categories,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$BillsTableOrderingComposer
@@ -2017,6 +1945,16 @@ class $$BillsTableOrderingComposer
 
   ColumnOrderings<int> get amountCents => $composableBuilder(
     column: $table.amountCents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get discountCents => $composableBuilder(
+    column: $table.discountCents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2059,29 +1997,6 @@ class $$BillsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
-
-  $$CategoriesTableOrderingComposer get categoryId {
-    final $$CategoriesTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.categoryId,
-      referencedTable: $db.categories,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$CategoriesTableOrderingComposer(
-            $db: $db,
-            $table: $db.categories,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$BillsTableAnnotationComposer
@@ -2101,6 +2016,16 @@ class $$BillsTableAnnotationComposer
 
   GeneratedColumn<int> get amountCents => $composableBuilder(
     column: $table.amountCents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get discountCents => $composableBuilder(
+    column: $table.discountCents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
     builder: (column) => column,
   );
 
@@ -2131,29 +2056,6 @@ class $$BillsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
-
-  $$CategoriesTableAnnotationComposer get categoryId {
-    final $$CategoriesTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.categoryId,
-      referencedTable: $db.categories,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$CategoriesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.categories,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$BillsTableTableManager
@@ -2167,9 +2069,9 @@ class $$BillsTableTableManager
           $$BillsTableAnnotationComposer,
           $$BillsTableCreateCompanionBuilder,
           $$BillsTableUpdateCompanionBuilder,
-          (Bill, $$BillsTableReferences),
+          (Bill, BaseReferences<_$AppDatabase, $BillsTable, Bill>),
           Bill,
-          PrefetchHooks Function({bool categoryId})
+          PrefetchHooks Function()
         > {
   $$BillsTableTableManager(_$AppDatabase db, $BillsTable table)
     : super(
@@ -2187,6 +2089,7 @@ class $$BillsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<BillType> type = const Value.absent(),
                 Value<int> amountCents = const Value.absent(),
+                Value<int?> discountCents = const Value.absent(),
                 Value<int> categoryId = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
@@ -2200,6 +2103,7 @@ class $$BillsTableTableManager
                 id: id,
                 type: type,
                 amountCents: amountCents,
+                discountCents: discountCents,
                 categoryId: categoryId,
                 note: note,
                 date: date,
@@ -2215,6 +2119,7 @@ class $$BillsTableTableManager
                 Value<int> id = const Value.absent(),
                 required BillType type,
                 required int amountCents,
+                Value<int?> discountCents = const Value.absent(),
                 required int categoryId,
                 Value<String?> note = const Value.absent(),
                 required DateTime date,
@@ -2228,6 +2133,7 @@ class $$BillsTableTableManager
                 id: id,
                 type: type,
                 amountCents: amountCents,
+                discountCents: discountCents,
                 categoryId: categoryId,
                 note: note,
                 date: date,
@@ -2239,52 +2145,9 @@ class $$BillsTableTableManager
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$BillsTable, Bill>(table),
-                  $$BillsTableReferences(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
-          prefetchHooksCallback: ({categoryId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (categoryId) {
-                      state = state.withJoin(
-                        currentTable: table,
-                        currentColumn: table.categoryId,
-                        referencedTable: $$BillsTableReferences
-                            ._categoryIdTable(db),
-                        referencedColumn: $$BillsTableReferences
-                            ._categoryIdTable(db)
-                            .id,
-                      ) as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
+          prefetchHooksCallback: null,
         ),
       );
 }
@@ -2299,22 +2162,24 @@ typedef $$BillsTableProcessedTableManager =
       $$BillsTableAnnotationComposer,
       $$BillsTableCreateCompanionBuilder,
       $$BillsTableUpdateCompanionBuilder,
-      (Bill, $$BillsTableReferences),
+      (Bill, BaseReferences<_$AppDatabase, $BillsTable, Bill>),
       Bill,
-      PrefetchHooks Function({bool categoryId})
+      PrefetchHooks Function()
     >;
-typedef $$BudgetsTableCreateCompanionBuilder = BudgetsCompanion Function({
-  Value<int> id,
-  required String month,
-  required int amountCents,
-  Value<int> categoryId,
-});
-typedef $$BudgetsTableUpdateCompanionBuilder = BudgetsCompanion Function({
-  Value<int> id,
-  Value<String> month,
-  Value<int> amountCents,
-  Value<int> categoryId,
-});
+typedef $$BudgetsTableCreateCompanionBuilder =
+    BudgetsCompanion Function({
+      Value<int> id,
+      required String month,
+      required int amountCents,
+      Value<int> categoryId,
+    });
+typedef $$BudgetsTableUpdateCompanionBuilder =
+    BudgetsCompanion Function({
+      Value<int> id,
+      Value<String> month,
+      Value<int> amountCents,
+      Value<int> categoryId,
+    });
 
 class $$BudgetsTableFilterComposer
     extends Composer<_$AppDatabase, $BudgetsTable> {
@@ -2453,16 +2318,7 @@ class $$BudgetsTableTableManager
                 categoryId: categoryId,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$BudgetsTable, Budget>(table),
-                  BaseReferences<_$AppDatabase, $BudgetsTable, Budget>(
-                    db,
-                    table,
-                    e,
-                  ),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),

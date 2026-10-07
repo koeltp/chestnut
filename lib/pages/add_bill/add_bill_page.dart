@@ -40,6 +40,15 @@ class AddBillPage extends StatefulWidget {
 class _AddBillPageState extends State<AddBillPage> {
   late BillType _type;
   String _amountText = '';
+
+  /// 优惠金额输入文本（元）；空 = 未设置优惠。仅支出账单可用
+  String _discountText = '';
+
+  /// 输入模式（钱迹式）：true 时数字键盘改道写入优惠，
+  /// 备注/金额行整体变身为"优惠 + 此处输入优惠金额"行；
+  /// 再点优惠胶囊切回实付模式，已填优惠保留
+  bool _discountMode = false;
+
   int? _selectedCategoryId;
   late DateTime _date;
 
@@ -131,6 +140,9 @@ class _AddBillPageState extends State<AddBillPage> {
       _type = bill.type;
       // 零头为 0 时省略小数：用户输入整数保存，回填时不显示 xxx.00
       _amountText = MoneyUtil.centsToYuanTrimmed(bill.amountCents);
+      _discountText = bill.discountCents == null
+          ? ''
+          : MoneyUtil.centsToYuanTrimmed(bill.discountCents!);
       _selectedCategoryId = bill.categoryId;
       _date = bill.date;
       _timeMinute = bill.timeMinute ?? nowMinute;
@@ -206,7 +218,7 @@ class _AddBillPageState extends State<AddBillPage> {
                 child: Column(
                   key: _bottomZoneKey,
                   children: [
-                    _buildNoteRow(),
+                    _discountMode ? _buildDiscountRow() : _buildNoteRow(),
                     KeyedSubtree(
                       key: _belowNoteKey,
                       child: Column(
@@ -290,6 +302,12 @@ class _AddBillPageState extends State<AddBillPage> {
           _type = type;
           // 切换类型后原分类不再适用，重置为空（由分类区默认选中补齐）
           _selectedCategoryId = null;
+          // 优惠只属于支出：切到收入时退出优惠模式并清空，
+          // 防止已填优惠被误带进收入账单
+          if (type == BillType.income) {
+            _discountMode = false;
+            _discountText = '';
+          }
         });
       },
       child: Padding(
@@ -329,8 +347,9 @@ class _AddBillPageState extends State<AddBillPage> {
     final color = _type == BillType.expense
         ? AppColors.expense
         : AppColors.income;
-    // 未输入任何金额时显示整数 0（与"无小数不显示小数"的规则一致）
-    final display = _amountText.isEmpty ? '0' : _amountText;
+    // 空金额时不显示大字"0"，改为中号灰色"实付金额"提示，
+    // 明确录入的是实付（优惠另有独立入口）；CNY 始终保留
+    final amountEmpty = _amountText.isEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppDimens.pagePadding,
@@ -390,16 +409,22 @@ class _AddBillPageState extends State<AddBillPage> {
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  display,
+                  amountEmpty ? '实付金额' : _amountText,
                   maxLines: 1,
                   textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 28,
-                    height: 1.1,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                  style: amountEmpty
+                      ? const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        )
+                      : TextStyle(
+                          fontSize: 28,
+                          height: 1.1,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                 ),
                 const SizedBox(width: 3),
                 const Text(
@@ -410,6 +435,60 @@ class _AddBillPageState extends State<AddBillPage> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 优惠模式金额行（钱迹式整行变身）：
+  /// 左侧"优惠"标题 + 输入提示，右侧绿色优惠数字，无 CNY。
+  /// 此模式下备注输入框隐藏，数字键盘输入直接写入优惠额
+  Widget _buildDiscountRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppDimens.pagePadding,
+        4,
+        AppDimens.pagePadding,
+        0,
+      ),
+      child: Row(
+        children: [
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '优惠',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                '此处输入优惠金额',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          const Spacer(),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              _discountText.isEmpty ? '0.00' : _discountText,
+              maxLines: 1,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 28,
+                height: 1.1,
+                fontWeight: FontWeight.w700,
+                color: AppColors.income,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],
@@ -477,8 +556,67 @@ class _AddBillPageState extends State<AddBillPage> {
               ),
             ),
           ),
+          if (_type == BillType.expense) ...[
+            const SizedBox(width: 8),
+            _buildDiscountChip(),
+          ],
           if (showLocation) ...[const SizedBox(width: 8), _buildLocationChip()],
         ],
+      ),
+    );
+  }
+
+  /// 优惠胶囊（仅支出，位于日期与定位胶囊之间），三态：
+  /// 未设置=灰底"优惠"；已设置=浅绿底"省 ¥x"；
+  /// 优惠输入模式中=浅绿底"优惠 ✕"，✕ 清空优惠并退回实付模式。
+  /// 点胶囊本体在实付/优惠输入模式间切换（钱迹式）
+  Widget _buildDiscountChip() {
+    final discountCents = MoneyUtil.yuanToCents(_discountText);
+    final hasDiscount = discountCents != null && discountCents > 0;
+    final active = _discountMode;
+    final bg = (active || hasDiscount)
+        ? AppColors.tint(AppColors.income)
+        : AppColors.fill;
+    final fg = (active || hasDiscount) ? AppColors.income : AppColors.textPrimary;
+    return Flexible(
+      child: InkWell(
+        onTap: () => setState(() => _discountMode = !_discountMode),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  hasDiscount
+                      ? '省 ¥${MoneyUtil.centsToYuanTrimmed(discountCents)}'
+                      : '优惠',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: fg,
+                  ),
+                ),
+              ),
+              // 输入模式中展示 ✕：仅收起优惠行切回实付模式（钱迹语义），
+              // 已填优惠保留；清零请用键盘 C 键
+              if (active) ...[
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => setState(() => _discountMode = false),
+                  child: Icon(Icons.cancel, size: 14, color: fg),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -743,7 +881,14 @@ class _AddBillPageState extends State<AddBillPage> {
     return NumberKeyboard(
       onKey: _onAmountKey,
       onDelete: _onAmountDelete,
-      onClear: () => setState(() => _amountText = ''),
+      onClear: () => setState(() {
+        // 清空当前输入模式对应的字段
+        if (_discountMode) {
+          _discountText = '';
+        } else {
+          _amountText = '';
+        }
+      }),
       onToday: () => setState(() => _date = DateTime.now()),
       onAgain: () => _save(stay: true),
       onDone: () => _save(),
@@ -752,36 +897,51 @@ class _AddBillPageState extends State<AddBillPage> {
 
   // ---------- 金额输入约束 ----------
 
-  /// 键盘数字键入：约束前导零、小数位数与金额上限
+  /// 键盘数字键入：优惠模式写入优惠额，实付模式写入实付额。
+  /// 两者共用同一套前导零/小数位/上限约束
   void _onAmountKey(String key) {
     setState(() {
-      if (key == '.') {
-        // 已含小数点忽略；空文本补前导 0（输入 "." 视为 "0."）
-        if (_amountText.contains('.')) return;
-        _amountText = _amountText.isEmpty ? '0.' : '$_amountText.';
-        return;
+      final current = _discountMode ? _discountText : _amountText;
+      final next = _constrainAmountInput(current, key);
+      if (next == null) return;
+      if (_discountMode) {
+        _discountText = next;
+      } else {
+        _amountText = next;
       }
-      // 输入首个非零数字时替换掉前导 0
-      if (_amountText == '0') {
-        _amountText = key;
-        return;
-      }
-      final candidate = _amountText + key;
-      // 小数超过两位则忽略
-      final dotIndex = candidate.indexOf('.');
-      if (dotIndex >= 0 && candidate.length - dotIndex - 1 > 2) return;
-      final cents = MoneyUtil.yuanToCents(candidate);
-      if (cents == null || cents > _maxAmountCents) return;
-      _amountText = candidate;
     });
   }
 
-  /// 退格
+  /// 金额类输入约束：返回追加/处理后的新文本；null = 本次按键忽略
+  String? _constrainAmountInput(String text, String key) {
+    if (key == '.') {
+      // 已含小数点忽略；空文本补前导 0（输入 "." 视为 "0."）
+      if (text.contains('.')) return null;
+      return text.isEmpty ? '0.' : '$text.';
+    }
+    // 输入首个非零数字时替换掉前导 0
+    if (text == '0') return key;
+    final candidate = text + key;
+    // 小数超过两位则忽略
+    final dotIndex = candidate.indexOf('.');
+    if (dotIndex >= 0 && candidate.length - dotIndex - 1 > 2) return null;
+    final cents = MoneyUtil.yuanToCents(candidate);
+    if (cents == null || cents > _maxAmountCents) return null;
+    return candidate;
+  }
+
+  /// 退格：作用于当前输入模式对应的字段
   void _onAmountDelete() {
-    if (_amountText.isEmpty) return;
-    setState(
-      () => _amountText = _amountText.substring(0, _amountText.length - 1),
-    );
+    setState(() {
+      if (_discountMode) {
+        if (_discountText.isEmpty) return;
+        _discountText =
+            _discountText.substring(0, _discountText.length - 1);
+      } else {
+        if (_amountText.isEmpty) return;
+        _amountText = _amountText.substring(0, _amountText.length - 1);
+      }
+    });
   }
 
   /// 选择账单日期与时间：滚轮弹窗（年/月/日 + 今昨前快捷 + 时间入口）
@@ -812,8 +972,15 @@ class _AddBillPageState extends State<AddBillPage> {
   /// [stay] 为 true 时"再记"：保存后清空金额与备注并留在页面，
   /// 保留分类与日期，便于连续记账。
   Future<void> _save({bool stay = false}) async {
-    final cents = MoneyUtil.yuanToCents(_amountText);
-    if (cents == null || cents == 0) {
+    // 实付允许为 0（免单），但实付为 0 必须有优惠；无优惠时实付必须 >0。
+    // 留空按 0 处理，使用户在优惠模式直接保存即可记一笔免单
+    final cents = MoneyUtil.yuanToCents(_amountText) ?? 0;
+    // 优惠额：0/空视为未优惠存 null；优惠可大于实付（平台补贴券等），
+    // 不设上限约束。收入账单入口已隐藏且切类型会清空，这里再兜底
+    var discountCents = MoneyUtil.yuanToCents(_discountText);
+    if (discountCents != null && discountCents == 0) discountCents = null;
+    if (_type == BillType.income) discountCents = null;
+    if (cents == 0 && discountCents == null) {
       showAppToast(context, '请输入正确的金额');
       return;
     }
@@ -830,6 +997,7 @@ class _AddBillPageState extends State<AddBillPage> {
           id: bill.id,
           type: _type,
           amountCents: cents,
+          discountCents: discountCents,
           categoryId: _selectedCategoryId!,
           note: note.isEmpty ? null : note,
           date: _date,
@@ -846,6 +1014,7 @@ class _AddBillPageState extends State<AddBillPage> {
         BillsCompanion.insert(
           type: _type,
           amountCents: cents,
+          discountCents: Value(discountCents),
           categoryId: _selectedCategoryId!,
           date: _date,
           timeMinute: Value(_timeMinute),
@@ -864,6 +1033,8 @@ class _AddBillPageState extends State<AddBillPage> {
       if (!mounted) return;
       setState(() {
         _amountText = '';
+        _discountText = '';
+        _discountMode = false;
         _noteController.clear();
       });
     } else if (mounted) {

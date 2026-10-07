@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 /// 逆地理结构化结果：formatted 整串 + 省市区街道独立字段
@@ -46,8 +47,14 @@ class AmapService {
   /// Web 服务 Key（控制台应用：chestnut_web）
   static const String _webKey = '81ba570c708b2486912fc116697cb8c4';
 
-  /// Android 平台 Key（地图 SDK 鉴权用，经 AMapInitializer 传入）
-  static const String androidMapKey = 'c547548d14c20b2111af15003717c5bf';
+  /// Android 平台 Key（地图/定位 SDK 鉴权，经 AMapInitializer 与
+  /// AndroidManifest meta-data 两处传入）。高德 Key 按包名绑定：
+  /// debug 构建是 .debug 后缀的 Dev 包，用控制台 chestnut_dev 的专用
+  /// Key；release/profile 包名为正式包，用正式 Key。Web 服务 Key
+  /// 不绑包名，无需区分
+  static String get androidMapKey => kDebugMode
+      ? 'd18b05e54a3118e6eb4648b9f4358983'
+      : 'c547548d14c20b2111af15003717c5bf';
 
   static const String _baseUrl = 'https://restapi.amap.com/v3';
 
