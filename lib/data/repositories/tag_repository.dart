@@ -165,4 +165,16 @@ class TagRepository {
         .get();
     return rows.length;
   }
+
+  /// 重排标签顺序：事务内按传入顺序写 sortOrder（索引即新序）
+  ///
+  /// UI 拖动结束后调用，一次传入全部标签 id 的最终顺序
+  Future<void> reorderTags(List<int> orderedIds) {
+    return _db.transaction(() async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await (_db.update(_db.tags)..where((t) => t.id.equals(orderedIds[i])))
+            .write(TagsCompanion(sortOrder: Value(i)));
+      }
+    });
+  }
 }

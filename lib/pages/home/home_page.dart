@@ -20,6 +20,7 @@ import '../../widgets/bill_list_item.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/update_dialog.dart';
+import '../settings/backup_page.dart';
 import '../stats/stats_page.dart';
 import 'period_picker_dialog.dart';
 
@@ -61,7 +62,13 @@ class _HomePageState extends State<HomePage> {
       final locked = context.read<LockProvider>().locked;
       final homeRouteCurrent = ModalRoute.of(context)?.isCurrent ?? false;
       if (locked || !homeRouteCurrent) return;
-      await showUpdateDialog(context, info);
+      final result = await showUpdateDialog(context, info);
+      // 用户选择先去备份：跳备份与恢复页，备份方式由用户在页内自选
+      if (result == UpdateDialogResult.goBackup && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const BackupPage()),
+        );
+      }
     } catch (_) {
       // 自动检查保持静默；错误提示只在手动检查时出现
     }

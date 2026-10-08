@@ -15,9 +15,10 @@ import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/update_dialog.dart';
 import 'about_page.dart';
-import 'category_manage_page.dart';
 import 'backup_page.dart';
+import 'category_manage_page.dart';
 import 'passcode_settings_page.dart';
+import 'tag_manage_page.dart';
 
 /// 我的页：分类管理、定位开关、数据导出、关于
 class SettingsPage extends StatefulWidget {
@@ -128,6 +129,19 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const CategoryManagePage(),
+              ),
+            ),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _menuItem(
+            context,
+            icon: Icons.sell_outlined,
+            color: AppColors.primary,
+            title: '标签管理',
+            subtitle: '管理标签名称、颜色与排序',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TagManagePage(),
               ),
             ),
           ),
@@ -362,7 +376,13 @@ class _SettingsPageState extends State<SettingsPage> {
       if (info == null) {
         showAppToast(context, '已是最新版本');
       } else {
-        await showUpdateDialog(context, info);
+        final result = await showUpdateDialog(context, info);
+        // 用户选择先去备份：跳备份与恢复页，备份方式由用户在页内自选
+        if (result == UpdateDialogResult.goBackup && context.mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const BackupPage()),
+          );
+        }
       }
     } on UpdateException catch (e) {
       if (!context.mounted) return;

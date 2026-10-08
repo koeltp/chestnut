@@ -3,9 +3,16 @@ import 'package:flutter/material.dart';
 import '../services/update_service.dart';
 import '../theme/app_colors.dart';
 
-/// 更新弹窗结果：true = 已成功拉起系统安装器；其余（忽略/取消）调用方无需处理
-Future<bool?> showUpdateDialog(BuildContext context, UpdateInfo info) {
-  return showDialog<bool>(
+/// 更新弹窗结果：installed = 已拉起系统安装器；goBackup = 用户选择先去备份，
+/// 调用方负责跳转备份页；dismissed = 忽略/取消
+enum UpdateDialogResult { installed, goBackup, dismissed }
+
+/// 弹出更新弹窗；弱更点遮罩关闭返回 null（等效 dismissed）
+Future<UpdateDialogResult?> showUpdateDialog(
+  BuildContext context,
+  UpdateInfo info,
+) {
+  return showDialog<UpdateDialogResult>(
     context: context,
     // 强更不可点遮罩关闭；下载中也通过内部 PopScope 防误关
     barrierDismissible: !info.forceUpdate,
@@ -62,7 +69,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       if (!mounted) return;
       if (launched) {
         // 已跳到系统安装界面，更新弹窗使命完成
-        Navigator.of(context).pop(true);
+        Navigator.of(context).pop(UpdateDialogResult.installed);
       } else {
         setState(() {
           _phase = _Phase.error;
@@ -81,7 +88,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   /// "以后再说"：记住该版本，本次启动不再自动弹出
   Future<void> _dismiss() async {
     await _service.markIgnored(_info.versionCode);
-    if (mounted) Navigator.of(context).pop(false);
+    if (mounted) {
+      Navigator.of(context).pop(UpdateDialogResult.dismissed);
+    }
+  }
+
+  /// "去备份"：关闭弹窗，由调用方跳转备份页（备份方式由用户在页内自选）
+  void _goBackup() {
+    Navigator.of(context).pop(UpdateDialogResult.goBackup);
   }
 
   /// 0..1 进度；总大小未知时返回 null（走不确定进度条）
@@ -109,6 +123,27 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               _buildHeader(),
               const SizedBox(height: 16),
               _buildNotes(),
+              // 更新前备份引导：数据无价，给用户一个顺手兜底的入口
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      '更新前建议先备份数据',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               if (_phase == _Phase.downloading) ...[
                 const SizedBox(height: 16),
                 _buildProgress(),
@@ -288,15 +323,22 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           ],
         );
       case _Phase.idle:
-        if (_info.forceUpdate) {
-          return _filledButton('立即更新', onTap: _startDownload);
-        }
-        return Row(
+        // 主按钮独占一行；次按钮行：去备份恒有，以后再说仅弱更有
+        // （强更去备份关闭后下次启动仍会自动弹出，不丢提醒）
+        return Column(
           children: [
-            Expanded(child: _subtleButton('以后再说', onTap: _dismiss)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _filledButton('立即更新', onTap: _startDownload),
+            _filledButton('立即更新', onTap: _startDownload),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: _subtleButton('去备份', onTap: _goBackup)),
+                if (!_info.forceUpdate) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _subtleButton('以后再说', onTap: _dismiss),
+                  ),
+                ],
+              ],
             ),
           ],
         );
