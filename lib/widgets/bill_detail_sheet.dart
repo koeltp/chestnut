@@ -5,6 +5,7 @@ import 'package:map_launcher/map_launcher.dart';
 import 'package:provider/provider.dart';
 
 import '../data/database.dart';
+import '../data/repositories/tag_repository.dart';
 import '../models/enums.dart';
 import '../pages/add_bill/add_bill_page.dart';
 import '../providers/bill_provider.dart';
@@ -23,9 +24,11 @@ Future<void> showBillDetailSheet(
   required Bill bill,
   required Map<int, Category> categories,
   required void Function(Category category) onCategoryTap,
+  void Function(Tag tag)? onTagTap,
 }) {
   // 同步取好 Provider，删除时不再跨 async gap 访问 context
   final provider = context.read<BillProvider>();
+  final tagRepo = context.read<TagRepository>();
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.white,
@@ -38,8 +41,10 @@ Future<void> showBillDetailSheet(
       bill: bill,
       categories: categories,
       onCategoryTap: onCategoryTap,
+      onTagTap: onTagTap,
       hostContext: context,
       provider: provider,
+      tagRepo: tagRepo,
     ),
   );
 }
@@ -51,6 +56,8 @@ class _DetailBody extends StatefulWidget {
     required this.onCategoryTap,
     required this.hostContext,
     required this.provider,
+    required this.tagRepo,
+    this.onTagTap,
   });
 
   /// 点击条目时的账单快照：仅作初始显示值与订阅键，
@@ -59,10 +66,14 @@ class _DetailBody extends StatefulWidget {
   final Map<int, Category> categories;
   final void Function(Category category) onCategoryTap;
 
+  /// 点击标签回调：宿主跳转到该标签的账单筛选视图
+  final void Function(Tag tag)? onTagTap;
+
   /// 宿主页 context：详情弹窗 pop 后用宿主 context 压栈新页面，
   /// 避免 sheet 内部 context 失效
   final BuildContext hostContext;
   final BillProvider provider;
+  final TagRepository tagRepo;
 
   @override
   State<_DetailBody> createState() => _DetailBodyState();
@@ -73,6 +84,9 @@ class _DetailBodyState extends State<_DetailBody> {
   /// 编辑/复制/删除都必须操作它，避免拿到关闭弹窗前的旧数据
   late Bill _current = widget.bill;
   StreamSubscription<Bill?>? _sub;
+
+  /// 该账单的标签列表（异步加载，编辑保存后刷新）
+  List<Tag> _tags = [];
 
   @override
   void initState() {
@@ -85,8 +99,18 @@ class _DetailBodyState extends State<_DetailBody> {
         Navigator.of(context).pop();
       } else {
         setState(() => _current = bill);
+        // 账单变化（编辑保存）后重新加载标签
+        _loadTags();
       }
     });
+    _loadTags();
+  }
+
+  /// 加载该账单的标签
+  Future<void> _loadTags() async {
+    final tags = await widget.tagRepo.getTagsByBillId(_current.id);
+    if (!mounted) return;
+    setState(() => _tags = tags);
   }
 
   @override
@@ -435,17 +459,62 @@ class _DetailBodyState extends State<_DetailBody> {
               const Divider(height: 1, color: AppColors.divider),
               _Row(
                 label: '备注',
-                child: Text(
-                  _current.note ?? '未添加备注',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: _current.note == null
-                        ? AppColors.textSecondary.withValues(alpha: 0.7)
-                        : AppColors.textPrimary,
+                // Align 让 Text 按内容自然宽度收缩：短文本窄块靠右
+                //（视觉同右对齐）；长文本撑满内容区、内部左对齐，
+                // 换行后从左缘续行（段落式），不再每行贴右
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    _current.note ?? '未添加备注',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: _current.note == null
+                          ? AppColors.textSecondary.withValues(alpha: 0.7)
+                          : AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ),
+              if (_tags.isNotEmpty) ...[
+                const Divider(height: 1, color: AppColors.divider),
+                _Row(
+                  label: '标签',
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final t in _tags)
+                        GestureDetector(
+                          onTap: widget.onTagTap == null
+                              ? null
+                              : () {
+                                  Navigator.of(context).pop();
+                                  widget.onTagTap!(t);
+                                },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Color(t.color).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              t.name,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(t.color),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               if (location != null) ...[
                 const Divider(height: 1, color: AppColors.divider),
                 _Row(
@@ -464,10 +533,11 @@ class _DetailBodyState extends State<_DetailBody> {
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      // 去掉内部右对齐：短地址整体靠右（Row.end），
+                      // 长地址换行后从左缘续行（段落式）
                       Flexible(
                         child: Text(
                           location,
-                          textAlign: TextAlign.right,
                           style: const TextStyle(
                             fontSize: 14,
                             color: AppColors.textPrimary,

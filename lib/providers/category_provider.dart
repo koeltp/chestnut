@@ -50,6 +50,10 @@ class CategoryProvider extends ChangeNotifier {
   Future<void> deleteCategoryWithBills(int categoryId) =>
       _repo.deleteCategoryWithBills(categoryId);
 
+  /// 统计一组分类 id（自身+子分类）下的账单总数（删除确认弹窗用）
+  Future<int> countBillsInCategories(List<int> categoryIds) =>
+      _repo.countBillsInCategories(categoryIds);
+
   /// 拖动排序：按同层新顺序批量写入
   Future<void> reorderCategories(List<int> orderedIds) =>
       _repo.reorderCategories(orderedIds);

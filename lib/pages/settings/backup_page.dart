@@ -16,6 +16,7 @@ import '../../theme/app_dimens.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/help_sheet.dart';
 import '../../widgets/section_card.dart';
+import 'qianji_import_page.dart';
 
 /// 备份与恢复页
 ///
@@ -105,6 +106,15 @@ class _BackupPageState extends State<BackupPage> {
                   title: '导入备份',
                   subtitle: '选择备份文件，覆盖恢复全部数据',
                   onTap: _import,
+                ),
+                const Divider(indent: 16, endIndent: 16),
+                _menuItem(
+                  action: 'qianji',
+                  icon: Icons.upload_file,
+                  color: AppColors.primary,
+                  title: '导入钱迹账单',
+                  subtitle: '从钱迹导出的 Excel 账单追加导入',
+                  onTap: _importQianji,
                 ),
                 const Divider(indent: 16, endIndent: 16),
                 _switchItem(
@@ -401,6 +411,8 @@ class _BackupPageState extends State<BackupPage> {
         return Icons.history;
       case BackupKind.beforeRestore:
         return Icons.save_alt;
+      case BackupKind.beforeQianjiImport:
+        return Icons.upload_file;
       case BackupKind.dailyBackup:
         return Icons.event_available;
     }
@@ -414,6 +426,8 @@ class _BackupPageState extends State<BackupPage> {
         return '降级前备份';
       case BackupKind.beforeRestore:
         return '导入前备份';
+      case BackupKind.beforeQianjiImport:
+        return '钱迹导入前备份';
       case BackupKind.dailyBackup:
         return '每日备份';
     }
@@ -473,6 +487,11 @@ class _BackupPageState extends State<BackupPage> {
           icon: Icons.restore_outlined,
           title: '导入备份',
           description: '从备份文件恢复全部数据，会覆盖当前数据；导入前会自动把当前数据备份一份，选错了能找回来',
+        ),
+        HelpSheetItem(
+          icon: Icons.upload_file,
+          title: '导入钱迹账单',
+          description: '选择钱迹 App 导出的 Excel 账单，逐组选好对应分类后追加导入（不覆盖现有数据）；导入前会自动备份，导入后可立即整批撤销',
         ),
         HelpSheetItem(
           icon: Icons.history,
@@ -607,6 +626,20 @@ class _BackupPageState extends State<BackupPage> {
     final path = picked.isEmpty ? null : picked.first.path;
     if (path == null || !mounted) return; // 用户取消选择
     await _restoreFromPath(path);
+  }
+
+  /// 选择钱迹导出的 xlsx 文件，进入分类映射页
+  ///
+  /// 不按扩展名过滤（与 _import 同理，ROM 对未知扩展的 MIME 归类
+  /// 不一）；选错文件由映射页解析兜底提示。
+  Future<void> _importQianji() async {
+    final picked = await FilePicker.pickFiles(type: FileType.any);
+    final path = picked.isEmpty ? null : picked.first.path;
+    if (path == null || !mounted) return; // 用户取消选择
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => QianjiImportPage(filePath: path)),
+    );
   }
 
   /// 公共恢复流程：预检 → 强确认 → 暂存待恢复 → 退出应用

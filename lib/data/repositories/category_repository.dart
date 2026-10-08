@@ -89,6 +89,17 @@ class CategoryRepository {
     });
   }
 
+  /// 统计一组分类 id（自身+子分类集合）下的账单总数，
+  /// 供删除分类的确认弹窗提示影响范围
+  Future<int> countBillsInCategories(List<int> categoryIds) async {
+    if (categoryIds.isEmpty) return 0;
+    final count = _db.bills.id.count();
+    final query = _db.selectOnly(_db.bills)
+      ..addColumns([count])
+      ..where(_db.bills.categoryId.isIn(categoryIds));
+    return query.map((r) => r.read(count) ?? 0).getSingle();
+  }
+
   /// 删除分类
   ///
   /// 该分类及其全部子分类下的账单一并删除（调用方须在 UI 层向用户确认），

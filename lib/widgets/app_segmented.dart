@@ -30,8 +30,8 @@ class AppSegmented<T> extends StatelessWidget {
   /// 选项与文案
   final List<(T, String)> options;
 
-  /// 当前选中值
-  final T selected;
+  /// 当前选中值；为 null 时全部段呈未选中态（如预算模式清空后）
+  final T? selected;
 
   /// 选中回调
   final ValueChanged<T> onChanged;

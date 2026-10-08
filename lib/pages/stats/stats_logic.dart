@@ -24,15 +24,29 @@ List<Bill> applyKeyword(
   }).toList();
 }
 
-/// 按分类聚合（全部视图环图/排行共用）：金额降序；
-/// 分类已删除的账单归为"未知分类"（category 为 null，不可钻取）
+/// 按一级分类聚合（全部视图环图/排行共用）：金额降序；
+/// 二级分类的账单上浮归并到所属一级（火车→交通），总览只保持
+/// 一级粒度，二级明细留给钻取后的分类视图"子分类构成"环图；
+/// 分类已删除（连一级也不存在）的账单归为"未知分类"（category
+/// 为 null，不可钻取）
 List<CategoryEntry> aggregateByCategory(
   List<Bill> bills,
   Map<int, Category> categories,
 ) {
   final sums = <int, int>{};
+  var unknown = 0;
   for (final b in bills) {
-    sums[b.categoryId] = (sums[b.categoryId] ?? 0) + b.amountCents;
+    final c = categories[b.categoryId];
+    // 二级上浮一级：parentId 指向的一级理论上必存在（外键约束），
+    // 查不到按"未知分类"兜底
+    final root = (c != null && c.parentId != null)
+        ? categories[c.parentId]
+        : c;
+    if (root == null) {
+      unknown += b.amountCents;
+      continue;
+    }
+    sums[root.id] = (sums[root.id] ?? 0) + b.amountCents;
   }
   final entries = [
     for (final e in sums.entries)
@@ -41,7 +55,11 @@ List<CategoryEntry> aggregateByCategory(
         name: categories[e.key]?.name ?? '未知分类',
         cents: e.value,
       ),
-  ]..sort((a, b) => b.cents.compareTo(a.cents));
+  ];
+  if (unknown > 0) {
+    entries.add((category: null, name: '未知分类', cents: unknown));
+  }
+  entries.sort((a, b) => b.cents.compareTo(a.cents));
   return entries;
 }
 

@@ -81,6 +81,19 @@ void main() {
       expect(entries.first.cents, 1700);
     });
 
+    test('二级分类账单上浮归并到一级', () {
+      final bills = [
+        bill(1, 2, 500), // 二级"打车" → 归一级"交通"
+        bill(2, 3, 200), // 直接挂一级"交通"
+        bill(3, 1, 100), // 一级"餐饮"
+      ];
+      final entries = aggregateByCategory(bills, categories);
+      expect(entries.map((e) => e.name).toList(), ['交通', '餐饮']);
+      expect(entries.first.cents, 700);
+      // 钻取目标为一级分类本身
+      expect(entries.first.category!.id, 3);
+    });
+
     test('分类已删除的账单归"未知分类"且不可钻取', () {
       final bills = [bill(1, 99, 300)];
       final entries = aggregateByCategory(bills, categories);

@@ -335,6 +335,8 @@ class StatsDayCard extends StatelessWidget {
     required this.onDelete,
     required this.onCategoryTap,
     required this.showYear,
+    this.tagsByBill = const {},
+    this.onTagTap,
   });
 
   final DateTime date;
@@ -344,6 +346,12 @@ class StatsDayCard extends StatelessWidget {
 
   /// 详情弹窗里点击分类行的跳转（内部钻取，由宿主传入）
   final void Function(Category category) onCategoryTap;
+
+  /// billId → 标签列表（由宿主批量加载后传入，条目与详情共用）
+  final Map<int, List<Tag>> tagsByBill;
+
+  /// 详情弹窗里点击标签的跳转（宿主决定落点）
+  final void Function(Tag tag)? onTagTap;
 
   /// 列表数据跨年时分组头带年份消歧（2025.09.29 周二），同年省略（09.29 周二）
   final bool showYear;
@@ -411,11 +419,13 @@ class StatsDayCard extends StatelessWidget {
                   discountCents: bill.discountCents,
                   note: bill.note,
                   location: bill.location,
+                  tags: tagsByBill[bill.id],
                   onTap: () => showBillDetailSheet(
                     context,
                     bill: bill,
                     categories: categories,
                     onCategoryTap: onCategoryTap,
+                    onTagTap: onTagTap,
                   ),
                   onLongPress: () => onDelete(bill),
                 );

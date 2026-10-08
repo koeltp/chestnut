@@ -53,4 +53,8 @@ class Bills extends Table {
 
   /// 创建时间，用于同一天内排序
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// 导入批次号：null = 手动记账；非空 = 批量导入（毫秒时间戳）。
+  /// 同一次导入的账单共享一个批次号，结果页据此"整批撤销"
+  IntColumn get importBatchId => integer().nullable()();
 }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
 import '../../providers/bill_provider.dart';
@@ -288,7 +289,7 @@ class _SummaryItem extends StatelessWidget {
 }
 
 /// 按日分组的账单卡片列表：每天一张白色圆角卡片
-class _BillList extends StatelessWidget {
+class _BillList extends StatefulWidget {
   const _BillList({
     required this.bills,
     required this.categories,
@@ -302,11 +303,43 @@ class _BillList extends StatelessWidget {
   final bool showAll;
 
   @override
+  State<_BillList> createState() => _BillListState();
+}
+
+class _BillListState extends State<_BillList> {
+  /// billId → 标签列表缓存：bills 变化时批量加载一次
+  Map<int, List<Tag>> _tagsByBill = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTags();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BillList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 账单列表变化（切月/新增/编辑/删除）时重新批量加载标签
+    if (oldWidget.bills != widget.bills) _loadTags();
+  }
+
+  Future<void> _loadTags() async {
+    if (widget.bills.isEmpty) {
+      setState(() => _tagsByBill = {});
+      return;
+    }
+    final ids = widget.bills.map((b) => b.id).toList();
+    final map = await context.read<TagRepository>().getTagsByBillIds(ids);
+    if (!mounted) return;
+    setState(() => _tagsByBill = map);
+  }
+
+  @override
   Widget build(BuildContext context) {
     // 先按日分组（数据已按日期倒序），再依序生成每日卡片
     final dayKeys = <String>[];
     final dayBillsMap = <String, List<Bill>>{};
-    for (final bill in bills) {
+    for (final bill in widget.bills) {
       final key = '${bill.date.year}-${bill.date.month}-${bill.date.day}';
       if (!dayBillsMap.containsKey(key)) {
         dayBillsMap[key] = [];
@@ -315,7 +348,7 @@ class _BillList extends StatelessWidget {
       dayBillsMap[key]!.add(bill);
     }
     // 年份按需显示：列表数据跨年时分组头带年份消歧，同年内省略
-    final crossYear = bills.map((b) => b.date.year).toSet().length > 1;
+    final crossYear = widget.bills.map((b) => b.date.year).toSet().length > 1;
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(
@@ -332,7 +365,7 @@ class _BillList extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: AppDimens.gapLg),
             child: Center(
               child: Text(
-                showAll ? '· 全部账单到底啦 ·' : '· 本月账单到底啦 ·',
+                widget.showAll ? '· 全部账单到底啦 ·' : '· 本月账单到底啦 ·',
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -347,7 +380,8 @@ class _BillList extends StatelessWidget {
           child: _DayCard(
             date: dayBills.first.date,
             dayBills: dayBills,
-            categories: categories,
+            categories: widget.categories,
+            tagsByBill: _tagsByBill,
             showYear: crossYear,
           ),
         );
@@ -362,12 +396,16 @@ class _DayCard extends StatelessWidget {
     required this.date,
     required this.dayBills,
     required this.categories,
+    required this.tagsByBill,
     required this.showYear,
   });
 
   final DateTime date;
   final List<Bill> dayBills;
   final Map<int, Category> categories;
+
+  /// billId → 标签列表（由 _BillList 批量加载后传入）
+  final Map<int, List<Tag>> tagsByBill;
 
   /// 分组头是否带年份：列表数据跨年时为 true（年份按需消歧）
   final bool showYear;
@@ -446,6 +484,7 @@ class _DayCard extends StatelessWidget {
       discountCents: bill.discountCents,
       note: bill.note,
       location: bill.location,
+      tags: tagsByBill[bill.id],
       onTap: () => showBillDetailSheet(
         context,
         bill: bill,
@@ -454,6 +493,12 @@ class _DayCard extends StatelessWidget {
         onCategoryTap: (c) => Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => StatsPage(initialCategory: c),
+          ),
+        ),
+        // 详情里点标签：跳转到该标签筛选的统计页
+        onTagTap: (tag) => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => StatsPage(initialTag: tag),
           ),
         ),
       ),

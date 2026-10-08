@@ -470,16 +470,30 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     await _moveToParentSub(provider, sub);
   }
 
-  /// 删除分类（该分类及其子分类下的账单一并删除，需用户确认）
+  /// 删除确认：一级分类连带其全部子分类，双方账单一并删除；
+  /// 弹窗列出子分类数与受影响账单数，让用户明确影响范围再决定
   Future<void> _confirmDelete(
     CategoryProvider provider,
     Category category,
   ) async {
+    // 一级分类取其子分类列表，账单数按"自身+子分类"合计（与删除范围一致）
+    final subs = category.parentId == null
+        ? (await provider.categoriesStream(_type).first)
+              .where((c) => c.parentId == category.id)
+              .toList()
+        : const <Category>[];
+    final billCount = await provider.countBillsInCategories([
+      category.id,
+      for (final s in subs) s.id,
+    ]);
+    if (!mounted) return;
+    final scope = subs.isEmpty ? '' : '及其 ${subs.length} 个子分类';
+    final impact = billCount > 0 ? '，$billCount 笔账单将被一并删除' : '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除分类'),
-        content: Text('删除"${category.name}"后，该分类及其子分类下的账单也会一并删除，确定吗？'),
+        content: Text('删除「${category.name}」$scope$impact，确定吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

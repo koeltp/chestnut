@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/category_provider.dart';
@@ -27,10 +28,13 @@ import 'stats_widgets.dart';
 /// 时间范围：顶栏副标题弹窗（按月/按年/全部）+ 漏斗面板（快捷范围、
 /// 自定义起止日期与关键词搜索），与首页口径一致。
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key, this.initialCategory});
+  const StatsPage({super.key, this.initialCategory, this.initialTag});
 
   /// 非空时直接进入该分类视图（分类管理页"查看统计数据"入口）
   final Category? initialCategory;
+
+  /// 非空时按该标签筛选（首页/详情"点标签跳转"入口）
+  final Tag? initialTag;
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -65,11 +69,24 @@ class _StatsPageState extends State<StatsPage> {
   /// 分类视图标题的父分类名（二级分类标题需要"一级名-二级名"）
   String? _parentName;
 
+  /// 已选标签 id 集合（空 = 不按标签筛选）；多个标签取并集（账单挂了
+  /// 任一选中标签即保留）
+  final Set<int> _selectedTagIds = {};
+
+  /// 已选分类 id 集合（空 = 不按分类筛选）：
+  /// 只按账单自身的 categoryId 精确命中——一级 id 只命中挂在一级
+  /// 本身的账单，二级 id 只命中挂在该二级的账单；"整组"语义由
+  /// 多选弹层"点一级全选"生成的集合表达
+  final Set<int> _selectedCategoryIds = {};
+
   @override
   void initState() {
     super.initState();
     final initial = widget.initialCategory;
     if (initial != null) _loadParentName(initial);
+    // 标签筛选初始值（从详情/首页点标签跳转过来）
+    final tag = widget.initialTag;
+    if (tag != null) _selectedTagIds.add(tag.id);
   }
 
   /// 取父分类名：一次性查询即可（分类层级极少变动）
@@ -137,9 +154,10 @@ class _StatsPageState extends State<StatsPage> {
     };
   }
 
-  /// 当前范围的 [start, end) 区间。
-  /// 口径：开始日**含当天**，截止日**不含当天**（截止 2025/10/1 = 查
-  /// <2025/10/1 的所有数据）；全部模式与开放端为 null（不限制）
+  /// 当前范围的 [start, end) 查询边界。
+  /// 口径：开始日与截止日均**含当天**——自定义区间的截止端在内部
+  /// +1 天转为排他边界（选 10/31 = 查到 10/31 当天）；
+  /// 全部模式与开放端为 null（不限制）
   (DateTime?, DateTime?) get _range {
     final custom = _custom;
     if (custom != null) {
@@ -147,7 +165,7 @@ class _StatsPageState extends State<StatsPage> {
       final e = custom.end;
       return (
         s == null ? null : DateTime(s.year, s.month, s.day),
-        e == null ? null : DateTime(e.year, e.month, e.day),
+        e == null ? null : DateTime(e.year, e.month, e.day + 1),
       );
     }
     return switch (_period) {
@@ -157,6 +175,28 @@ class _StatsPageState extends State<StatsPage> {
       ),
       HomePeriod.year => (DateTime(_month.year), DateTime(_month.year + 1)),
       HomePeriod.all => (null, null),
+    };
+  }
+
+  /// 当前范围的用户语义区间（起止均含当天）：筛选面板据此回显。
+  /// period 模式也表达成具体日期，面板内即可统一编辑
+  ({DateTime? start, DateTime? end}) get _userRange {
+    final custom = _custom;
+    if (custom != null) return custom;
+    return switch (_period) {
+      HomePeriod.month => (
+        start: DateTime(_month.year, _month.month, 1),
+        end: DateTime(
+          _month.year,
+          _month.month,
+          DateTime(_month.year, _month.month + 1, 0).day,
+        ),
+      ),
+      HomePeriod.year => (
+        start: DateTime(_month.year, 1, 1),
+        end: DateTime(_month.year, 12, 31),
+      ),
+      HomePeriod.all => (start: null, end: null),
     };
   }
 
@@ -175,22 +215,68 @@ class _StatsPageState extends State<StatsPage> {
     });
   }
 
-  /// 漏斗面板应用回调（时间范围 + 关键词一并应用）
+  /// 漏斗面板应用回调（区间 + 关键词 + 标签 + 分类一并应用）。
+  ///
+  /// 面板只回传具体日期区间，此处把恰好整月/整年的区间归整回
+  /// month/year 模式（标题、柱状图、年月条高亮与普通浏览一致），
+  /// 其余区间作为 custom 保留
   void _applyFilter(
-    HomePeriod period,
-    DateTime month,
-    ({DateTime? start, DateTime? end})? custom,
+    ({DateTime? start, DateTime? end}) range,
     String keyword,
+    Set<int> tagIds,
+    Set<int> categoryIds,
   ) {
+    final s = range.start;
+    final e = range.end;
+
+    HomePeriod period;
+    DateTime month;
+    ({DateTime? start, DateTime? end})? custom;
+
+    if (s == null && e == null) {
+      period = HomePeriod.all;
+      month = _month;
+    } else if (s != null &&
+        e != null &&
+        s.year == e.year &&
+        s.month == e.month &&
+        s.day == 1 &&
+        e.day == DateTime(s.year, s.month + 1, 0).day) {
+      // 恰好整月：归整为月模式
+      period = HomePeriod.month;
+      month = DateTime(s.year, s.month);
+    } else if (s != null &&
+        e != null &&
+        s.year == e.year &&
+        s.month == 1 &&
+        s.day == 1 &&
+        e.month == 12 &&
+        e.day == 31) {
+      // 恰好整年：归整为年模式
+      period = HomePeriod.year;
+      month = DateTime(s.year);
+    } else {
+      // 开放端或任意区间：自定义模式（锚点沿用开始端，无开始端用当前月）
+      period = HomePeriod.month;
+      month = s == null ? _month : DateTime(s.year, s.month);
+      custom = range;
+    }
+
     setState(() {
       _period = period;
       _month = month;
       _custom = custom;
       _keyword = keyword;
+      _selectedTagIds
+        ..clear()
+        ..addAll(tagIds);
+      _selectedCategoryIds
+        ..clear()
+        ..addAll(categoryIds);
     });
   }
 
-  /// 右上角漏斗：快捷范围 + 自定义起止日期 + 关键词搜索
+  /// 右上角漏斗：快捷范围 + 自定义起止日期 + 关键词搜索 + 标签多选
   Future<void> _showFilterSheet() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -202,10 +288,11 @@ class _StatsPageState extends State<StatsPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (_) => StatsFilterSheet(
-        initialPeriod: _period,
-        initialMonth: _month,
-        initialCustom: _custom,
+        initialRange: _userRange,
+        initialType: _isAllView ? _type : _category!.type,
         initialKeyword: _keyword,
+        initialTagIds: _selectedTagIds,
+        initialCategoryIds: _selectedCategoryIds,
         onApply: _applyFilter,
       ),
     );
@@ -265,12 +352,14 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   /// 当前视图的账单流：分类视图为该分类（含子分类）流；
-  /// 全部视图为对应范围的全量流。UI 在 build 中取流，
-  /// 范围/月份/视图切换时 StreamBuilder 重新订阅新流
+  /// 全部视图恒为全量账单流——所有筛选内存过滤，切换条件
+  /// 不触发重订阅。仅视图栈变化（钻取/返回）时重新订阅
   Stream<List<Bill>> _billsStream(BillProvider provider) {
     final c = _category;
     if (c != null) return provider.categoryBillsStream(c.id);
-    return provider.billsInRangeStream(_period, _month);
+    // 全部视图统一监听全量账单：日期/分类/标签/关键词全部内存过滤，
+    // 切换筛选不再重订阅、无加载空窗；个人数据量下无性能压力
+    return provider.billsInRangeStream(HomePeriod.all, _month);
   }
 
   /// 去年同期对比流（柱状图灰色背景柱）：按月/按年整体平移一年；
@@ -327,7 +416,10 @@ class _StatsPageState extends State<StatsPage> {
           // 漏斗：自定义区间或关键词生效时主色高亮提示
           IconButton(
             icon: const Icon(Icons.filter_alt_outlined, size: 22),
-            color: (_isCustom || _keyword.isNotEmpty)
+            color: (_isCustom ||
+                    _keyword.isNotEmpty ||
+                    _selectedTagIds.isNotEmpty ||
+                    _selectedCategoryIds.isNotEmpty)
                 ? AppColors.primary
                 : AppColors.textPrimary,
             onPressed: _showFilterSheet,
@@ -346,16 +438,33 @@ class _StatsPageState extends State<StatsPage> {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              // 去年同期对比流（柱状图灰色背景柱）：换流空窗直接当
-              // 空列表——只影响灰色对比柱的显示，不会产生"暂无账单"
-              // 空态误导，不值得整页转圈（与主流约定场景不同）
-              return StreamBuilder<List<Bill>>(
-                stream: _compareStream(provider),
-                builder: (context, prevSnapshot) {
-                  return _buildBody(
-                    snapshot.data!,
-                    categories,
-                    prevSnapshot.data ?? const <Bill>[],
+              final bills = snapshot.data!;
+              // 统一批量加载当前 bills 的标签（本地小表，一次查询）：
+              // 既用于下方条目显示标签，也用于按选中标签过滤
+              return FutureBuilder<Map<int, List<Tag>>>(
+                future: context.read<TagRepository>().getTagsByBillIds(
+                      bills.map((b) => b.id).toList(),
+                    ),
+                builder: (context, tagSnapshot) {
+                  final tagsByBill = tagSnapshot.data ?? const <int, List<Tag>>{};
+                  // 标签过滤：账单挂了任一选中标签即保留；未选标签则全部保留
+                  final visible = _selectedTagIds.isEmpty
+                      ? bills
+                      : bills
+                          .where((b) =>
+                              (tagsByBill[b.id] ?? const [])
+                                  .any((t) => _selectedTagIds.contains(t.id)))
+                          .toList();
+                  return StreamBuilder<List<Bill>>(
+                    stream: _compareStream(provider),
+                    builder: (context, prevSnapshot) {
+                      return _buildBody(
+                        visible,
+                        categories,
+                        prevSnapshot.data ?? const <Bill>[],
+                        tagsByBill: tagsByBill,
+                      );
+                    },
                   );
                 },
               );
@@ -370,8 +479,9 @@ class _StatsPageState extends State<StatsPage> {
   Widget _buildBody(
     List<Bill> bills,
     Map<int, Category> categories,
-    List<Bill> prevBills,
-  ) {
+    List<Bill> prevBills, {
+    Map<int, List<Tag>> tagsByBill = const {},
+  }) {
     // 范围过滤（数据层为全量流，内存过滤足够）
     final (start, end) = _range;
     var filtered = bills.where((b) {
@@ -380,6 +490,15 @@ class _StatsPageState extends State<StatsPage> {
       return true;
     }).toList();
     filtered = applyKeyword(filtered, categories, _keyword);
+
+    // 分类筛选：只认账单自身的 categoryId——选中集合包含什么就命中
+    // 什么，不做"一级 id 自动展开全部二级"；整组语义由多选弹层
+    // "点一级全选"动作生成的集合表达（避免只选地铁却命中整组交通）
+    if (_selectedCategoryIds.isNotEmpty) {
+      filtered = filtered
+          .where((b) => _selectedCategoryIds.contains(b.categoryId))
+          .toList();
+    }
 
     final c = _category;
     // 分段器是整页开关：全部视图下汇总/图表/明细都只展示当前收支
@@ -603,6 +722,13 @@ class _StatsPageState extends State<StatsPage> {
                     categories: categories,
                     onDelete: _confirmDelete,
                     onCategoryTap: _drillTo,
+                    tagsByBill: tagsByBill,
+                    onTagTap: (tag) => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => StatsPage(initialTag: tag),
+                      ),
+                    ),
                     showYear: crossYear,
                   ),
                 );

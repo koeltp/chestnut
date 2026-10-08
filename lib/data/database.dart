@@ -13,6 +13,7 @@ import '../models/enums.dart';
 import 'tables/bills.dart';
 import 'tables/budgets.dart';
 import 'tables/categories.dart';
+import 'tables/tags.dart';
 
 part 'database.g.dart';
 
@@ -20,7 +21,7 @@ part 'database.g.dart';
 ///
 /// 开发期 v1~v8 的历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 2;
+const int kSchemaVersion = 4;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -41,7 +42,7 @@ const String kDowngradeDetectedKey = 'db_downgrade_detected';
 /// 应用数据库
 ///
 /// 单例式入口：负责建库、迁移与首次预置默认分类。
-@DriftDatabase(tables: [Categories, Bills, Budgets])
+@DriftDatabase(tables: [Categories, Bills, Budgets, Tags, BillTags])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection(kSchemaVersion));
 
@@ -83,6 +84,15 @@ class AppDatabase extends _$AppDatabase {
         // 旧账单优惠额为 null（未使用优惠）
         if (from < 2) {
           await m.addColumn(bills, bills.discountCents);
+        }
+        // 钱迹导入：批次号列（可空，手动记账与旧数据均为 null）
+        if (from < 3) {
+          await m.addColumn(bills, bills.importBatchId);
+        }
+        // 标签功能：新增 tags 与 bill_tags 两表（多对多关联）
+        if (from < 4) {
+          await m.createTable(tags);
+          await m.createTable(billTags);
         }
       }
     },
@@ -225,14 +235,15 @@ const _defaultCategories = <_CategorySeed>[
         BillType.expense,
         4,
       ),
-      _CategorySeed('零食', Icons.icecream, 0xFFFF9F43, BillType.expense, 5),
-      _CategorySeed('饮料', Icons.local_drink, 0xFFFF9F43, BillType.expense, 6),
+      _CategorySeed('快餐', Icons.lunch_dining, 0xFFFF9F43, BillType.expense, 5),
+      _CategorySeed('零食', Icons.icecream, 0xFFFF9F43, BillType.expense, 6),
+      _CategorySeed('饮料', Icons.local_drink, 0xFFFF9F43, BillType.expense, 7),
       _CategorySeed(
         '下馆子',
         Icons.dinner_dining,
         0xFFFF9F43,
         BillType.expense,
-        7,
+        8,
       ),
     ],
   ),
@@ -297,6 +308,7 @@ const _defaultCategories = <_CategorySeed>[
       ),
       _CategorySeed('服饰', Icons.checkroom, 0xFFFF6B81, BillType.expense, 1),
       _CategorySeed('数码', Icons.devices, 0xFFFF6B81, BillType.expense, 2),
+      _CategorySeed('电器', Icons.tv, 0xFFFF6B81, BillType.expense, 3),
     ],
   ),
   _CategorySeed(
@@ -454,6 +466,8 @@ const _defaultCategories = <_CategorySeed>[
       _CategorySeed('网课', Icons.language, 0xFFFDCB6E, BillType.expense, 4),
     ],
   ),
+  // 兜底组：归不进前述分类的支出放这里，常驻末位（无子分类）
+  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 9),
   // 收入分类
   _CategorySeed('工资', Icons.work, 0xFF4E9E5F, BillType.income, 0),
   _CategorySeed('奖金', Icons.emoji_events, 0xFFF39C12, BillType.income, 1),

@@ -23,12 +23,28 @@ class ExportService {
     final categories = {
       for (final c in await _db.select(_db.categories).get()) c.id: c,
     };
+    // 批量查询所有账单的标签（billId → 标签名列表）
+    final billIds = bills.map((b) => b.id).toList();
+    final tagRows = billIds.isEmpty
+        ? const []
+        : await (_db.select(_db.billTags)
+              ..where((bt) => bt.billId.isIn(billIds)))
+            .get();
+    final tagMap = await _db.select(_db.tags).get();
+    final tagById = {for (final t in tagMap) t.id: t};
+    final tagsByBill = <int, List<String>>{};
+    for (final r in tagRows) {
+      final name = tagById[r.tagId]?.name;
+      if (name != null) {
+        tagsByBill.putIfAbsent(r.billId, () => []).add(name);
+      }
+    }
 
     // 按日期正序导出，便于追溯
     bills.sort((a, b) => a.date.compareTo(b.date));
 
     final rows = <List<dynamic>>[
-      ['日期', '类型', '分类', '金额(元)', '优惠(元)', '原价(元)', '备注'],
+      ['日期', '类型', '分类', '金额(元)', '优惠(元)', '原价(元)', '备注', '标签'],
       ...bills.map(
         (b) => [
           _formatDate(b.date),
@@ -43,6 +59,8 @@ class ExportService {
               ? ''
               : MoneyUtil.centsToYuan(b.amountCents + b.discountCents!),
           b.note ?? '',
+          // 多标签逗号分隔，无标签留空
+          (tagsByBill[b.id] ?? []).join('、'),
         ],
       ),
     ];

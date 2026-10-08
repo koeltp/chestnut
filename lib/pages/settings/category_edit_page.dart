@@ -9,6 +9,7 @@ import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/category_avatar.dart';
+import '../../widgets/color_palette_picker.dart';
 import '../../widgets/section_card.dart';
 
 /// 图标项：Material 图标 + 语义名称（钱迹式图标库）
@@ -43,18 +44,21 @@ const _iconGroups = <_IconGroup>[
     (Icons.restaurant, '三餐'),
     (Icons.delivery_dining, '外卖'),
     (Icons.shopping_basket, '买菜'),
+    (Icons.eco, '水果'),
     (Icons.free_breakfast, '早餐'),
     (Icons.rice_bowl, '午餐'),
     (Icons.ramen_dining, '晚餐'),
     (Icons.dinner_dining, '下馆子'),
     (Icons.lunch_dining, '快餐'),
     (Icons.local_cafe, '咖啡'),
+    (Icons.emoji_food_beverage, '奶茶'),
     (Icons.local_drink, '饮料'),
     (Icons.icecream, '零食'),
     (Icons.bakery_dining, '烘焙'),
   ]),
   _IconGroup('交通', [
     (Icons.local_taxi, '打车'),
+    (Icons.commute, '顺风车'),
     (Icons.directions_bus, '公交'),
     (Icons.directions_subway, '地铁'),
     (Icons.local_gas_station, '加油'),
@@ -65,6 +69,8 @@ const _iconGroups = <_IconGroup>[
     (Icons.two_wheeler, '电动车'),
     (Icons.pedal_bike, '单车'),
     (Icons.directions_boat, '轮船'),
+    // 汽车（购车款/配件/改装）：汽车资产相关，置于养护类条目之前
+    (Icons.directions_car, '汽车'),
     (Icons.build_circle, '保养'),
     (Icons.car_repair, '修车'),
     (Icons.local_car_wash, '洗车'),
@@ -103,6 +109,7 @@ const _iconGroups = <_IconGroup>[
     (Icons.checkroom, '服饰'),
     (Icons.face_retouching_natural, '美妆'),
     (Icons.devices, '数码'),
+    (Icons.tv, '电器'),
     (Icons.backpack, '箱包'),
     (Icons.watch, '饰品'),
   ]),
@@ -165,6 +172,7 @@ const _iconGroups = <_IconGroup>[
   ]),
   _IconGroup('人情', [
     (Icons.volunteer_activism, '孝敬'),
+    (Icons.elderly, '赡养'),
     (Icons.favorite, '结婚'),
     (Icons.child_care, '育儿'),
     (Icons.redeem, '礼物'),
@@ -179,7 +187,25 @@ const _iconGroups = <_IconGroup>[
     (Icons.credit_score, '信用'),
     (Icons.request_quote, '账单'),
     (Icons.payments, '现金'),
+    (Icons.money_off, '手续费'),
+    (Icons.savings, '利息'),
     (Icons.credit_card, '信用卡'),
+  ]),
+  // 科技组：程序员/站长典型开销（域名、服务器等为用户举例，
+  // 按独立开发者场景补全）；插在"其他"之前，兜底组保持收尾
+  _IconGroup('科技', [
+    (Icons.public, '域名'),
+    (Icons.dns, '服务器'),
+    (Icons.cloud, '云服务'),
+    (Icons.storage, '数据库'),
+    (Icons.web, '网站'),
+    (Icons.https, 'SSL证书'),
+    (Icons.fact_check, '备案'),
+    (Icons.speed, 'CDN'),
+    (Icons.api, 'API'),
+    (Icons.code, '代码'),
+    (Icons.terminal, '终端'),
+    (Icons.smart_toy, 'AI'),
   ]),
   _IconGroup('其他', [
     (Icons.category, '杂项'),
@@ -188,19 +214,9 @@ const _iconGroups = <_IconGroup>[
   ]),
 ];
 
-/// 可选色板（ARGB 整数，与分类表存储格式一致）：无颜色选择入口，
-/// 颜色由图标固定映射决定，供记一笔页/管理页/编辑页着色
-const _colorChoices = <int>[
-  0xFFE05A4E,
-  0xFFFF9F43,
-  0xFFFDCB6E,
-  0xFF4E9E5F,
-  0xFF4A90D9,
-  0xFF9B6FD0,
-  0xFF50B8A5,
-  0xFFE88BB1,
-  0xFF8A8F99,
-];
+/// 可选色板：与标签共用 [AppColors.tagPalette]（20 色同一常量），
+/// 既用于图标固定映射，也用于手动选色弹层
+const List<int> _colorChoices = AppColors.tagPalette;
 
 /// 全部图标的扁平列表（按分组顺序）
 final List<(IconData, String)> _allIcons = [
@@ -584,31 +600,10 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: [
-                  for (final c in _colorChoices)
-                    GestureDetector(
-                      onTap: () => Navigator.pop(ctx, c),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Color(c),
-                          shape: BoxShape.circle,
-                        ),
-                        // 当前色打对勾提示
-                        child: c == _colorValue
-                            ? const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 20,
-                              )
-                            : null,
-                      ),
-                    ),
-                ],
+              ColorPalettePicker(
+                selectedColor: _colorValue,
+                dotSize: 40,
+                onChanged: (c) => Navigator.pop(ctx, c),
               ),
             ],
           ),

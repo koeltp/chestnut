@@ -10,6 +10,7 @@ import 'data/database.dart';
 import 'data/repositories/bill_repository.dart';
 import 'data/repositories/budget_repository.dart';
 import 'data/repositories/category_repository.dart';
+import 'data/repositories/tag_repository.dart';
 import 'pages/db_error_page.dart';
 import 'pages/lock/lock_screen.dart';
 import 'pages/main_page.dart';
@@ -154,6 +155,9 @@ class _ProvidersApp extends StatelessWidget {
         ),
         Provider<BudgetRepository>(
           create: (ctx) => BudgetRepository(ctx.read<AppDatabase>()),
+        ),
+        Provider<TagRepository>(
+          create: (ctx) => TagRepository(ctx.read<AppDatabase>()),
         ),
         // 状态层
         ChangeNotifierProvider<BillProvider>(

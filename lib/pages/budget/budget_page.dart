@@ -46,10 +46,12 @@ class _BudgetPageState extends State<BudgetPage> {
 
   /// 按当前预算模式自动填充（仅当前月，历史月不改动）：
   /// A 沿用上月预算——未设的总预算/分类预算写上月对应值；
-  /// B 按上月消费——未设的分类预算写上月实际消费，总预算未设时写各分类之和
+  /// B 按上月消费——未设的分类预算写上月实际消费，总预算未设时写各分类之和。
+  /// 模式为未选（null，清空预算后）时不做任何自动填充，等用户点选
   Future<void> _applyBudgetMode() async {
     if (!mounted || !_isCurrentMonth) return;
     final mode = context.read<SettingsProvider>().budgetMode;
+    if (mode == null) return;
     if (mode == BudgetMode.carryLastMonth) {
       await _carryLastMonthBudgets();
     } else {
@@ -85,8 +87,10 @@ class _BudgetPageState extends State<BudgetPage> {
     });
     // 总预算：未设的沿用上月
     if (!mounted) return;
+    // 0 元残留行（清空留下的记录）等同未设，允许沿用值覆盖——
+    // 否则自动沿用看到记录存在就跳过，页面却显示"尚未设置"
     final cur = await provider.getBudget(_month);
-    if (cur != null || !mounted) return;
+    if ((cur?.amountCents ?? 0) > 0 || !mounted) return;
     final last = await provider.getBudget(lastMonth);
     if (last != null && last.amountCents > 0 && mounted) {
       await provider.setBudget(_month, last.amountCents);
@@ -111,23 +115,46 @@ class _BudgetPageState extends State<BudgetPage> {
     final sum = all.fold<int>(0, (total, b) => total + b.amountCents);
     if (sum <= 0 || !mounted) return;
     final total = await provider.getBudget(_month);
-    if (total == null && mounted) {
+    // 0 元残留行等同未设，允许写入合计（与模式A同口径）
+    if ((total?.amountCents ?? 0) <= 0 && mounted) {
       await provider.setBudget(_month, sum);
     }
   }
 
-  /// 手动沿用上月预算（沿用提示卡按钮）
-  Future<void> _carryLastMonth() async {
-    final now = DateTime.now();
-    final last = await context.read<BudgetProvider>().getBudget(
-      DateTime(now.year, now.month - 1),
+  /// 清空当月全部预算（头部卡"清空"入口）：二次确认后一次清掉
+  /// 总预算与所有分类预算；预算模式同时置为未选——分段器两段都不
+  /// 选中，之后进页面不再自动填充，直到用户重新点选某个模式
+  Future<void> _clearAllBudgets() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空预算'),
+        content: const Text('总预算和所有分类预算都会被清除，确定继续吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('清空', style: TextStyle(color: AppColors.expense)),
+          ),
+        ],
+      ),
     );
-    if (!mounted) return;
-    if (last == null || last.amountCents <= 0) {
-      showAppToast(context, '上月也未设置预算');
-      return;
+    if (confirmed != true || !mounted) return;
+    final provider = context.read<BudgetProvider>();
+    final settings = context.read<SettingsProvider>();
+    // 只清已设置（正数）的分类预算，减少无效写入
+    final budgets = await provider.categoryBudgetsStream(_month).first;
+    for (final b in budgets) {
+      if (b.amountCents > 0) {
+        await provider.setCategoryBudget(_month, b.categoryId, 0);
+      }
     }
-    await context.read<BudgetProvider>().setBudget(_month, last.amountCents);
+    await provider.setBudget(_month, 0);
+    // 模式一并回到未选：分段器两段都无选中，避免"选中却没执行"的矛盾
+    await settings.setBudgetMode(null);
   }
 
   @override
@@ -177,14 +204,11 @@ class _BudgetPageState extends State<BudgetPage> {
                           onEdit: () => _showEditSheet(
                             current: hasBudget ? budget.amountCents : null,
                           ),
+                          onClear: _clearAllBudgets,
                         ),
                         const SizedBox(height: AppDimens.gapSection),
                         if (_isCurrentMonth) ...[
                           _buildModeCard(),
-                          const SizedBox(height: AppDimens.gapSection),
-                        ],
-                        if (!hasBudget && _isCurrentMonth) ...[
-                          _buildCarryCard(),
                           const SizedBox(height: AppDimens.gapSection),
                         ],
                         _buildCategoryBudgetSection(
@@ -264,7 +288,8 @@ class _BudgetPageState extends State<BudgetPage> {
 
   /// 预算模式卡（仅当前月显示，历史月切换无效所以不展示）。
   /// 三行结构：标题+随模式说明 / 分段开关铺满 / 条下固定"！"说明行——
-  /// 行为规则（只补未设、不动已设）常驻展示而不是切换时弹提示
+  /// 行为规则（只补未设、不动已设）常驻展示而不是切换时弹提示。
+  /// 模式可为未选（清空预算后）：说明显通用文案，分段器两段都无选中
   Widget _buildModeCard() {
     final mode = context.watch<SettingsProvider>().budgetMode;
     return SectionCard(
@@ -285,9 +310,12 @@ class _BudgetPageState extends State<BudgetPage> {
               ),
               children: [
                 TextSpan(
-                  text: mode == BudgetMode.carryLastMonth
-                      ? '未设的总预算和分类预算自动沿用上月'
-                      : '未设分类预算取上月实际消费，总预算取各分类之和',
+                  text: switch (mode) {
+                    BudgetMode.carryLastMonth => '未设的总预算和分类预算自动沿用上月',
+                    BudgetMode.lastMonthSpend =>
+                      '未设分类预算取上月实际消费，总预算取各分类之和',
+                    null => '选择模式后立即按其规则填充本月预算',
+                  },
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
@@ -307,7 +335,7 @@ class _BudgetPageState extends State<BudgetPage> {
             fit: AppSegmentedFit.stretch,
             onChanged: (m) async {
               await context.read<SettingsProvider>().setBudgetMode(m);
-              // 切换即生效：当前月按新模式立即补全未设项
+              // 点选即生效：当前月按新模式立即补全未设项
               if (mounted) await _applyBudgetMode();
             },
           ),
@@ -331,40 +359,6 @@ class _BudgetPageState extends State<BudgetPage> {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 沿用上月预算提示卡（仅当前月且本月未设总预算时显示）
-  Widget _buildCarryCard() {
-    return SectionCard(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimens.pagePadding,
-        vertical: AppDimens.gapSm,
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.history, size: 18, color: AppColors.textSecondary),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              '上月已设预算，要不要直接沿用？',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: _carryLastMonth,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(0, 36),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              '沿用',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
           ),
         ],
       ),
@@ -603,11 +597,11 @@ class _BudgetPageState extends State<BudgetPage> {
         initialText: current == null
             ? ''
             : MoneyUtil.centsToYuanTrimmed(current),
-        showClear: current != null,
       ),
     );
     if (result == null || !mounted) return;
-    if (result == 'clear') {
+    // 金额删空后保存 = 清除该分类预算（未设时空保存为无操作，幂等）
+    if (result.isEmpty) {
       await provider.setCategoryBudget(_month, c.id, 0);
       return;
     }
@@ -647,7 +641,6 @@ class _BudgetPageState extends State<BudgetPage> {
         initialText: current == null
             ? ''
             : MoneyUtil.centsToYuanTrimmed(current),
-        showClear: false,
       ),
     );
     if (result == null || !mounted) return;
@@ -824,12 +817,16 @@ class _BudgetHeader extends StatelessWidget {
     required this.budgetCents,
     required this.spentCents,
     required this.onEdit,
+    required this.onClear,
   });
 
   final DateTime month;
   final int? budgetCents;
   final int spentCents;
   final VoidCallback onEdit;
+
+  /// 清空全部预算回调（仅有预算时入口可见）
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -860,10 +857,7 @@ class _BudgetHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                '${month.year}年${month.month}月预算',
-                style: TextStyle(fontSize: 14, color: AppColors.onHeader(0.85)),
-              ),
+              // 右上操作区靠右（年月信息由页面顶部选择器承担，不再重复）
               const Spacer(),
               InkWell(
                 onTap: onEdit,
@@ -892,6 +886,32 @@ class _BudgetHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              // 清空入口仅有预算时出现：竖线与"修改"分组，红色字提示
+              // 这是破坏性操作
+              if (hasBudget) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Container(
+                    width: 1,
+                    height: 14,
+                    color: AppColors.onHeader(0.35),
+                  ),
+                ),
+                InkWell(
+                  onTap: onClear,
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Text(
+                      '清空',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.expense,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -966,20 +986,17 @@ class _BudgetHeader extends StatelessWidget {
   }
 }
 
-/// 预算编辑弹层（总预算与分类预算共用）
-///
-/// 提交时 pop 输入文本；[showClear] 为真时附"清除预算"按钮（pop 'clear'），
-/// 供分类预算清除使用。
+/// 预算编辑弹层（总预算与分类预算共用）：标题 + 金额输入 + 保存。
+/// 提交时 pop 输入文本；清除不走本弹层的按钮——分类预算弹层
+/// 退格删空金额后保存即清除（调用方按空字符串处理）。
 class _BudgetSheet extends StatefulWidget {
   const _BudgetSheet({
     required this.title,
     required this.initialText,
-    required this.showClear,
   });
 
   final String title;
   final String initialText;
-  final bool showClear;
 
   @override
   State<_BudgetSheet> createState() => _BudgetSheetState();
@@ -1068,19 +1085,6 @@ class _BudgetSheetState extends State<_BudgetSheet> {
               child: const Text('保存', style: TextStyle(fontSize: 16)),
             ),
           ),
-          if (widget.showClear) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () => Navigator.pop(context, 'clear'),
-                child: const Text(
-                  '清除预算',
-                  style: TextStyle(fontSize: 14, color: AppColors.expense),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

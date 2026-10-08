@@ -610,6 +610,17 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _importBatchIdMeta = const VerificationMeta(
+    'importBatchId',
+  );
+  @override
+  late final GeneratedColumn<int> importBatchId = GeneratedColumn<int>(
+    'import_batch_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -625,6 +636,7 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
     lat,
     lng,
     createdAt,
+    importBatchId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -722,6 +734,15 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('import_batch_id')) {
+      context.handle(
+        _importBatchIdMeta,
+        importBatchId.isAcceptableOrUnknown(
+          data['import_batch_id']!,
+          _importBatchIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -785,6 +806,10 @@ class $BillsTable extends Bills with TableInfo<$BillsTable, Bill> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      importBatchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}import_batch_id'],
+      ),
     );
   }
 
@@ -838,6 +863,10 @@ class Bill extends DataClass implements Insertable<Bill> {
 
   /// 创建时间，用于同一天内排序
   final DateTime createdAt;
+
+  /// 导入批次号：null = 手动记账；非空 = 批量导入（毫秒时间戳）。
+  /// 同一次导入的账单共享一个批次号，结果页据此"整批撤销"
+  final int? importBatchId;
   const Bill({
     required this.id,
     required this.type,
@@ -852,6 +881,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     this.lat,
     this.lng,
     required this.createdAt,
+    this.importBatchId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -885,6 +915,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       map['lng'] = Variable<double>(lng);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || importBatchId != null) {
+      map['import_batch_id'] = Variable<int>(importBatchId);
+    }
     return map;
   }
 
@@ -911,6 +944,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       lat: lat == null && nullToAbsent ? const Value.absent() : Value(lat),
       lng: lng == null && nullToAbsent ? const Value.absent() : Value(lng),
       createdAt: Value(createdAt),
+      importBatchId: importBatchId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(importBatchId),
     );
   }
 
@@ -935,6 +971,7 @@ class Bill extends DataClass implements Insertable<Bill> {
       lat: serializer.fromJson<double?>(json['lat']),
       lng: serializer.fromJson<double?>(json['lng']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      importBatchId: serializer.fromJson<int?>(json['importBatchId']),
     );
   }
   @override
@@ -954,6 +991,7 @@ class Bill extends DataClass implements Insertable<Bill> {
       'lat': serializer.toJson<double?>(lat),
       'lng': serializer.toJson<double?>(lng),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'importBatchId': serializer.toJson<int?>(importBatchId),
     };
   }
 
@@ -971,6 +1009,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     Value<double?> lat = const Value.absent(),
     Value<double?> lng = const Value.absent(),
     DateTime? createdAt,
+    Value<int?> importBatchId = const Value.absent(),
   }) => Bill(
     id: id ?? this.id,
     type: type ?? this.type,
@@ -987,6 +1026,9 @@ class Bill extends DataClass implements Insertable<Bill> {
     lat: lat.present ? lat.value : this.lat,
     lng: lng.present ? lng.value : this.lng,
     createdAt: createdAt ?? this.createdAt,
+    importBatchId: importBatchId.present
+        ? importBatchId.value
+        : this.importBatchId,
   );
   Bill copyWithCompanion(BillsCompanion data) {
     return Bill(
@@ -1013,6 +1055,9 @@ class Bill extends DataClass implements Insertable<Bill> {
       lat: data.lat.present ? data.lat.value : this.lat,
       lng: data.lng.present ? data.lng.value : this.lng,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      importBatchId: data.importBatchId.present
+          ? data.importBatchId.value
+          : this.importBatchId,
     );
   }
 
@@ -1031,7 +1076,8 @@ class Bill extends DataClass implements Insertable<Bill> {
           ..write('locationFull: $locationFull, ')
           ..write('lat: $lat, ')
           ..write('lng: $lng, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('importBatchId: $importBatchId')
           ..write(')'))
         .toString();
   }
@@ -1051,6 +1097,7 @@ class Bill extends DataClass implements Insertable<Bill> {
     lat,
     lng,
     createdAt,
+    importBatchId,
   );
   @override
   bool operator ==(Object other) =>
@@ -1068,7 +1115,8 @@ class Bill extends DataClass implements Insertable<Bill> {
           other.locationFull == this.locationFull &&
           other.lat == this.lat &&
           other.lng == this.lng &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.importBatchId == this.importBatchId);
 }
 
 class BillsCompanion extends UpdateCompanion<Bill> {
@@ -1085,6 +1133,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
   final Value<double?> lat;
   final Value<double?> lng;
   final Value<DateTime> createdAt;
+  final Value<int?> importBatchId;
   const BillsCompanion({
     this.id = const Value.absent(),
     this.type = const Value.absent(),
@@ -1099,6 +1148,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     this.lat = const Value.absent(),
     this.lng = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.importBatchId = const Value.absent(),
   });
   BillsCompanion.insert({
     this.id = const Value.absent(),
@@ -1114,6 +1164,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     this.lat = const Value.absent(),
     this.lng = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.importBatchId = const Value.absent(),
   }) : type = Value(type),
        amountCents = Value(amountCents),
        categoryId = Value(categoryId),
@@ -1132,6 +1183,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     Expression<double>? lat,
     Expression<double>? lng,
     Expression<DateTime>? createdAt,
+    Expression<int>? importBatchId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1147,6 +1199,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
       if (createdAt != null) 'created_at': createdAt,
+      if (importBatchId != null) 'import_batch_id': importBatchId,
     });
   }
 
@@ -1164,6 +1217,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     Value<double?>? lat,
     Value<double?>? lng,
     Value<DateTime>? createdAt,
+    Value<int?>? importBatchId,
   }) {
     return BillsCompanion(
       id: id ?? this.id,
@@ -1179,6 +1233,7 @@ class BillsCompanion extends UpdateCompanion<Bill> {
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
       createdAt: createdAt ?? this.createdAt,
+      importBatchId: importBatchId ?? this.importBatchId,
     );
   }
 
@@ -1224,6 +1279,9 @@ class BillsCompanion extends UpdateCompanion<Bill> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (importBatchId.present) {
+      map['import_batch_id'] = Variable<int>(importBatchId.value);
+    }
     return map;
   }
 
@@ -1242,7 +1300,8 @@ class BillsCompanion extends UpdateCompanion<Bill> {
           ..write('locationFull: $locationFull, ')
           ..write('lat: $lat, ')
           ..write('lng: $lng, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('importBatchId: $importBatchId')
           ..write(')'))
         .toString();
   }
@@ -1560,12 +1619,566 @@ class BudgetsCompanion extends UpdateCompanion<Budget> {
   }
 }
 
+class $TagsTable extends Tags with TableInfo<$TagsTable, Tag> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TagsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, color, sortOrder, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'tags';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Tag> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Tag map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Tag(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $TagsTable createAlias(String alias) {
+    return $TagsTable(attachedDatabase, alias);
+  }
+}
+
+class Tag extends DataClass implements Insertable<Tag> {
+  final int id;
+
+  /// 标签名（唯一，查重由仓储保证）
+  final String name;
+
+  /// 标签颜色（ARGB 整数），新建时自动按色板循环分配，可在管理页修改
+  final int color;
+
+  /// 排序权重（越小越靠前），新建时追加到末尾
+  final int sortOrder;
+
+  /// 创建时间
+  final DateTime createdAt;
+  const Tag({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.sortOrder,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['color'] = Variable<int>(color);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  TagsCompanion toCompanion(bool nullToAbsent) {
+    return TagsCompanion(
+      id: Value(id),
+      name: Value(name),
+      color: Value(color),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory Tag.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Tag(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      color: serializer.fromJson<int>(json['color']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'color': serializer.toJson<int>(color),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  Tag copyWith({
+    int? id,
+    String? name,
+    int? color,
+    int? sortOrder,
+    DateTime? createdAt,
+  }) => Tag(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    color: color ?? this.color,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  Tag copyWithCompanion(TagsCompanion data) {
+    return Tag(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      color: data.color.present ? data.color.value : this.color,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Tag(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, color, sortOrder, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Tag &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.color == this.color &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt);
+}
+
+class TagsCompanion extends UpdateCompanion<Tag> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> color;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  const TagsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.color = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  TagsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required int color,
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : name = Value(name),
+       color = Value(color);
+  static Insertable<Tag> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? color,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (color != null) 'color': color,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  TagsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<int>? color,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+  }) {
+    return TagsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TagsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BillTagsTable extends BillTags with TableInfo<$BillTagsTable, BillTag> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BillTagsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _billIdMeta = const VerificationMeta('billId');
+  @override
+  late final GeneratedColumn<int> billId = GeneratedColumn<int>(
+    'bill_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
+  @override
+  late final GeneratedColumn<int> tagId = GeneratedColumn<int>(
+    'tag_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [billId, tagId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'bill_tags';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BillTag> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('bill_id')) {
+      context.handle(
+        _billIdMeta,
+        billId.isAcceptableOrUnknown(data['bill_id']!, _billIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_billIdMeta);
+    }
+    if (data.containsKey('tag_id')) {
+      context.handle(
+        _tagIdMeta,
+        tagId.isAcceptableOrUnknown(data['tag_id']!, _tagIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tagIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {billId, tagId};
+  @override
+  BillTag map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BillTag(
+      billId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bill_id'],
+      )!,
+      tagId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tag_id'],
+      )!,
+    );
+  }
+
+  @override
+  $BillTagsTable createAlias(String alias) {
+    return $BillTagsTable(attachedDatabase, alias);
+  }
+}
+
+class BillTag extends DataClass implements Insertable<BillTag> {
+  final int billId;
+  final int tagId;
+  const BillTag({required this.billId, required this.tagId});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['bill_id'] = Variable<int>(billId);
+    map['tag_id'] = Variable<int>(tagId);
+    return map;
+  }
+
+  BillTagsCompanion toCompanion(bool nullToAbsent) {
+    return BillTagsCompanion(billId: Value(billId), tagId: Value(tagId));
+  }
+
+  factory BillTag.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BillTag(
+      billId: serializer.fromJson<int>(json['billId']),
+      tagId: serializer.fromJson<int>(json['tagId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'billId': serializer.toJson<int>(billId),
+      'tagId': serializer.toJson<int>(tagId),
+    };
+  }
+
+  BillTag copyWith({int? billId, int? tagId}) =>
+      BillTag(billId: billId ?? this.billId, tagId: tagId ?? this.tagId);
+  BillTag copyWithCompanion(BillTagsCompanion data) {
+    return BillTag(
+      billId: data.billId.present ? data.billId.value : this.billId,
+      tagId: data.tagId.present ? data.tagId.value : this.tagId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BillTag(')
+          ..write('billId: $billId, ')
+          ..write('tagId: $tagId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(billId, tagId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BillTag &&
+          other.billId == this.billId &&
+          other.tagId == this.tagId);
+}
+
+class BillTagsCompanion extends UpdateCompanion<BillTag> {
+  final Value<int> billId;
+  final Value<int> tagId;
+  final Value<int> rowid;
+  const BillTagsCompanion({
+    this.billId = const Value.absent(),
+    this.tagId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BillTagsCompanion.insert({
+    required int billId,
+    required int tagId,
+    this.rowid = const Value.absent(),
+  }) : billId = Value(billId),
+       tagId = Value(tagId);
+  static Insertable<BillTag> custom({
+    Expression<int>? billId,
+    Expression<int>? tagId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (billId != null) 'bill_id': billId,
+      if (tagId != null) 'tag_id': tagId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BillTagsCompanion copyWith({
+    Value<int>? billId,
+    Value<int>? tagId,
+    Value<int>? rowid,
+  }) {
+    return BillTagsCompanion(
+      billId: billId ?? this.billId,
+      tagId: tagId ?? this.tagId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (billId.present) {
+      map['bill_id'] = Variable<int>(billId.value);
+    }
+    if (tagId.present) {
+      map['tag_id'] = Variable<int>(tagId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BillTagsCompanion(')
+          ..write('billId: $billId, ')
+          ..write('tagId: $tagId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $BillsTable bills = $BillsTable(this);
   late final $BudgetsTable budgets = $BudgetsTable(this);
+  late final $TagsTable tags = $TagsTable(this);
+  late final $BillTagsTable billTags = $BillTagsTable(this);
   late final Index billsDateCreated = Index(
     'bills_date_created',
     'CREATE INDEX bills_date_created ON bills (date, created_at)',
@@ -1573,6 +2186,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final Index billsCategory = Index(
     'bills_category',
     'CREATE INDEX bills_category ON bills (category_id)',
+  );
+  late final Index tagsName = Index(
+    'tags_name',
+    'CREATE INDEX tags_name ON tags (name)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1582,8 +2199,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     categories,
     bills,
     budgets,
+    tags,
+    billTags,
     billsDateCreated,
     billsCategory,
+    tagsName,
   ];
 }
 
@@ -1831,6 +2451,7 @@ typedef $$BillsTableCreateCompanionBuilder =
       Value<double?> lat,
       Value<double?> lng,
       Value<DateTime> createdAt,
+      Value<int?> importBatchId,
     });
 typedef $$BillsTableUpdateCompanionBuilder =
     BillsCompanion Function({
@@ -1847,6 +2468,7 @@ typedef $$BillsTableUpdateCompanionBuilder =
       Value<double?> lat,
       Value<double?> lng,
       Value<DateTime> createdAt,
+      Value<int?> importBatchId,
     });
 
 class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
@@ -1920,6 +2542,11 @@ class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get importBatchId => $composableBuilder(
+    column: $table.importBatchId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1997,6 +2624,11 @@ class $$BillsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get importBatchId => $composableBuilder(
+    column: $table.importBatchId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BillsTableAnnotationComposer
@@ -2056,6 +2688,11 @@ class $$BillsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get importBatchId => $composableBuilder(
+    column: $table.importBatchId,
+    builder: (column) => column,
+  );
 }
 
 class $$BillsTableTableManager
@@ -2099,6 +2736,7 @@ class $$BillsTableTableManager
                 Value<double?> lat = const Value.absent(),
                 Value<double?> lng = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> importBatchId = const Value.absent(),
               }) => BillsCompanion(
                 id: id,
                 type: type,
@@ -2113,6 +2751,7 @@ class $$BillsTableTableManager
                 lat: lat,
                 lng: lng,
                 createdAt: createdAt,
+                importBatchId: importBatchId,
               ),
           createCompanionCallback:
               ({
@@ -2129,6 +2768,7 @@ class $$BillsTableTableManager
                 Value<double?> lat = const Value.absent(),
                 Value<double?> lng = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> importBatchId = const Value.absent(),
               }) => BillsCompanion.insert(
                 id: id,
                 type: type,
@@ -2143,6 +2783,7 @@ class $$BillsTableTableManager
                 lat: lat,
                 lng: lng,
                 createdAt: createdAt,
+                importBatchId: importBatchId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -2339,6 +2980,326 @@ typedef $$BudgetsTableProcessedTableManager =
       Budget,
       PrefetchHooks Function()
     >;
+typedef $$TagsTableCreateCompanionBuilder =
+    TagsCompanion Function({
+      Value<int> id,
+      required String name,
+      required int color,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+    });
+typedef $$TagsTableUpdateCompanionBuilder =
+    TagsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> color,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+    });
+
+class $$TagsTableFilterComposer extends Composer<_$AppDatabase, $TagsTable> {
+  $$TagsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TagsTableOrderingComposer extends Composer<_$AppDatabase, $TagsTable> {
+  $$TagsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TagsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TagsTable> {
+  $$TagsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$TagsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TagsTable,
+          Tag,
+          $$TagsTableFilterComposer,
+          $$TagsTableOrderingComposer,
+          $$TagsTableAnnotationComposer,
+          $$TagsTableCreateCompanionBuilder,
+          $$TagsTableUpdateCompanionBuilder,
+          (Tag, BaseReferences<_$AppDatabase, $TagsTable, Tag>),
+          Tag,
+          PrefetchHooks Function()
+        > {
+  $$TagsTableTableManager(_$AppDatabase db, $TagsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TagsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TagsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TagsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> color = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => TagsCompanion(
+                id: id,
+                name: name,
+                color: color,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required int color,
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => TagsCompanion.insert(
+                id: id,
+                name: name,
+                color: color,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TagsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TagsTable,
+      Tag,
+      $$TagsTableFilterComposer,
+      $$TagsTableOrderingComposer,
+      $$TagsTableAnnotationComposer,
+      $$TagsTableCreateCompanionBuilder,
+      $$TagsTableUpdateCompanionBuilder,
+      (Tag, BaseReferences<_$AppDatabase, $TagsTable, Tag>),
+      Tag,
+      PrefetchHooks Function()
+    >;
+typedef $$BillTagsTableCreateCompanionBuilder =
+    BillTagsCompanion Function({
+      required int billId,
+      required int tagId,
+      Value<int> rowid,
+    });
+typedef $$BillTagsTableUpdateCompanionBuilder =
+    BillTagsCompanion Function({
+      Value<int> billId,
+      Value<int> tagId,
+      Value<int> rowid,
+    });
+
+class $$BillTagsTableFilterComposer
+    extends Composer<_$AppDatabase, $BillTagsTable> {
+  $$BillTagsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get billId => $composableBuilder(
+    column: $table.billId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get tagId => $composableBuilder(
+    column: $table.tagId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BillTagsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BillTagsTable> {
+  $$BillTagsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get billId => $composableBuilder(
+    column: $table.billId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get tagId => $composableBuilder(
+    column: $table.tagId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BillTagsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BillTagsTable> {
+  $$BillTagsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get billId =>
+      $composableBuilder(column: $table.billId, builder: (column) => column);
+
+  GeneratedColumn<int> get tagId =>
+      $composableBuilder(column: $table.tagId, builder: (column) => column);
+}
+
+class $$BillTagsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BillTagsTable,
+          BillTag,
+          $$BillTagsTableFilterComposer,
+          $$BillTagsTableOrderingComposer,
+          $$BillTagsTableAnnotationComposer,
+          $$BillTagsTableCreateCompanionBuilder,
+          $$BillTagsTableUpdateCompanionBuilder,
+          (BillTag, BaseReferences<_$AppDatabase, $BillTagsTable, BillTag>),
+          BillTag,
+          PrefetchHooks Function()
+        > {
+  $$BillTagsTableTableManager(_$AppDatabase db, $BillTagsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BillTagsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BillTagsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BillTagsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> billId = const Value.absent(),
+                Value<int> tagId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) =>
+                  BillTagsCompanion(billId: billId, tagId: tagId, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required int billId,
+                required int tagId,
+                Value<int> rowid = const Value.absent(),
+              }) => BillTagsCompanion.insert(
+                billId: billId,
+                tagId: tagId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BillTagsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BillTagsTable,
+      BillTag,
+      $$BillTagsTableFilterComposer,
+      $$BillTagsTableOrderingComposer,
+      $$BillTagsTableAnnotationComposer,
+      $$BillTagsTableCreateCompanionBuilder,
+      $$BillTagsTableUpdateCompanionBuilder,
+      (BillTag, BaseReferences<_$AppDatabase, $BillTagsTable, BillTag>),
+      BillTag,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2349,4 +3310,7 @@ class $AppDatabaseManager {
       $$BillsTableTableManager(_db, _db.bills);
   $$BudgetsTableTableManager get budgets =>
       $$BudgetsTableTableManager(_db, _db.budgets);
+  $$TagsTableTableManager get tags => $$TagsTableTableManager(_db, _db.tags);
+  $$BillTagsTableTableManager get billTags =>
+      $$BillTagsTableTableManager(_db, _db.billTags);
 }

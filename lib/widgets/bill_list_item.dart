@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/database.dart';
 import 'category_avatar.dart';
 import '../models/enums.dart';
 import '../theme/app_colors.dart';
@@ -21,6 +22,7 @@ class BillListItem extends StatelessWidget {
     this.discountCents,
     this.note,
     this.location,
+    this.tags,
     this.onTap,
     this.onLongPress,
   });
@@ -37,6 +39,9 @@ class BillListItem extends StatelessWidget {
 
   /// 消费地点（记账定位），无则不显示
   final String? location;
+
+  /// 该账单的标签列表（可为空）
+  final List<Tag>? tags;
 
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -111,28 +116,60 @@ class BillListItem extends StatelessWidget {
                       ],
                     ),
                   ],
-                  if (location != null && location!.isNotEmpty) ...[
+                  // 标签与定位合并一行：标签胶囊 ｜ 📍 定位。
+                  // 标签数量通常很少，固定宽度在前；定位 Expanded 省略。
+                  if ((tags != null && tags!.isNotEmpty) ||
+                      (location != null && location!.isNotEmpty)) ...[
                     const SizedBox(height: 2),
                     Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.place_outlined,
-                          size: 11,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          child: Text(
-                            location!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
+                        if (tags != null && tags!.isNotEmpty)
+                          Flexible(
+                            child: Wrap(
+                              spacing: 4,
+                              runSpacing: 2,
+                              children: [
+                                for (final t in tags!) _MiniTagChip(tag: t),
+                              ],
                             ),
                           ),
-                        ),
+                        if ((tags != null && tags!.isNotEmpty) &&
+                            location != null &&
+                            location!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          const Text(
+                            '|',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.divider,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        if (location != null && location!.isNotEmpty)
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.place_outlined,
+                                  size: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Text(
+                                    location!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ],
@@ -161,6 +198,33 @@ class BillListItem extends StatelessWidget {
                     ),
                   ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 列表条目内的迷你标签胶囊：浅色底 + 标签色小字
+class _MiniTagChip extends StatelessWidget {
+  const _MiniTagChip({required this.tag});
+
+  final Tag tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Color(tag.color);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        tag.name,
+        style: TextStyle(
+          fontSize: 10,
+          color: c,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );

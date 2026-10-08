@@ -83,8 +83,8 @@ class BillProvider extends ChangeNotifier {
   /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；被删发 null
   Stream<Bill?> watchBillById(int id) => _repo.watchBillById(id);
 
-  /// 新增账单
-  Future<void> addBill(BillsCompanion entry) => _repo.addBill(entry);
+  /// 新增账单（返回新账单 id，供关联标签等后续操作使用）
+  Future<int> addBill(BillsCompanion entry) => _repo.addBill(entry);
 
   /// 更新账单
   Future<void> updateBill(Bill bill) => _repo.updateBill(bill);

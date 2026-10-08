@@ -24,6 +24,9 @@ enum BackupKind {
 
   /// 每日自动备份（用户开启开关后，每天首次启动执行）
   dailyBackup,
+
+  /// 钱迹账单导入前对当前库的留底
+  beforeQianjiImport,
 }
 
 /// 私有目录中的一份历史备份/留底文件
@@ -210,6 +213,9 @@ class BackupService {
     }
     if (name.startsWith('chestnut_before_restore')) {
       return BackupKind.beforeRestore;
+    }
+    if (name.startsWith('chestnut_before_qianji')) {
+      return BackupKind.beforeQianjiImport;
     }
     if (name.startsWith('chestnut_daily_')) return BackupKind.dailyBackup;
     return null;

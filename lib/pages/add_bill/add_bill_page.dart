@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
 import '../../pages/settings/category_manage_page.dart';
@@ -14,8 +15,9 @@ import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
-import '../../widgets/category_avatar.dart';
+import '../../widgets/category_tree_selector.dart';
 import '../../widgets/number_keyboard.dart';
+import '../../widgets/tag_picker_sheet.dart';
 import 'location_picker_page.dart';
 import 'wheel_date_picker.dart';
 
@@ -45,12 +47,18 @@ class _AddBillPageState extends State<AddBillPage> {
   String _discountText = '';
 
   /// 输入模式（钱迹式）：true 时数字键盘改道写入优惠，
-  /// 备注/金额行整体变身为"优惠 + 此处输入优惠金额"行；
+  /// 备注/金额行整体变身为"优惠"行；
   /// 再点优惠胶囊切回实付模式，已填优惠保留
   bool _discountMode = false;
 
   int? _selectedCategoryId;
   late DateTime _date;
+
+  /// 已选标签 id 集合（空 = 未打标签）；# 按钮显示数量，弹层内勾选
+  final Set<int> _selectedTagIds = {};
+
+  /// 全部标签缓存（弹层渲染用，initState 时加载，新建标签后追加）
+  List<Tag> _allTags = [];
 
   /// 账单时间（当日 0..1439 分钟）
   late int _timeMinute;
@@ -152,11 +160,33 @@ class _AddBillPageState extends State<AddBillPage> {
       if (bill.lat != null && bill.lng != null) {
         _selectedPoint = Gcj02Point(lat: bill.lat!, lng: bill.lng!);
       }
+      // 编辑模式：异步加载该账单已有标签
+      _loadExistingTags(bill.id);
     } else {
       _type = BillType.expense;
       _date = DateTime.now();
       _timeMinute = nowMinute;
     }
+    // 异步加载全部标签（供弹层渲染，不阻塞首帧）
+    _loadAllTags();
+  }
+
+  /// 加载全部标签到缓存（弹层用）
+  Future<void> _loadAllTags() async {
+    final tags = await context.read<TagRepository>().getTags();
+    if (!mounted) return;
+    setState(() => _allTags = tags);
+  }
+
+  /// 编辑模式加载账单已有标签
+  Future<void> _loadExistingTags(int billId) async {
+    final tags = await context.read<TagRepository>().getTagsByBillId(billId);
+    if (!mounted) return;
+    setState(() {
+      _selectedTagIds
+        ..clear()
+        ..addAll(tags.map((t) => t.id));
+    });
   }
 
   @override
@@ -359,12 +389,17 @@ class _AddBillPageState extends State<AddBillPage> {
       ),
       child: Row(
         children: [
-          const Text(
-            '#',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
+          GestureDetector(
+            onTap: _showTagSheet,
+            child: Text(
+              _selectedTagIds.isEmpty ? '#' : '#(${_selectedTagIds.length})',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _selectedTagIds.isEmpty
+                    ? AppColors.textSecondary
+                    : AppColors.primary,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -443,7 +478,7 @@ class _AddBillPageState extends State<AddBillPage> {
   }
 
   /// 优惠模式金额行（钱迹式整行变身）：
-  /// 左侧"优惠"标题 + 输入提示，右侧绿色优惠数字，无 CNY。
+  /// 左侧"优惠"标题，右侧绿色优惠数字，无 CNY。
   /// 此模式下备注输入框隐藏，数字键盘输入直接写入优惠额
   Widget _buildDiscountRow() {
     return Padding(
@@ -455,43 +490,70 @@ class _AddBillPageState extends State<AddBillPage> {
       ),
       child: Row(
         children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '优惠',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                '此处输入优惠金额',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ],
+          const Text(
+            '优惠',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
           ),
           const Spacer(),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerRight,
-            child: Text(
-              _discountText.isEmpty ? '0.00' : _discountText,
-              maxLines: 1,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 28,
-                height: 1.1,
-                fontWeight: FontWeight.w700,
-                color: AppColors.income,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _discountText.isEmpty ? '0.00' : _discountText,
+                  maxLines: 1,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.income,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+                const SizedBox(width: 3),
+                // 单位与实付模式同款（13 号灰字），两种金额行视觉统一
+                const Text(
+                  'CNY',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 弹出标签选择面板：已选胶囊（点取消）+ 全部标签（点选）+ 新建 + 管理
+  Future<void> _showTagSheet() async {
+    // 备注聚焦时先收起系统键盘，避免弹层被键盘挡住
+    _noteFocus.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => TagPickerSheet(
+        selectedIds: _selectedTagIds,
+        allTags: _allTags,
+        onChanged: (ids) {
+          setState(() {
+            _selectedTagIds
+              ..clear()
+              ..addAll(ids);
+          });
+        },
       ),
     );
   }
@@ -706,11 +768,10 @@ class _AddBillPageState extends State<AddBillPage> {
     }
   }
 
-  /// 分类选择：分组展开式（参考钱迹）
+  /// 分类选择：委托通用 [CategoryTreeSelector] 单选模式
   ///
-  /// 一级分类按每行 5 个横向排列；点击一级分类后，其子分类以浅色圆角
-  /// 面板展开在该行下方，面板内为 5 列子分类网格。无子分类的一级
-  /// 直接选中，不展开面板。
+  /// 点一级 = 挂一级本身并展开二级面板（不预选二级）；点二级选中；
+  /// 再点当前已选二级 = 取消、挂回一级。默认挂第一个一级分类本身。
   Widget _buildCategoryGrid() {
     return StreamBuilder<List<Category>>(
       stream: _categoryStreams[_type],
@@ -729,13 +790,7 @@ class _AddBillPageState extends State<AddBillPage> {
             ),
           );
         }
-        // 按层级分组：一级分类列表 + 一级 id → 子类列表
         final parents = categories.where((c) => c.parentId == null).toList();
-        final subsMap = <int, List<Category>>{};
-        for (final c in categories) {
-          final pid = c.parentId;
-          if (pid != null) (subsMap[pid] ??= []).add(c);
-        }
         if (parents.isEmpty) {
           return const Center(
             child: Text(
@@ -744,135 +799,32 @@ class _AddBillPageState extends State<AddBillPage> {
             ),
           );
         }
-        // 尚未选中（或选中分类已不存在，如类型切换后）时按第一项补默认值，
-        // 保证直接保存也合法
+        // 尚未选中（或选中分类已不存在，如类型切换后）时默认挂第一个
+        // 一级分类本身——不再预选第一个二级，账单归属与用户点击一致
         final exists = categories.any((c) => c.id == _selectedCategoryId);
         if (!exists) {
-          final subs = subsMap[parents.first.id];
-          _selectedCategoryId = (subs == null || subs.isEmpty)
-              ? parents.first.id
-              : subs.first.id;
+          _selectedCategoryId = parents.first.id;
         }
-        // 由选中分类推导当前展开的一级（选中可能是子类）
-        Category? selected;
-        for (final c in categories) {
-          if (c.id == _selectedCategoryId) {
-            selected = c;
-            break;
-          }
-        }
-        final activeParentId = selected == null
-            ? parents.first.id
-            : (selected.parentId ?? selected.id);
-
-        // 一级分类按每行 5 个分块，展开面板插入在选中项所在行之后
-        final rows = <List<Category>>[];
-        for (var i = 0; i < parents.length; i += 5) {
-          final end = (i + 5 > parents.length) ? parents.length : i + 5;
-          rows.add(parents.sublist(i, end));
-        }
-
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-          children: [
-            for (final row in rows) ...[
-              _buildParentRow(row, activeParentId, subsMap),
-              // 选中项所在行下方展开其子分类面板，三角尖对准选中项
-              if (row.any((p) => p.id == activeParentId) &&
-                  (subsMap[activeParentId]?.isNotEmpty ?? false))
-                _buildSubPanel(
-                  subsMap[activeParentId]!,
-                  row.indexWhere((p) => p.id == activeParentId),
-                ),
-            ],
-          ],
+        // 初始展开：新建/切类型（!exists）展开第一个一级的二级供直接
+        // 选择，省一次点击；编辑回显挂二级展开其所属组，挂一级展开
+        // 自身面板（用户应直接看到可换的二级，而非收起的一行）
+        final selectedCat = categories.firstWhere(
+          (c) => c.id == _selectedCategoryId,
+          orElse: () => parents.first,
+        );
+        final initialExpandedId = exists
+            ? (selectedCat.parentId ?? selectedCat.id)
+            : parents.first.id;
+        return CategoryTreeSelector(
+          // 切收/支类型后整树重建：展开状态随类型重置，避免残留上一类型面板
+          key: ValueKey(_type),
+          mode: CategoryTreeMode.single,
+          categories: categories,
+          selectedId: _selectedCategoryId,
+          initialExpandedId: initialExpandedId,
+          onSingleChanged: (id) => setState(() => _selectedCategoryId = id),
         );
       },
-    );
-  }
-
-  /// 一级分类行：每行 5 个，不足补空位保持对齐
-  Widget _buildParentRow(
-    List<Category> row,
-    int activeParentId,
-    Map<int, List<Category>> subsMap,
-  ) {
-    return Row(
-      children: [
-        for (final parent in row)
-          Expanded(
-            child: _CategoryTile(
-              category: parent,
-              selected: parent.id == activeParentId,
-              onTap: () => _selectParent(parent, subsMap),
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              nameFontSize: 11,
-              nameLineHeight: 1,
-              nameToAvatarGap: 4,
-              ellipsis: true,
-            ),
-          ),
-        for (var i = row.length; i < 5; i++) const Expanded(child: SizedBox()),
-      ],
-    );
-  }
-
-  /// 点击一级分类：有子类则选中其第一个子类（触发展开），无子类直接选中
-  void _selectParent(Category parent, Map<int, List<Category>> subsMap) {
-    final subs = subsMap[parent.id];
-    setState(() {
-      _selectedCategoryId = (subs == null || subs.isEmpty)
-          ? parent.id
-          : subs.first.id;
-    });
-  }
-
-  /// 子分类展开面板：浅色圆角底 + 5 列网格
-  ///
-  /// [activeIndex] 为选中一级分类在本行中的列位置（0~4），
-  /// 顶部三角指示器据此对准选中项。
-  Widget _buildSubPanel(List<Category> subs, int activeIndex) {
-    // 行内每列等宽，三角形中心对齐第 activeIndex 列的中点
-    final arrowX = (activeIndex * 2 + 1) / 5 - 1; // 映射到 Alignment.x（-1 ~ 1）
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: Align(
-            alignment: Alignment(arrowX, -1),
-            child: CustomPaint(
-              size: const Size(14, 6),
-              painter: _TrianglePainter(),
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-          decoration: BoxDecoration(
-            color: AppColors.fill,
-            borderRadius: BorderRadius.circular(AppDimens.radiusCard),
-          ),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 5,
-              childAspectRatio: 0.82,
-            ),
-            itemCount: subs.length,
-            itemBuilder: (context, index) {
-              final sub = subs[index];
-              return _CategoryTile(
-                category: sub,
-                selected: sub.id == _selectedCategoryId,
-                onTap: () => setState(() => _selectedCategoryId = sub.id),
-                nameFontSize: 12,
-                nameToAvatarGap: 5,
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 
@@ -990,6 +942,7 @@ class _AddBillPageState extends State<AddBillPage> {
     }
     final note = _noteController.text.trim();
     final provider = context.read<BillProvider>();
+    final tagRepo = context.read<TagRepository>();
     if (_isEditing) {
       final bill = widget.editBill!;
       await provider.updateBill(
@@ -1009,8 +962,10 @@ class _AddBillPageState extends State<AddBillPage> {
           createdAt: bill.createdAt,
         ),
       );
+      // 编辑：全量替换标签关联
+      await tagRepo.setBillTags(bill.id, _selectedTagIds.toList());
     } else {
-      await provider.addBill(
+      final billId = await provider.addBill(
         BillsCompanion.insert(
           type: _type,
           amountCents: cents,
@@ -1025,6 +980,10 @@ class _AddBillPageState extends State<AddBillPage> {
           lng: Value(_selectedPoint?.lng),
         ),
       );
+      // 新增：关联标签
+      if (_selectedTagIds.isNotEmpty) {
+        await tagRepo.setBillTags(billId, _selectedTagIds.toList());
+      }
     }
     // 记账成功后检查预算用量（仅支出记账会占预算）
     if (_type == BillType.expense) await _checkBudgetHint();
@@ -1036,6 +995,7 @@ class _AddBillPageState extends State<AddBillPage> {
         _discountText = '';
         _discountMode = false;
         _noteController.clear();
+        _selectedTagIds.clear();
       });
     } else if (mounted) {
       Navigator.of(context).pop();
@@ -1146,123 +1106,5 @@ class _AddBillPageState extends State<AddBillPage> {
       await context.read<BillProvider>().deleteBill(widget.editBill!.id);
       if (mounted) Navigator.of(context).pop();
     }
-  }
-}
-
-/// 面板顶部三角指示器：与面板同色，营造"气泡指向选中一级分类"的效果
-class _TrianglePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = AppColors.fill;
-    final path = Path()
-      ..moveTo(0, size.height)
-      ..lineTo(size.width / 2, 0)
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// 分类选择格子：一级分类行与子分类面板共用。
-/// 头像未选中为分类色 13% 浅底，选中为实底白前景；点击反馈只由
-/// 头像底色 150ms 渐变承担（禁用水波/高亮）。
-/// 一级格子需由调用方在外层包 Expanded 实现每行 5 等分。
-class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({
-    required this.category,
-    required this.selected,
-    required this.onTap,
-    required this.nameFontSize,
-    required this.nameToAvatarGap,
-    this.contentPadding = EdgeInsets.zero,
-    this.nameLineHeight,
-    this.ellipsis = false,
-  });
-
-  final Category category;
-  final bool selected;
-  final VoidCallback onTap;
-
-  /// 名称字号（一级 11 / 子级 12）
-  final double nameFontSize;
-
-  /// 头像与名称之间的距离（一级 4 / 子级 5）
-  final double nameToAvatarGap;
-
-  /// InkWell 内边距：一级行上下留白 8 以撑高点击区
-  final EdgeInsets contentPadding;
-
-  /// 名称行高；一级格子窄，传 1 收紧避免上下挤占
-  final double? nameLineHeight;
-
-  /// 名称是否单行省略（一级格子宽度固定需要，子级网格不需要）
-  final bool ellipsis;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Color(category.colorValue);
-    final foreground = selected ? Colors.white : color;
-    return InkWell(
-      onTap: onTap,
-      // 去掉方形水波/高亮：选中反馈只由头像底色渐变承担
-      splashFactory: NoSplash.splashFactory,
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: contentPadding,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                // 选中：分类色实底白图标；未选中：分类色浅底
-                color: selected ? color : color.withValues(alpha: 0.13),
-                shape: BoxShape.circle,
-              ),
-              child: category.iconCode == kTextIconCode
-                  ? Text(
-                      category.name.isEmpty
-                          ? '?'
-                          : category.name.characters.first,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 21,
-                        height: 1.2,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    )
-                  : Icon(
-                      // 图标码点存数据库、运行时动态取值，不是 const；
-                      // 故发布构建需 --no-tree-shake-icons 保留全量图标字体
-                      // ignore: non_const_argument_for_const_parameter
-                      IconData(category.iconCode, fontFamily: 'MaterialIcons'),
-                      color: foreground,
-                      size: 21,
-                    ),
-            ),
-            SizedBox(height: nameToAvatarGap),
-            Text(
-              category.name,
-              maxLines: ellipsis ? 1 : null,
-              overflow: ellipsis ? TextOverflow.ellipsis : null,
-              style: TextStyle(
-                fontSize: nameFontSize,
-                height: nameLineHeight,
-                color: selected ? color : AppColors.textPrimary,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

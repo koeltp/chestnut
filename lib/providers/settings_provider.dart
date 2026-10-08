@@ -38,15 +38,22 @@ class SettingsProvider extends ChangeNotifier {
   /// 预算模式：沿用上月预算 | 按上月消费（两种策略互斥）
   static const _kBudgetMode = 'budget_mode';
 
-  BudgetMode get budgetMode {
-    final index = _prefs.getInt(_kBudgetMode) ?? 0;
-    return BudgetMode.values[index.clamp(0, BudgetMode.values.length - 1)];
+  /// 预算模式；null = 未选（清空预算后回到此状态：分段器两段都不
+  /// 选中、进页面不自动填充，直到用户点选某个模式）。
+  /// 新装用户无存储值时默认"按上月消费"，保留开箱即用体验
+  BudgetMode? get budgetMode {
+    final raw = _prefs.getInt(_kBudgetMode);
+    if (raw == null) return BudgetMode.lastMonthSpend;
+    // -1 哨兵值 = 未选；越界值兜底同样视为未选
+    if (raw < 0 || raw >= BudgetMode.values.length) return null;
+    return BudgetMode.values[raw];
   }
 
-  /// 切换预算模式
-  Future<void> setBudgetMode(BudgetMode value) async {
+  /// 切换预算模式；传 null 表示置为"未选"（清空预算时调用）
+  Future<void> setBudgetMode(BudgetMode? value) async {
     if (value == budgetMode) return;
-    await _prefs.setInt(_kBudgetMode, value.index);
+    // 用 -1 存"未选"而非移除键——移除会被 getter 当作新装默认值
+    await _prefs.setInt(_kBudgetMode, value?.index ?? -1);
     notifyListeners();
   }
 

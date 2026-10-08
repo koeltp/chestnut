@@ -47,6 +47,33 @@ abstract final class AppColors {
   /// 预警：接近预算上限
   static const Color warning = Color(0xFFF09A37);
 
+  /// 20 色通用选色板：分类与标签共用同一常量
+  ///
+  /// 同一颜色只在此定义一次，分类编辑选色、标签管理选色、标签自动分配
+  /// 全部引用本列表，避免多处色板漂移不一致。
+  static const List<int> tagPalette = [
+    0xFFF4A6C0, // 粉
+    0xFFD6288C, // 玫红
+    0xFFF5842D, // 橙
+    0xFFD63A2F, // 红
+    0xFFE8B93E, // 金黄
+    0xFFEF6B5C, // 橘红
+    0xFF4FB3A6, // 青绿
+    0xFF3E94A0, // 蓝绿
+    0xFF3D7A24, // 深绿
+    0xFF2A6478, // 深青
+    0xFF45B8E8, // 天蓝
+    0xFF5A9BF6, // 亮蓝
+    0xFF3F63E8, // 宝蓝
+    0xFF3D4AA0, // 靛蓝
+    0xFF7B2FE0, // 紫
+    0xFF8A5A3B, // 棕
+    0xFF7D8896, // 灰
+    0xFF8E4D8C, // 梅紫
+    0xFF7A7F55, // 橄榄
+    0xFF4A4A45, // 深灰
+  ];
+
   /// 顶部品牌渐变
   static const LinearGradient headerGradient = LinearGradient(
     begin: Alignment.topLeft,
