@@ -79,6 +79,11 @@ class _StatsPageState extends State<StatsPage> {
   /// 多选弹层"点一级全选"生成的集合表达
   final Set<int> _selectedCategoryIds = {};
 
+  /// 面板手动应用的分类条件（与钻取同步的生效集合分开记账）：
+  /// 钻取/跳入分类视图期间 [_selectedCategoryIds] 承载当前视图分类，
+  /// 返回全部视图时从本集合恢复，钻取不冲掉用户手动选的条件
+  final Set<int> _manualCategoryIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -132,7 +137,16 @@ class _StatsPageState extends State<StatsPage> {
       _parentName = null;
     });
     final cur = _category;
-    if (cur != null) _syncCategoryView(cur);
+    if (cur != null) {
+      _syncCategoryView(cur);
+    } else {
+      // 回到全部视图：恢复钻取前手动应用的分类条件
+      setState(() {
+        _selectedCategoryIds
+          ..clear()
+          ..addAll(_manualCategoryIds);
+      });
+    }
   }
 
   /// 标题：全部视图 = "统计"；分类 = "分类统计-一级名-二级名"
@@ -281,9 +295,17 @@ class _StatsPageState extends State<StatsPage> {
       _selectedTagIds
         ..clear()
         ..addAll(tagIds);
-      _selectedCategoryIds
+      // 分类条件始终记入手动集合；生效集合只在全部视图直接同步——
+      // 分类视图里生效集合属于当前查看分类（钻取同步），返回全部
+      // 视图时再从手动集合恢复
+      _manualCategoryIds
         ..clear()
         ..addAll(categoryIds);
+      if (_isAllView) {
+        _selectedCategoryIds
+          ..clear()
+          ..addAll(categoryIds);
+      }
     });
   }
 
