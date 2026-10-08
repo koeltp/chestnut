@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart' show Icons;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -202,8 +203,8 @@ abstract final class QianjiImportService {
         unsupported[rawType] = (unsupported[rawType] ?? 0) + 1;
         continue;
       }
-      final amount = _amountToCents(_cellAt(row, iAmount));
-      final time = _parseTime(_cellAt(row, iTime));
+      final amount = amountToCents(_cellAt(row, iAmount));
+      final time = parseTime(_cellAt(row, iTime));
       if (amount == null || time == null) {
         badCount += 1;
         continue;
@@ -219,7 +220,7 @@ abstract final class QianjiImportService {
           // 标签列可选；多标签按逗号/顿号/空格分割，去空去重
           tags: iTag < 0
               ? const []
-              : _splitTags(_cellAt(row, iTag)),
+              : splitTags(_cellAt(row, iTag)),
         ),
       );
     }
@@ -247,7 +248,8 @@ abstract final class QianjiImportService {
   /// 金额文本转分：只接受非负的最多两位小数（钱迹导出均为正数金额）
   ///
   /// 纯字符串拆解，不走 double（避免浮点精度引入 179.999999 之类的偏差）
-  static int? _amountToCents(String raw) {
+  @visibleForTesting
+  static int? amountToCents(String raw) {
     final text = raw.trim().replaceAll(RegExp(r'[¥￥,]'), '');
     if (text.isEmpty) return null;
     final m = RegExp(r'^(\d+)(?:\.(\d{1,2}))?$').firstMatch(text);
@@ -257,14 +259,16 @@ abstract final class QianjiImportService {
   }
 
   /// 时间解析：兼容字符串（"2026-10-07 10:21:08"）与 Excel 原生日期
-  static DateTime? _parseTime(String raw) {
+  @visibleForTesting
+  static DateTime? parseTime(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return null;
     return DateTime.tryParse(text);
   }
 
   /// 标签分割：钱迹多标签以逗号/顿号/空格分隔，去空去重保序
-  static List<String> _splitTags(String raw) {
+  @visibleForTesting
+  static List<String> splitTags(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return const [];
     final parts = text

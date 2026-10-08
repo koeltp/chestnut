@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
@@ -83,22 +83,33 @@ class _StatsPageState extends State<StatsPage> {
   void initState() {
     super.initState();
     final initial = widget.initialCategory;
-    if (initial != null) _loadParentName(initial);
+    if (initial != null) _syncCategoryView(initial);
     // 标签筛选初始值（从详情/首页点标签跳转过来）
     final tag = widget.initialTag;
     if (tag != null) _selectedTagIds.add(tag.id);
   }
 
-  /// 取父分类名：一次性查询即可（分类层级极少变动）
-  Future<void> _loadParentName(Category category) async {
-    final pid = category.parentId;
-    if (pid == null) return;
+  /// 取父分类名 + 同步筛选回显：当前查看分类写入 _selectedCategoryIds
+  ///（一级须连同全部子分类——分类过滤只认账单自身 categoryId，
+  /// 不含子分类则其下账单不命中）。外部跳入/页面内钻取/返回
+  /// 都会经过这里，保证漏斗面板所见即当前视图
+  Future<void> _syncCategoryView(Category category) async {
     final map = await context
         .read<CategoryProvider>()
         .categoriesMapStream()
         .first;
-    if (!mounted) return;
-    setState(() => _parentName = map[pid]?.name);
+    // await 期间可能已钻取/返回，过期结果不得覆盖新视图状态
+    if (!mounted || _category?.id != category.id) return;
+    final ids = <int>{category.id};
+    for (final c in map.values) {
+      if (c.parentId == category.id) ids.add(c.id);
+    }
+    setState(() {
+      _parentName = map[category.parentId]?.name;
+      _selectedCategoryIds
+        ..clear()
+        ..addAll(ids);
+    });
   }
 
   /// 钻取到分类视图（点排行项/环图扇区）：压栈而非换页，
@@ -109,7 +120,7 @@ class _StatsPageState extends State<StatsPage> {
       _stack.add(category);
       _parentName = null;
     });
-    _loadParentName(category);
+    _syncCategoryView(category);
   }
 
   /// 顶栏返回：逐级退回上一视图；栈底时 leading 为 null，
@@ -121,7 +132,7 @@ class _StatsPageState extends State<StatsPage> {
       _parentName = null;
     });
     final cur = _category;
-    if (cur != null) _loadParentName(cur);
+    if (cur != null) _syncCategoryView(cur);
   }
 
   /// 标题：全部视图 = "统计"；分类 = "分类统计-一级名-二级名"

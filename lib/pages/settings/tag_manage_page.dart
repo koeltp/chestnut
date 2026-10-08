@@ -40,16 +40,19 @@ class _TagManagePageState extends State<TagManagePage> {
     });
   }
 
-  /// 编辑标签：名称 + 颜色一体修改，界面与创建弹窗同款（预填当前值）
-  Future<void> _edit(Tag tag) async {
-    final controller = TextEditingController(text: tag.name);
-    var pickedColor = tag.color;
-    final result = await showDialog<({String name, int color})>(
+  /// 标签编辑/新建共用弹窗：名称输入 + 20 色色板。
+  ///
+  /// [existing] 非空 = 编辑（预填名称与颜色），为空 = 新建（默认首色）。
+  /// 返回 (name, color)，用户取消返回 null。
+  Future<({String name, int color})?> _showTagDialog({Tag? existing}) async {
+    final controller = TextEditingController(text: existing?.name);
+    var pickedColor = existing?.color ?? AppColors.tagPalette.first;
+    // StatefulBuilder：色板点击即时刷新选中态，无需关闭弹窗
+    return showDialog<({String name, int color})>(
       context: context,
-      // StatefulBuilder：色板点击即时刷新选中态，无需关闭弹窗
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('编辑标签'),
+          title: Text(existing == null ? '新建标签' : '编辑标签'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -89,6 +92,11 @@ class _TagManagePageState extends State<TagManagePage> {
         ),
       ),
     );
+  }
+
+  /// 编辑标签：名称 + 颜色一体修改
+  Future<void> _edit(Tag tag) async {
+    final result = await _showTagDialog(existing: tag);
     if (result == null) return;
     if (result.name == tag.name && result.color == tag.color) return;
     if (!mounted) return;
@@ -191,58 +199,12 @@ class _TagManagePageState extends State<TagManagePage> {
     if (confirmed == true) _delete(tag);
   }
 
-  /// 新建标签：弹窗内输入名称 + 选择颜色（图1 钱迹样式）
+  /// 新建标签：弹窗内输入名称 + 选择颜色
   ///
   /// 颜色必须由用户选定——创建入口已收敛到管理页，不再自动分配，
   /// 让每个标签的颜色都符合用户预期
   Future<void> _addTag() async {
-    final controller = TextEditingController();
-    var pickedColor = AppColors.tagPalette.first; // 默认选中色板首色
-    final result = await showDialog<({String name, int color})>(
-      context: context,
-      // StatefulBuilder：色板点击即时刷新选中态，无需关闭弹窗
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('新建标签'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                maxLength: 10,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  counterText: '',
-                  hintText: '标签名',
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 20 色色板（对勾标当前色）
-              ColorPalettePicker(
-                selectedColor: pickedColor,
-                dotSize: 32,
-                spacing: 12,
-                onChanged: (c) => setDialogState(() => pickedColor = c),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () {
-                final text = controller.text.trim();
-                if (text.isEmpty) return;
-                Navigator.pop(ctx, (name: text, color: pickedColor));
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        ),
-      ),
-    );
+    final result = await _showTagDialog();
     if (result == null) return;
     if (!mounted) return;
     try {
@@ -256,9 +218,19 @@ class _TagManagePageState extends State<TagManagePage> {
   }
 
   /// 拖动结束落库：按最终顺序全量写 sortOrder，再刷新同步本地顺序
+  ///
+  /// 落库失败需提示用户，否则 UI 上看起来成功、下次进入弹回旧序且无反馈
   Future<void> _onReorder(List<int> orderedIds) async {
-    await context.read<TagRepository>().reorderTags(orderedIds);
-    if (mounted) _refresh();
+    try {
+      await context.read<TagRepository>().reorderTags(orderedIds);
+      if (mounted) _refresh();
+    } catch (e) {
+      if (mounted) {
+        showAppToast(context, '排序保存失败：$e');
+        // 失败时同步回数据库顺序，避免 UI 与实际数据不一致
+        _refresh();
+      }
+    }
   }
 
   @override

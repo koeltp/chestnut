@@ -15,9 +15,9 @@ import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
-import '../../widgets/category_tree_selector.dart';
 import '../../widgets/number_keyboard.dart';
 import '../../widgets/tag_picker_sheet.dart';
+import 'category_section.dart';
 import 'location_picker_page.dart';
 import 'wheel_date_picker.dart';
 
@@ -773,58 +773,13 @@ class _AddBillPageState extends State<AddBillPage> {
   /// 点一级 = 挂一级本身并展开二级面板（不预选二级）；点二级选中；
   /// 再点当前已选二级 = 取消、挂回一级。默认挂第一个一级分类本身。
   Widget _buildCategoryGrid() {
-    return StreamBuilder<List<Category>>(
-      stream: _categoryStreams[_type],
-      builder: (context, snapshot) {
-        // 切换收/支类型换流后的空窗显示转圈，不能把空窗当成空列表，
-        // 否则会闪现"暂无分类"误导用户
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final categories = snapshot.data!;
-        if (categories.isEmpty) {
-          return const Center(
-            child: Text(
-              '暂无分类，请在"我的-分类管理"中添加',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          );
-        }
-        final parents = categories.where((c) => c.parentId == null).toList();
-        if (parents.isEmpty) {
-          return const Center(
-            child: Text(
-              '暂无一级分类，请在"我的-分类管理"中添加',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          );
-        }
-        // 尚未选中（或选中分类已不存在，如类型切换后）时默认挂第一个
-        // 一级分类本身——不再预选第一个二级，账单归属与用户点击一致
-        final exists = categories.any((c) => c.id == _selectedCategoryId);
-        if (!exists) {
-          _selectedCategoryId = parents.first.id;
-        }
-        // 初始展开：新建/切类型（!exists）展开第一个一级的二级供直接
-        // 选择，省一次点击；编辑回显挂二级展开其所属组，挂一级展开
-        // 自身面板（用户应直接看到可换的二级，而非收起的一行）
-        final selectedCat = categories.firstWhere(
-          (c) => c.id == _selectedCategoryId,
-          orElse: () => parents.first,
-        );
-        final initialExpandedId = exists
-            ? (selectedCat.parentId ?? selectedCat.id)
-            : parents.first.id;
-        return CategoryTreeSelector(
-          // 切收/支类型后整树重建：展开状态随类型重置，避免残留上一类型面板
-          key: ValueKey(_type),
-          mode: CategoryTreeMode.single,
-          categories: categories,
-          selectedId: _selectedCategoryId,
-          initialExpandedId: initialExpandedId,
-          onSingleChanged: (id) => setState(() => _selectedCategoryId = id),
-        );
-      },
+    return CategorySection(
+      stream: _categoryStreams[_type]!,
+      type: _type,
+      selectedId: _selectedCategoryId,
+      onSelectedChanged: (id) => setState(() => _selectedCategoryId = id),
+      // 选中分类不存在时（如类型切换后）兜底挂第一个一级本身
+      onEnsureSelected: (id) => _selectedCategoryId = id,
     );
   }
 
