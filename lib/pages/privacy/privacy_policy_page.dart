@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 
 /// 隐私政策原生长文页（离线可看）：
-/// 内容与博客网页版 https://www.taipi.top/chestnut/privacy.html 保持一致，
+/// 内容与博客网页版 https://www.taipi.top/docs/article/栗子记账隐私政策.html 保持一致，
 /// 修改时两边同步。首启同意弹窗与"关于"页均跳转至此。
 class PrivacyPolicyPage extends StatelessWidget {
   const PrivacyPolicyPage({super.key});
