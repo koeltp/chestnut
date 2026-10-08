@@ -109,28 +109,46 @@ class _HomePageState extends State<HomePage> {
       children: [
         _SummaryHeader(provider: provider),
         Expanded(
-          child: StreamBuilder<List<Bill>>(
-            stream: billsStream,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return StreamBuilder<Map<int, Category>>(
-                stream: context.read<CategoryProvider>().categoriesMapStream(),
-                builder: (context, catSnapshot) {
-                  final categories = catSnapshot.data ?? const {};
-                  final bills = snapshot.data!;
-                  if (bills.isEmpty) {
-                    return const _EmptyState();
-                  }
-                  return _BillList(
-                    bills: bills,
-                    categories: categories,
-                    showAll: provider.period == HomePeriod.all,
-                  );
-                },
-              );
-            },
+          // 边界切月手势只在"按月显示"下有意义（年/全部没有"上下月"概念）
+          child: _MonthPullSwitch(
+            enabled: provider.period == HomePeriod.month,
+            selectedMonth: provider.selectedMonth,
+            onSwitch: provider.changeMonth,
+            child: StreamBuilder<List<Bill>>(
+              stream: billsStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return StreamBuilder<Map<int, Category>>(
+                  stream: context.read<CategoryProvider>()
+                      .categoriesMapStream(),
+                  builder: (context, catSnapshot) {
+                    final categories = catSnapshot.data ?? const {};
+                    final bills = snapshot.data!;
+                    if (bills.isEmpty) {
+                      // 空月也要能拉：包进可滚动视图（SliverFillRemaining
+                      // 占满一屏且 AlwaysScrollable 保证边界 overscroll 可用）
+                      return CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: const _EmptyState(),
+                          ),
+                        ],
+                      );
+                    }
+                    return _BillList(
+                      bills: bills,
+                      categories: categories,
+                      month: provider.selectedMonth,
+                      showAll: provider.period == HomePeriod.all,
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -300,11 +318,15 @@ class _BillList extends StatefulWidget {
   const _BillList({
     required this.bills,
     required this.categories,
+    required this.month,
     this.showAll = false,
   });
 
   final List<Bill> bills;
   final Map<int, Category> categories;
+
+  /// 当前查看月份：变化时列表滚回顶部（切月后从最新一天看起）
+  final DateTime month;
 
   /// "全部"模式：尾部提示文案不带"本月"
   final bool showAll;
@@ -317,6 +339,8 @@ class _BillListState extends State<_BillList> {
   /// billId → 标签列表缓存：bills 变化时批量加载一次
   Map<int, List<Tag>> _tagsByBill = {};
 
+  final ScrollController _controller = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -328,6 +352,16 @@ class _BillListState extends State<_BillList> {
     super.didUpdateWidget(oldWidget);
     // 账单列表变化（切月/新增/编辑/删除）时重新批量加载标签
     if (oldWidget.bills != widget.bills) _loadTags();
+    // 切月（非当月内增删）时滚回顶部，从最新一天看起
+    if (widget.month != oldWidget.month && _controller.hasClients) {
+      _controller.jumpTo(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTags() async {
@@ -358,6 +392,7 @@ class _BillListState extends State<_BillList> {
     final crossYear = widget.bills.map((b) => b.date.year).toSet().length > 1;
 
     return ListView.builder(
+      controller: _controller,
       padding: const EdgeInsets.fromLTRB(
         AppDimens.pagePadding,
         AppDimens.gapMd,
@@ -535,6 +570,233 @@ class _DayCard extends StatelessWidget {
     if (confirmed == true && context.mounted) {
       await context.read<BillProvider>().deleteBill(bill.id);
     }
+  }
+}
+
+/// 边界切月手势：列表滚到顶部继续下拉 → 切下个月；滚到底部继续上推 →
+/// 切上个月。只在"按月显示"启用（年/全部没有上下月概念）。
+///
+/// 交互规则：
+/// - 只累计"手指拖到边界后"的越界量（跟手位置，含阻尼放大补偿），
+///   正常浏览 / 惯性甩动撞边界绝不误触
+/// - 提示区随拉出量跟手生长（转圈 + 文字贴列表一侧）；累计越界跨过
+///   阈值（约手指 80px）后提示变色强调，松手（滚动结束）才真正切月
+/// - 顶部目标月晚于当前真实月（如 10 月下拉看 11 月）时提示低承诺化：
+///   "还没有到 / 松开仍可查看"——不承诺有数据，预记账单仍可切过去看
+class _MonthPullSwitch extends StatefulWidget {
+  const _MonthPullSwitch({
+    required this.enabled,
+    required this.selectedMonth,
+    required this.onSwitch,
+    required this.child,
+  });
+
+  /// 非"按月显示"时手势整体停用
+  final bool enabled;
+  final DateTime selectedMonth;
+  final ValueChanged<DateTime> onSwitch;
+  final Widget child;
+
+  @override
+  State<_MonthPullSwitch> createState() => _MonthPullSwitchState();
+}
+
+class _MonthPullSwitchState extends State<_MonthPullSwitch> {
+  /// 触发切月的累计越界阈值。钳制物理对越界拉距有阻尼衰减，配合
+  /// 1.5 倍放大补偿，阈值 64 约对应手指拉 80px 才切月（避免误触）
+  static const double _threshold = 64;
+  static const double _maxDrag = 96;
+
+  /// 越界量放大系数：钳制物理的阻尼让越界增量越来越小，放大补偿后
+  /// 手指行程与达标拉距近似 1.5:1 校准——手指拉约 80px 松手即切月
+  static const double _amplify = 1.5;
+
+  /// 提示条是否处于"松手收回"阶段：收回用 150ms 平滑动画；拖出用
+  /// 48ms 微平滑滤噪（见 _buildHint 中 AnimatedContainer duration）
+  bool _settling = false;
+
+  /// 提示内容自然高度（转圈18+间距6+文字18+余量），供 OverflowBox
+  /// 作子约束上限：容器矮于内容时内容按此高渲染、超出被容器裁掉，
+  /// 既不产生 RenderFlex 溢出报错也没有门槛跳变
+  static const double _contentMaxHeight = 52;
+
+  /// 反向衰减死区：小于此值的反向增量视为手指微抖直接忽略——
+  /// 微抖只能让提示条停下，绝不能让它回缩（上推手势反向分量多）
+  static const double _decayDeadZone = 2;
+
+  /// 顶部 / 底部当前手势累计的边界拉出量（0 = 无）
+  double _topDrag = 0;
+  double _bottomDrag = 0;
+
+  /// 返回 false：通知继续冒泡（本组件只读不拦截）
+  bool _onScrollNotification(ScrollNotification n) {
+    if (!widget.enabled) return false;
+    if (n is OverscrollNotification) {
+      // 只认手指拖动（dragDetails 非空）：fling 惯性撞边界不算"拉"，
+      // 避免快速滚动列表到底时意外切月
+      if (n.dragDetails == null) return false;
+      // 钳制物理下 pixels 永远被钳在边界内，越界只以通知形式给出——
+      // overscroll 是本帧被钳掉的增量，需自行累计成"跟手拉出量"。
+      // 方向锁定：已在某侧累计时，反向微动只衰减当前侧（带死区、
+      // 用原始量——回缩慢于放大 1.5 倍的拉出），绝不横跳到对侧
+      setState(() {
+        if (n.overscroll < 0) {
+          if (_bottomDrag > 0) {
+            if (-n.overscroll >= _decayDeadZone) {
+              _bottomDrag =
+                  (_bottomDrag + n.overscroll).clamp(0.0, _maxDrag);
+            }
+          } else {
+            _topDrag = (_topDrag - n.overscroll * _amplify)
+                .clamp(0.0, _maxDrag);
+          }
+        } else {
+          if (_topDrag > 0) {
+            if (n.overscroll >= _decayDeadZone) {
+              _topDrag = (_topDrag - n.overscroll).clamp(0.0, _maxDrag);
+            }
+          } else {
+            _bottomDrag = (_bottomDrag + n.overscroll * _amplify)
+                .clamp(0.0, _maxDrag);
+          }
+        }
+        _settling = false;
+      });
+    } else if (n is ScrollUpdateNotification) {
+      // 界内拖动：只按"向该侧边界回拉"的方向衰减对应侧累计（跟手
+      // 收回，原始量慢速回缩）。反向滚动（朝边界方向）绝不虚假累计
+      // ——累计只能来自真正的越界通知，否则提示会在纯滚动中莫名
+      // 变长。正常浏览列表时累计量为 0，直接跳过
+      if (n.dragDetails == null) return false;
+      final delta = n.scrollDelta ?? 0;
+      if (_topDrag == 0 && _bottomDrag == 0) return false;
+      setState(() {
+        if (_topDrag > 0) {
+          // 顶部侧的回拉方向是 pixels 减小（scrollDelta < 0）
+          if (delta < 0) {
+            _topDrag = (_topDrag + delta).clamp(0.0, _maxDrag);
+          }
+        } else {
+          // 底部侧的回拉方向是 pixels 增大（scrollDelta > 0）
+          if (delta > 0) {
+            _bottomDrag = (_bottomDrag - delta).clamp(0.0, _maxDrag);
+          }
+        }
+      });
+    } else if (n is ScrollEndNotification) {
+      _finish();
+    }
+    return false;
+  }
+
+  /// 松手结算：累计量跨阈值则切月，提示条复位。
+  /// 滚动正常结束（非边界）时累计量为 0，天然不触发
+  void _finish() {
+    final top = _topDrag;
+    final bottom = _bottomDrag;
+    if (top == 0 && bottom == 0) return;
+    setState(() {
+      _topDrag = 0;
+      _bottomDrag = 0;
+      _settling = true;
+    });
+    final m = widget.selectedMonth;
+    if (top >= _threshold) {
+      widget.onSwitch(DateTime(m.year, m.month + 1));
+    } else if (bottom >= _threshold) {
+      widget.onSwitch(DateTime(m.year, m.month - 1));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: Column(
+        children: [
+          _buildHint(isTop: true),
+          Expanded(child: widget.child),
+          _buildHint(isTop: false),
+        ],
+      ),
+    );
+  }
+
+  /// 顶部 / 底部提示区：高度随拉出量跟手生长（上限 96），内容为
+  /// 转圈 + 文字竖排，贴列表一侧（顶部下拉贴区域底部、底部上推贴
+  /// 区域顶部）；文案按"方向 × 是否已到 × 是否跨阈值"四态切换
+  Widget _buildHint({required bool isTop}) {
+    final drag = isTop ? _topDrag : _bottomDrag;
+    final m = widget.selectedMonth;
+    final target = isTop
+        ? DateTime(m.year, m.month + 1)
+        : DateTime(m.year, m.month - 1);
+    // 目标月与查看月同年只显示"10月"，跨年带年份消歧
+    final label = target.year == m.year
+        ? '${target.month}月'
+        : '${target.year}年${target.month}月';
+    final now = DateTime.now();
+    final notYet = isTop &&
+        DateTime(target.year, target.month)
+            .isAfter(DateTime(now.year, now.month));
+    final crossed = drag >= _threshold;
+    final text = switch ((isTop, notYet, crossed)) {
+      (true, false, false) => '继续下拉，查看 $label',
+      (true, false, true) => '松开切换到 $label',
+      (true, true, false) => '$label 还没有到',
+      (true, true, true) => '松开仍可查看 $label',
+      (_, _, false) => '继续上推，查看 $label',
+      (_, _, true) => '松开切换到 $label',
+    };
+    final strong = crossed && !notYet;
+    final hintColor = strong ? AppColors.primary : AppColors.textSecondary;
+    return AnimatedContainer(
+      // 拖出用 48ms 微平滑：滤掉手指微抖的逐帧噪声（上推手势正负
+      // 增量交替时提示条高度抖动），滞后仅 2~3 帧不影响跟手；
+      // 松手复位用 150ms 平滑收回
+      duration: _settling
+          ? const Duration(milliseconds: 150)
+          : const Duration(milliseconds: 48),
+      height: drag,
+      clipBehavior: Clip.hardEdge,
+      // 内容贴列表一侧：拉出不多时被头部/列表边缘裁掉是自然的
+      // （对齐参考 App：拉出大半才完整露出内容）
+      alignment: isTop ? Alignment.bottomCenter : Alignment.topCenter,
+      padding: isTop
+          ? const EdgeInsets.only(bottom: 10)
+          : const EdgeInsets.only(top: 10),
+      color: AppColors.fill,
+      // OverflowBox 让内容按自然高渲染（不受矮容器约束），超出部分
+      // 被容器 clip 裁掉——根治 RenderFlex bottom 溢出报错，同时内容
+      // 随拉出渐进露出、无门槛跳变
+      child: OverflowBox(
+        alignment: isTop ? Alignment.bottomCenter : Alignment.topCenter,
+        minHeight: 0,
+        maxHeight: _contentMaxHeight,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(hintColor),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: hintColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
