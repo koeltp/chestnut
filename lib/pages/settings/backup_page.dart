@@ -622,8 +622,17 @@ class _BackupPageState extends State<BackupPage> {
   /// 归类不一，custom 过滤既滤不掉无关文件、还可能把备份文件一起
   /// 藏掉；选到不合规文件由预检兜底提示。
   Future<void> _import() async {
-    final picked = await FilePicker.pickFiles(type: FileType.any);
-    final path = picked.isEmpty ? null : picked.first.path;
+    // 进选择器前就亮本行转圈：选择器关闭后插件还要把文件复制到
+    // 缓存才 resolve，这几秒页面停在备份页无反馈像卡死
+    setState(() => _busyAction = 'import');
+    String? path;
+    try {
+      final picked = await FilePicker.pickFiles(type: FileType.any);
+      path = picked.isEmpty ? null : picked.first.path;
+    } finally {
+      // 拿到路径时转圈由 _restoreFromPath 接力，这里只兜底取消/异常
+      if (path == null && mounted) setState(() => _busyAction = null);
+    }
     if (path == null || !mounted) return; // 用户取消选择
     await _restoreFromPath(path);
   }
@@ -633,12 +642,22 @@ class _BackupPageState extends State<BackupPage> {
   /// 不按扩展名过滤（与 _import 同理，ROM 对未知扩展的 MIME 归类
   /// 不一）；选错文件由映射页解析兜底提示。
   Future<void> _importQianji() async {
-    final picked = await FilePicker.pickFiles(type: FileType.any);
-    final path = picked.isEmpty ? null : picked.first.path;
+    // 与 _import 同理：提前亮转圈覆盖插件复制文件的空窗
+    setState(() => _busyAction = 'qianji');
+    String? path;
+    try {
+      final picked = await FilePicker.pickFiles(type: FileType.any);
+      path = picked.isEmpty ? null : picked.first.path;
+    } finally {
+      if (mounted) setState(() => _busyAction = null);
+    }
     if (path == null || !mounted) return; // 用户取消选择
     Navigator.push(
       context,
-      MaterialPageRoute<void>(builder: (_) => QianjiImportPage(filePath: path)),
+      // try/finally 跨块赋值后编译器不做类型提升，上方已判空
+      MaterialPageRoute<void>(
+        builder: (_) => QianjiImportPage(filePath: path!),
+      ),
     );
   }
 

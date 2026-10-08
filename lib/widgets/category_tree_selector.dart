@@ -329,7 +329,8 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
     );
   }
 
-  /// 多选二级行：左侧与一级头像对齐，整行可点（只勾自己一个）
+  /// 多选二级行：头像与一级同大，左缘比一级头像再右缩 20 体现层级，
+  /// 整行可点（只勾自己一个）
   Widget _buildMultiSubRow(Category sub) {
     final picked = widget.selectedIds!.contains(sub.id);
     return InkWell(
@@ -338,13 +339,13 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
         height: 46,
         child: Row(
           children: [
-            const SizedBox(width: 52),
+            const SizedBox(width: 62),
             CategoryAvatar(
               name: sub.name,
               iconCode: sub.iconCode,
               color: sub.colorValue,
-              size: 26,
-              iconSize: 14,
+              size: 30,
+              iconSize: 16,
             ),
             const SizedBox(width: 10),
             Expanded(

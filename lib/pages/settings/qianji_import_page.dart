@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
+import '../../widgets/category_tree_selector.dart';
 import '../../widgets/section_card.dart';
 import 'qianji_import_result_page.dart';
 
@@ -47,16 +49,18 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
   }
 
   /// 解析文件并构建映射分组（解析与查分类并行，任一失败进入错误态）
+  ///
+  /// xlsx 解析走 compute 扔到独立 isolate，避免大文件阻塞 UI 线程，
+  /// 页面在 push 进来后立刻展示转圈，解析完再渲染。
   Future<void> _load() async {
     try {
       final db = context.read<AppDatabase>();
-      final results = await Future.wait([
-        QianjiImportService.parseFile(widget.filePath),
-        db.select(db.categories).get(),
-      ]);
-      final parsed = results[0] as QianjiParseResult;
-      final categories = results[1] as List<Category>;
+      final categories = await db.select(db.categories).get();
       categories.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+      // 解析在 isolate 中执行，不卡 UI 线程
+      final parsed = await compute(QianjiImportService.parseFile, widget.filePath);
+
       if (!mounted) return;
       setState(() {
         _parsed = parsed;
@@ -116,19 +120,101 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
   // ---------------- 交互 ----------------
 
   Future<void> _pickTarget(QianjiGroup group) async {
-    final picked = await showModalBottomSheet<Category>(
+    final current = _categoryById(_manual[group.key]) ?? group.autoMatch;
+    final cats = _categories.where((c) => c.type == group.type).toList();
+    int? pickedId;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _CategoryPickerSheet(
-        type: group.type,
-        categories: _categories,
-        current: _categoryById(_manual[group.key]) ?? group.autoMatch,
-        title: '${_groupLabel(group)} · ${group.count} 笔',
-      ),
+      builder: (_) {
+        // 弹层本地状态（StatefulBuilder 重建时保持）：
+        // localId 当前高亮项；expandedRootId 当前展开的一级。
+        // 有子类的一级第一次点 = 只展开+高亮，再点一次才选用——
+        // 不能一点就关弹层，否则用户来不及选二级
+        int localId = current?.id ?? -1;
+        int? expandedRootId = current?.parentId ?? current?.id;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.7,
+                ),
+                decoration: const BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(AppDimens.radiusCard),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                      child: Text(
+                        '${_groupLabel(group)} · ${group.count} 笔',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        '点分类直接选用；有子分类的一级会先展开，再点一次只选用一级',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // 组件单选形态内部是 ListView 自滚动，外层不能再套
+                    // SingleChildScrollView（无界高度会直接布局崩溃）
+                    Flexible(
+                      child: Padding(
+                        // 内部格子自带 12 横向边距，补 4 与上方标题 16 对齐
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: CategoryTreeSelector(
+                          categories: cats,
+                          mode: CategoryTreeMode.single,
+                          // 无命中时传无效 id -1，组件不高亮任何项
+                          selectedId: localId,
+                          initialExpandedId: expandedRootId,
+                          onSingleChanged: (id) {
+                            final cat = cats.firstWhere((c) => c.id == id);
+                            final hasSubs = cats.any((c) => c.parentId == id);
+                            if (cat.parentId == null &&
+                                hasSubs &&
+                                expandedRootId != id) {
+                              // 有子类的一级首次点击：只展开+高亮
+                              setSheetState(() {
+                                localId = id;
+                                expandedRootId = id;
+                              });
+                            } else {
+                              // 再点已展开一级 / 无子类一级 / 二级：选用并关闭
+                              pickedId = id;
+                              Navigator.pop(context);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
-    if (picked == null || !mounted) return;
-    setState(() => _manual[group.key] = picked.id);
+    if (pickedId == null || !mounted) return;
+    setState(() => _manual[group.key] = pickedId!);
   }
 
   Future<void> _confirmImport() async {
@@ -190,7 +276,22 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
       backgroundColor: AppColors.background,
       appBar: AppBar(centerTitle: true, title: const Text('导入钱迹账单')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: AppDimens.gapMd),
+                  Text(
+                    '正在解析账单文件…',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            )
           : _error != null
               ? _buildError()
               : _buildBody(),
@@ -526,238 +627,6 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 分类选择底部弹层：复用记一笔的分组格子交互
-///
-/// 点无子分类的一级 = 直接选用；点有子分类的一级 = 展开子分类面板，
-/// 再点一次该一级 = 只用一级分类；点子分类 = 选用到二级。
-class _CategoryPickerSheet extends StatefulWidget {
-  const _CategoryPickerSheet({
-    required this.type,
-    required this.categories,
-    required this.current,
-    required this.title,
-  });
-
-  final BillType type;
-  final List<Category> categories;
-
-  /// 当前生效的分类（手动已选或自动归级命中），用于高亮
-  final Category? current;
-  final String title;
-
-  @override
-  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
-}
-
-class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
-  /// 当前展开子分类面板的一级分类（null = 无展开）
-  Category? _expanded;
-
-  late final List<Category> _roots;
-  late final Map<int, List<Category>> _childrenOf;
-
-  @override
-  void initState() {
-    super.initState();
-    _roots = widget.categories
-        .where((c) => c.type == widget.type && c.parentId == null)
-        .toList(growable: false);
-    _childrenOf = {
-      for (final root in _roots)
-        root.id: widget.categories
-            .where((c) => c.type == widget.type && c.parentId == root.id)
-            .toList(growable: false),
-    };
-    // 初始展开：当前选中目标是二级时展开其父分类
-    final current = widget.current;
-    if (current != null && current.parentId != null) {
-      _expanded = _roots.where((r) => r.id == current.parentId).firstOrNull;
-    }
-  }
-
-  void _pop(Category c) => Navigator.pop(context, c);
-
-  void _tapRoot(Category root) {
-    if (_childrenOf[root.id]!.isEmpty) {
-      _pop(root);
-      return;
-    }
-    // 再点已展开的一级 = 只用该一级分类
-    if (_expanded?.id == root.id) {
-      _pop(root);
-      return;
-    }
-    setState(() => _expanded = root);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final expandedChildren = _expanded == null
-        ? const <Category>[]
-        : _childrenOf[_expanded!.id]!;
-    return SafeArea(
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
-        ),
-        decoration: const BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(AppDimens.radiusCard),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text(
-                widget.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '点分类直接选用；有子分类的一级会先展开，再点一次只选用一级',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 14,
-                      runSpacing: 14,
-                      children: [
-                        for (final root in _roots)
-                          _cell(
-                            root,
-                            selected: widget.current?.id == root.id,
-                            expanded: _expanded?.id == root.id,
-                            onTap: () => _tapRoot(root),
-                          ),
-                      ],
-                    ),
-                    if (_expanded != null &&
-                        expandedChildren.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _buildChildrenPanel(_expanded!, expandedChildren),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 子分类面板：浅色底圆角，与记一笔页子分类面板同风格
-  Widget _buildChildrenPanel(Category parent, List<Category> children) {
-    final tintColor = Color(parent.colorValue).withValues(alpha: 0.06);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: tintColor,
-        borderRadius: BorderRadius.circular(AppDimens.radiusCard),
-      ),
-      child: Wrap(
-        spacing: 14,
-        runSpacing: 14,
-        children: [
-          for (final child in children)
-            _cell(
-              child,
-              selected: widget.current?.id == child.id,
-              expanded: false,
-              onTap: () => _pop(child),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// 分类格子：40px 圆 + 名称；选中/展开时实底白前景（与记一笔一致）
-  Widget _cell(
-    Category c, {
-    required bool selected,
-    required bool expanded,
-    required VoidCallback onTap,
-  }) {
-    final color = Color(c.colorValue);
-    final solid = selected || expanded;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 52,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: solid ? color : color.withValues(alpha: 0.13),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: _glyph(c, color, solid),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              c.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                color: solid ? color : AppColors.textSecondary,
-                fontWeight: solid ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 格子前景：文字图标显示首字，图标模式显示图标
-  Widget _glyph(Category c, Color color, bool solid) {
-    const textIconCode = 0;
-    final fg = solid ? Colors.white : color;
-    if (c.iconCode == textIconCode) {
-      return Text(
-        c.name.isEmpty ? '?' : c.name.characters.first.toUpperCase(),
-        maxLines: 1,
-        style: TextStyle(
-          color: fg,
-          fontSize: 19,
-          height: 1.2,
-          fontWeight: FontWeight.w600,
-        ),
-      );
-    }
-    return Icon(
-      // ignore: non_const_argument_for_const_parameter
-      IconData(c.iconCode, fontFamily: 'MaterialIcons'),
-      color: fg,
-      size: 20,
     );
   }
 }
