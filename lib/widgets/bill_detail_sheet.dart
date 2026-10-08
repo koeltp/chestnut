@@ -60,9 +60,11 @@ class _DetailBody extends StatefulWidget {
     this.onTagTap,
   });
 
-  /// 点击条目时的账单快照：仅作初始显示值与订阅键，
-  /// 之后展示一律以单条流推送的最新值为准
+  /// 点击条目时的账单快照：弹窗是纯静态展示面板，打开期间数据库
+  /// 不会经由其它路径变更（所有增删改都从本弹窗发起，发起即先关弹窗）
   final Bill bill;
+
+  /// 打开弹窗时的分类字典快照（同上，弹窗存活期间不会被变更）
   final Map<int, Category> categories;
   final void Function(Category category) onCategoryTap;
 
@@ -80,60 +82,37 @@ class _DetailBody extends StatefulWidget {
 }
 
 class _DetailBodyState extends State<_DetailBody> {
-  /// 最新账单：创建时取宿主传入的快照，之后由单条流推送覆盖；
-  /// 编辑/复制/删除都必须操作它，避免拿到关闭弹窗前的旧数据
-  late Bill _current = widget.bill;
-  StreamSubscription<Bill?>? _sub;
-
-  /// 该账单的标签列表（异步加载，编辑保存后刷新）
+  /// 该账单的标签列表（打开弹窗时加载一次）
   List<Tag> _tags = [];
 
   @override
   void initState() {
     super.initState();
-    // 订阅单条账单流：编辑保存后弹窗自动刷新；
-    // 账单被删（null）时自动关闭弹窗，避免展示已不存在的数据
-    _sub = widget.provider.watchBillById(widget.bill.id).listen((bill) {
-      if (!mounted) return;
-      if (bill == null) {
-        Navigator.of(context).pop();
-      } else {
-        setState(() => _current = bill);
-        // 账单变化（编辑保存）后重新加载标签
-        _loadTags();
-      }
-    });
     _loadTags();
   }
 
   /// 加载该账单的标签
   Future<void> _loadTags() async {
-    final tags = await widget.tagRepo.getTagsByBillId(_current.id);
+    final tags = await widget.tagRepo.getTagsByBillId(widget.bill.id);
     if (!mounted) return;
     setState(() => _tags = tags);
   }
 
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
   /// 打开记一笔页：修改 = 编辑该笔；复制 = 预填数据保存为新记录。
-  /// 必须用最新值 _current：若操作前数据库已被其它路径改过，
-  /// 用打开弹窗时的旧快照进编辑页会回显过期数据
+  /// 先关弹窗再压栈编辑页——弹窗的使命在发起动作时即告结束，
+  /// 编辑保存/取消返回都直接落在宿主列表，不保留过期的弹窗现场
   void _openEditor(bool edit) {
+    // 先用打开弹窗时的快照构建编辑页再关弹窗（pop 后 widget 不可再读）
+    final page = edit
+        ? AddBillPage(editBill: widget.bill)
+        : AddBillPage(copyOf: widget.bill);
+    Navigator.of(widget.hostContext).pop();
     Navigator.of(widget.hostContext).push(
-      MaterialPageRoute<void>(
-        builder: (_) => edit
-            ? AddBillPage(editBill: _current)
-            : AddBillPage(copyOf: _current),
-      ),
+      MaterialPageRoute<void>(builder: (_) => page),
     );
   }
 
-  /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新；
-  /// 弹窗已关闭、订阅已取消，删除不会触发本页的 null 自动 pop
+  /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新
   Future<void> _confirmDelete(BuildContext sheetContext) async {
     final confirmed = await showDialog<bool>(
       context: sheetContext,
@@ -155,12 +134,12 @@ class _DetailBodyState extends State<_DetailBody> {
     if (confirmed != true) return;
     if (!sheetContext.mounted) return;
     Navigator.of(sheetContext).pop();
-    await widget.provider.deleteBill(_current.id);
+    await widget.provider.deleteBill(widget.bill.id);
   }
 
   /// 点击分类行：先关详情再交给宿主跳转，避免返回时又回到已关闭的弹窗
   void _tapCategory(BuildContext sheetContext) {
-    final c = widget.categories[_current.categoryId];
+    final c = widget.categories[widget.bill.categoryId];
     if (c == null) return;
     Navigator.of(sheetContext).pop();
     widget.onCategoryTap(c);
@@ -172,11 +151,11 @@ class _DetailBodyState extends State<_DetailBody> {
   /// 库存坐标是 GCJ-02（高德系）：map_launcher 对高德/腾讯直传，
   /// 对百度以 coord_type=gcj02 声明由百度自转 BD-09，无需手动纠偏。
   Future<void> _tapLocation() async {
-    final lat = _current.lat;
-    final lng = _current.lng;
+    final lat = widget.bill.lat;
+    final lng = widget.bill.lng;
     if (lat == null || lng == null) return;
     final request = MapLauncher.marker(
-      LocationCoords(lat, lng, title: _current.location),
+      LocationCoords(lat, lng, title: widget.bill.location),
     );
     // 只提供国内主流四家；未安装原生 App 的不列：
     // 高德/百度只有 scheme 没有网页兜底，谷歌网页版在国内打不开
@@ -279,13 +258,13 @@ class _DetailBodyState extends State<_DetailBody> {
 
   @override
   Widget build(BuildContext context) {
-    final isExpense = _current.type == BillType.expense;
+    final isExpense = widget.bill.type == BillType.expense;
     final amountColor = isExpense ? AppColors.expense : AppColors.income;
-    final category = widget.categories[_current.categoryId];
+    final category = widget.categories[widget.bill.categoryId];
     // 位置展示用完整地址（含店名），无完整地址退回短地名
-    final location = _current.locationFull ?? _current.location;
+    final location = widget.bill.locationFull ?? widget.bill.location;
     // 仅精确坐标的账单可跳地图；只有行政区地名的旧账保持纯文字
-    final hasLocationPoint = _current.lat != null && _current.lng != null;
+    final hasLocationPoint = widget.bill.lat != null && widget.bill.lng != null;
     return SafeArea(
       // 内容可滚动：超长地址/备注撑满屏幕时滚动查看，不截断不溢出
       child: SingleChildScrollView(
@@ -321,9 +300,9 @@ class _DetailBodyState extends State<_DetailBody> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     // 免单（实付 0 且有优惠）显示绿色"免单"，不再显 -¥0
-                    (_current.amountCents == 0 &&
-                            _current.discountCents != null &&
-                            _current.discountCents! > 0)
+                    (widget.bill.amountCents == 0 &&
+                            widget.bill.discountCents != null &&
+                            widget.bill.discountCents! > 0)
                         ? const Text(
                             '免单',
                             textAlign: TextAlign.right,
@@ -335,7 +314,7 @@ class _DetailBodyState extends State<_DetailBody> {
                           )
                         : Text(
                             '${isExpense ? '-' : '+'}¥'
-                            '${MoneyUtil.centsToYuanGroupedTrimmed(_current.amountCents)}',
+                            '${MoneyUtil.centsToYuanGroupedTrimmed(widget.bill.amountCents)}',
                             textAlign: TextAlign.right,
                             style: TextStyle(
                               fontSize: 20,
@@ -345,15 +324,15 @@ class _DetailBodyState extends State<_DetailBody> {
                             ),
                           ),
                     // 有优惠时在实付下方展示原价（划线）与省额
-                    if (_current.discountCents != null &&
-                        _current.discountCents! > 0) ...[
+                    if (widget.bill.discountCents != null &&
+                        widget.bill.discountCents! > 0) ...[
                       const SizedBox(height: 3),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '原价 ¥${MoneyUtil.centsToYuanGroupedTrimmed(_current.amountCents + _current.discountCents!)}',
+                            '原价 ¥${MoneyUtil.centsToYuanGroupedTrimmed(widget.bill.amountCents + widget.bill.discountCents!)}',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -363,7 +342,7 @@ class _DetailBodyState extends State<_DetailBody> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '省 ¥${MoneyUtil.centsToYuanTrimmed(_current.discountCents!)}',
+                            '省 ¥${MoneyUtil.centsToYuanTrimmed(widget.bill.discountCents!)}',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.income,
@@ -437,7 +416,7 @@ class _DetailBodyState extends State<_DetailBody> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      _format(_current.date, _current.timeMinute),
+                      _format(widget.bill.date, widget.bill.timeMinute),
                       style: const TextStyle(
                         fontSize: 15,
                         color: AppColors.textPrimary,
@@ -446,7 +425,7 @@ class _DetailBodyState extends State<_DetailBody> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '记录于 ${_format(_current.createdAt, null)}',
+                      '记录于 ${_format(widget.bill.createdAt, null)}',
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -465,10 +444,10 @@ class _DetailBodyState extends State<_DetailBody> {
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: Text(
-                    _current.note ?? '未添加备注',
+                    widget.bill.note ?? '未添加备注',
                     style: TextStyle(
                       fontSize: 15,
-                      color: _current.note == null
+                      color: widget.bill.note == null
                           ? AppColors.textSecondary.withValues(alpha: 0.7)
                           : AppColors.textPrimary,
                     ),

@@ -25,7 +25,7 @@ import 'wheel_date_picker.dart';
 ///
 /// 新增、编辑与复制共用：传入 [editBill] 进入编辑模式（保存覆盖原记录）；
 /// 传入 [copyOf] 进入复制模式（预填数据，保存生成一条新记录，见详情弹窗"复制"）。
-/// 布局自上而下：顶栏（关闭/类型Tab/删除）→ 分类区（分组展开）→
+/// 布局自上而下：顶栏（关闭/类型Tab/+）→ 分类区（分组展开）→
 /// 备注与金额行 → 日期/定位胶囊 → 数字键盘。
 class AddBillPage extends StatefulWidget {
   const AddBillPage({super.key, this.editBill, this.copyOf});
@@ -265,7 +265,7 @@ class _AddBillPageState extends State<AddBillPage> {
     );
   }
 
-  /// 顶栏：左关闭 ｜ 支出/收入 Tab（下划线选中态）｜ 编辑模式右删除
+  /// 顶栏：左关闭 ｜ 支出/收入 Tab（下划线选中态）｜ 右上角 +
   Widget _buildTopBar() {
     // 白底顶栏 + 底部渐变条实现"只有下边"的立体效果（BoxShadow 无法单边）
     return Column(
@@ -286,23 +286,17 @@ class _AddBillPageState extends State<AddBillPage> {
                   children: [for (final t in BillType.values) _buildTopTab(t)],
                 ),
               ),
-              // 右上角 + 与左侧 ✕ 对称：点击进入分类管理页
-              if (_isEditing)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 24),
-                  color: AppColors.expense,
-                  onPressed: _confirmDelete,
-                )
-              else
-                IconButton(
-                  icon: const Icon(Icons.add, size: 26),
-                  color: AppColors.textPrimary,
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const CategoryManagePage(),
-                    ),
+              // 右上角 + 与左侧 ✕ 对称：点击进入分类管理页。
+              // 三模式（新建/编辑/复制）统一；删除走详情弹窗，不在编辑页重复
+              IconButton(
+                icon: const Icon(Icons.add, size: 26),
+                color: AppColors.textPrimary,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const CategoryManagePage(),
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -1036,30 +1030,5 @@ class _AddBillPageState extends State<AddBillPage> {
       }
     }
     return null;
-  }
-
-  /// 编辑模式：删除账单（二次确认）
-  Future<void> _confirmDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除账单'),
-        content: const Text('确定删除这条账单吗？删除后不可恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) {
-      await context.read<BillProvider>().deleteBill(widget.editBill!.id);
-      if (mounted) Navigator.of(context).pop();
-    }
   }
 }
