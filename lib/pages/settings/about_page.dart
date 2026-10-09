@@ -6,8 +6,9 @@ import '../../theme/app_theme.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
 import '../privacy/privacy_policy_page.dart';
+import 'open_source_page.dart';
 
-/// 关于页：版本信息、隐私政策入口、开源仓库与反馈渠道、版权与许可声明
+/// 关于页：版本信息、隐私政策与开源说明入口、开源仓库与反馈渠道、版权与许可声明
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
@@ -106,7 +107,7 @@ class _AboutPageState extends State<AboutPage> {
       child: const Padding(
         padding: EdgeInsets.all(4),
         child: Text(
-          '一款无广告、无账号、数据完全本地的记账 App。\n'
+          '一款无广告、无账号、数据完全本地的开源记账 App。\n'
           '快速记账、两级分类、统计图表、预算提醒、记账定位与本地备份，'
           '账目数据始终只属于你自己。',
           style: TextStyle(
@@ -119,7 +120,7 @@ class _AboutPageState extends State<AboutPage> {
     );
   }
 
-  /// 链接菜单：隐私政策（应用内页面）/ 开源仓库 / 意见反馈
+  /// 链接菜单：隐私政策（应用内页面）/ 开源仓库 / 开源说明（应用内页面）/ 意见反馈
   Widget _buildLinkCard(BuildContext context) {
     return SectionCard(
       padding: EdgeInsets.zero,
@@ -141,6 +142,16 @@ class _AboutPageState extends State<AboutPage> {
             title: '开源仓库',
             value: 'github.com/koeltp/chestnut',
             onTap: () => _open(_repoUrl, '无法打开浏览器'),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _item(
+            icon: Icons.article_outlined,
+            color: AppColors.income,
+            title: '开源说明',
+            value: '开源意味着什么',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const OpenSourcePage()),
+            ),
           ),
           const Divider(indent: 16, endIndent: 16),
           _item(
