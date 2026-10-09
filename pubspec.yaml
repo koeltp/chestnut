@@ -50,6 +50,10 @@ dependencies:
   open_filex: ^4.7.0
   url_launcher: ^6.3.3
   excel: ^4.0.6
+  # 账单图片：拍照/相册选取、压缩、全屏预览
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  photo_view: ^0.15.0
 
 dev_dependencies:
   flutter_test:

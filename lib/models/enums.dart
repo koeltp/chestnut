@@ -12,6 +12,24 @@ enum BillType {
   String get label => this == BillType.expense ? '支出' : '收入';
 }
 
+/// 账单图片上传状态
+///
+/// 双写架构下图片先落本地、再异步上传云端；失败不入后台队列，
+/// 由每次启动的静默补传与详情页手动重传兜底。
+enum BillImageUploadState {
+  /// 待上传（本地已有，云端还没有）
+  pending,
+
+  /// 上传中
+  uploading,
+
+  /// 已上传
+  done,
+
+  /// 上传失败（网络/配置异常），等待补传
+  failed,
+}
+
 /// 首页查看模式（钱迹式"显示方式"）
 enum HomePeriod {
   /// 按月查看

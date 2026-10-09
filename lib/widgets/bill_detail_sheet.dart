@@ -1,18 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:map_launcher/map_launcher.dart';
 import 'package:provider/provider.dart';
 
 import '../data/database.dart';
+import '../data/repositories/bill_image_repository.dart';
 import '../data/repositories/tag_repository.dart';
 import '../models/enums.dart';
 import '../pages/add_bill/add_bill_page.dart';
 import '../providers/bill_provider.dart';
+import '../providers/cloud_storage_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
 import '../utils/show_toast.dart';
 import 'category_avatar.dart';
+import 'photo_viewer_page.dart';
 
 /// 账单详情底部弹窗：点击明细条目时展示完整信息，代替"直接进编辑页"
 ///
@@ -29,6 +33,8 @@ Future<void> showBillDetailSheet(
   // 同步取好 Provider，删除时不再跨 async gap 访问 context
   final provider = context.read<BillProvider>();
   final tagRepo = context.read<TagRepository>();
+  final imageRepo = context.read<BillImageRepository>();
+  final cloud = context.read<CloudStorageProvider>();
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.white,
@@ -45,6 +51,8 @@ Future<void> showBillDetailSheet(
       hostContext: context,
       provider: provider,
       tagRepo: tagRepo,
+      imageRepo: imageRepo,
+      cloud: cloud,
     ),
   );
 }
@@ -57,6 +65,8 @@ class _DetailBody extends StatefulWidget {
     required this.hostContext,
     required this.provider,
     required this.tagRepo,
+    required this.imageRepo,
+    required this.cloud,
     this.onTagTap,
   });
 
@@ -77,6 +87,10 @@ class _DetailBody extends StatefulWidget {
   final BillProvider provider;
   final TagRepository tagRepo;
 
+  /// 图片仓储与云存储配置：图片条加载/云端兜底/手动重传
+  final BillImageRepository imageRepo;
+  final CloudStorageProvider cloud;
+
   @override
   State<_DetailBody> createState() => _DetailBodyState();
 }
@@ -85,10 +99,31 @@ class _DetailBodyState extends State<_DetailBody> {
   /// 该账单的标签列表（打开弹窗时加载一次）
   List<Tag> _tags = [];
 
+  /// 该账单的图片列表（流订阅：上传状态变化自动刷新）
+  List<BillImage> _images = [];
+  StreamSubscription<List<BillImage>>? _imageSub;
+
+  /// imageId → 本地文件（null = 本地缺失且云端拉回失败，显示占位）
+  final Map<int, File?> _localFiles = {};
+
   @override
   void initState() {
     super.initState();
     _loadTags();
+    // 订阅图片流：手动重传改状态、后台补传完成都会推新数据
+    _imageSub = widget.imageRepo
+        .watchImagesByBillId(widget.bill.id)
+        .listen((images) {
+      if (!mounted) return;
+      setState(() => _images = images);
+      unawaited(_ensureFiles(images));
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_imageSub?.cancel());
+    super.dispose();
   }
 
   /// 加载该账单的标签
@@ -96,6 +131,65 @@ class _DetailBodyState extends State<_DetailBody> {
     final tags = await widget.tagRepo.getTagsByBillId(widget.bill.id);
     if (!mounted) return;
     setState(() => _tags = tags);
+  }
+
+  /// 确保每张图都有本地文件可用（读取永远本地优先）：
+  /// 缓存缺失的记录按 objectKey 从云端拉回落盘；拉取失败缓存 null
+  /// 显示占位（重开弹窗可重试）
+  Future<void> _ensureFiles(List<BillImage> images) async {
+    for (final img in images) {
+      if (_localFiles.containsKey(img.id)) continue;
+      final local = File(img.localPath);
+      if (await local.exists()) {
+        if (mounted) setState(() => _localFiles[img.id] = local);
+        continue;
+      }
+      final client = widget.cloud.createClient();
+      if (client == null) {
+        // 云存储已解绑：无兜底来源，保持占位
+        if (mounted) setState(() => _localFiles[img.id] = null);
+        continue;
+      }
+      final file = await widget.imageRepo.ensureLocalFile(img, client);
+      if (!mounted) return;
+      setState(() => _localFiles[img.id] = file);
+    }
+  }
+
+  /// 全屏预览：从被点的那张进入，左右滑可看该账单其余图片
+  void _preview(BillImage img) {
+    // 只收集本地文件已就绪的图；当前图未就绪不打开（等云端拉回后刷新）
+    final paths = <String>[];
+    var index = 0;
+    for (final i in _images) {
+      final file = _localFiles[i.id];
+      if (file == null) continue;
+      if (identical(i, img)) index = paths.length;
+      paths.add(file.path);
+    }
+    if (paths.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PhotoViewerPage(
+          paths: paths,
+          initialIndex: index,
+          // Hero 过渡以被点那张为准：缩略图飞出放大，关闭时飞回
+          openHeroTag: img.localPath,
+        ),
+      ),
+    );
+  }
+
+  /// 手动重传（"未上传"角标点击）：结果 toast，状态变化由流刷新缩略图
+  Future<void> _reupload(BillImage img) async {
+    final client = widget.cloud.createClient();
+    if (client == null) {
+      showAppToast(context, '云存储未启用，请先到"我的-图片云存储"配置');
+      return;
+    }
+    final ok = await widget.imageRepo.uploadOne(img, client);
+    if (!mounted) return;
+    showAppToast(context, ok ? '上传成功' : '上传失败，请检查网络后重试');
   }
 
   /// 打开记一笔页：修改 = 编辑该笔；复制 = 预填数据保存为新记录。
@@ -354,6 +448,22 @@ class _DetailBodyState extends State<_DetailBody> {
                   ],
                 ),
               ),
+              // 图片凭证条：金额行下方 56px 圆角横滑缩略图（点击全屏预览）
+              if (_images.isNotEmpty) ...[
+                const Divider(height: 1, color: AppColors.divider),
+                _Row(
+                  label: '图片',
+                  child: SizedBox(
+                    height: 56,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _images.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) => _thumbCell(_images[i]),
+                    ),
+                  ),
+                ),
+              ],
               const Divider(height: 1, color: AppColors.divider),
               _Row(
                 label: '分类',
@@ -532,6 +642,82 @@ class _DetailBodyState extends State<_DetailBody> {
           ),
         ),
       ),
+    );
+  }
+
+  /// 缩略图单元：56px 圆角图 + 右上角上传状态角标（点击重传）
+  Widget _thumbCell(BillImage img) {
+    final file = _localFiles[img.id];
+    final uploading = img.uploadState == BillImageUploadState.uploading;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: () => _preview(img),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: file == null
+                ? Container(
+                    width: 56,
+                    height: 56,
+                    color: AppColors.fill,
+                    child: const Icon(
+                      Icons.image_outlined,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
+                  )
+                : Image.file(
+                    file,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                    // 文件半路被清（罕见）：退占位，不影响其余图
+                    errorBuilder: (_, _, _) => Container(
+                      width: 56,
+                      height: 56,
+                      color: AppColors.fill,
+                      child: const Icon(
+                        Icons.image_outlined,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+        // 未上传角标：上传中转圈，等待/失败橙点；点角标手动重传
+        if (img.uploadState != BillImageUploadState.done)
+          Positioned(
+            right: -3,
+            top: -3,
+            child: GestureDetector(
+              onTap: uploading ? null : () => unawaited(_reupload(img)),
+              child: Container(
+                width: 16,
+                height: 16,
+                // 半透明黑圆底：角标浮在照片上，白底遇白图会隐身
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: uploading
+                    ? const Padding(
+                        padding: EdgeInsets.all(3),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.error_outline,
+                        size: 14,
+                        color: AppColors.expense,
+                      ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

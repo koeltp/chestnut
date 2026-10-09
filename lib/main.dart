@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:amap_map/amap_map.dart';
 import 'package:flutter/material.dart';
 import 'package:x_amap_base/x_amap_base.dart';
@@ -7,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/database.dart';
+import 'data/repositories/bill_image_repository.dart';
 import 'data/repositories/bill_repository.dart';
 import 'data/repositories/budget_repository.dart';
 import 'data/repositories/category_repository.dart';
@@ -18,6 +21,7 @@ import 'pages/privacy/privacy_consent_page.dart';
 import 'providers/bill_provider.dart';
 import 'providers/budget_provider.dart';
 import 'providers/category_provider.dart';
+import 'providers/cloud_storage_provider.dart';
 import 'providers/lock_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/backup_service.dart';
@@ -52,6 +56,8 @@ Future<void> main() async {
   final dbHealthy = await BackupService().checkDatabaseHealth();
   // 每日自动备份：用户开启开关后每天首次启动执行（库不健康时跳过）
   if (dbHealthy) await BackupService().autoBackupIfNeeded(prefs);
+  // 清理图片暂存目录：上次会话选了图但没保存的残留文件
+  await BillImageRepository.cleanupStaging();
   runApp(ChestnutApp(prefs: prefs, dbHealthy: dbHealthy));
 }
 
@@ -159,9 +165,22 @@ class _ProvidersApp extends StatelessWidget {
         Provider<TagRepository>(
           create: (ctx) => TagRepository(ctx.read<AppDatabase>()),
         ),
+        Provider<BillImageRepository>(
+          create: (ctx) => BillImageRepository(ctx.read<AppDatabase>()),
+        ),
+        // 图片云存储配置：未配置/未启用时 App 内不出现任何图片入口。
+        // 必须注册在 BillProvider 之前——MultiProvider 列表前面的包住
+        // 后面的（祖先方向），BillProvider 的 create 要 read 它
+        ChangeNotifierProvider<CloudStorageProvider>(
+          create: (_) => CloudStorageProvider(prefs),
+        ),
         // 状态层
         ChangeNotifierProvider<BillProvider>(
-          create: (ctx) => BillProvider(ctx.read<BillRepository>()),
+          create: (ctx) => BillProvider(
+            ctx.read<BillRepository>(),
+            ctx.read<BillImageRepository>(),
+            ctx.read<CloudStorageProvider>(),
+          ),
         ),
         ChangeNotifierProvider<CategoryProvider>(
           create: (ctx) => CategoryProvider(ctx.read<CategoryRepository>()),
@@ -199,6 +218,25 @@ class _StartupGate extends StatefulWidget {
 class _StartupGateState extends State<_StartupGate> {
   late bool _agreed =
       widget.prefs.getBool(kPrivacyAgreedKey) ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动静默补传（仅同意隐私政策后，与其他联网行为同口径）：
+    // 扫描 uploadState != done 的图片记录逐张补传，失败留在下次启动重试
+    if (_agreed) unawaited(_uploadPendingImages());
+  }
+
+  /// 延迟触发启动补传：避开启动高峰，也让弱网下首屏请求优先。
+  /// 未配置/未启用云存储时 createClient 为 null，无任何图片网络行为
+  Future<void> _uploadPendingImages() async {
+    await Future<void>.delayed(const Duration(seconds: 5));
+    if (!mounted) return;
+    final client = context.read<CloudStorageProvider>().createClient();
+    if (client == null) return;
+    final repo = context.read<BillImageRepository>();
+    await repo.uploadPending(client);
+  }
 
   Future<void> _agree() async {
     await widget.prefs.setBool(kPrivacyAgreedKey, true);

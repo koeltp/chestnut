@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/bill_image_repository.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
@@ -10,6 +13,7 @@ import '../../pages/settings/category_manage_page.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/category_provider.dart';
+import '../../providers/cloud_storage_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
@@ -17,6 +21,7 @@ import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/number_keyboard.dart';
 import '../../widgets/tag_picker_sheet.dart';
+import 'bill_image_sheet.dart';
 import 'category_section.dart';
 import 'location_picker_page.dart';
 import 'wheel_date_picker.dart';
@@ -56,6 +61,22 @@ class _AddBillPageState extends State<AddBillPage> {
 
   /// 已选标签 id 集合（空 = 未打标签）；# 按钮显示数量，弹层内勾选
   final Set<int> _selectedTagIds = {};
+
+  /// 图片仓储（选图暂存 / 保存转正 / 退出清理共用）
+  late final BillImageRepository _imageRepo = context
+      .read<BillImageRepository>();
+
+  /// 暂存图片路径（本次添加、尚未保存入库）
+  List<String> _stagedImages = [];
+
+  /// 已入库图片（编辑模式回显；复制模式为空——凭证不随复制）
+  List<BillImage> _existingImages = [];
+
+  /// 编辑模式下在面板中移除的已入库图，保存时统一删记录/本地文件/云端
+  final List<BillImage> _removedExistingImages = [];
+
+  /// 当前图片总数（胶囊计数用）
+  int get _imageCount => _existingImages.length + _stagedImages.length;
 
   /// 全部标签缓存（弹层渲染用，initState 时加载，新建标签后追加）
   List<Tag> _allTags = [];
@@ -162,6 +183,8 @@ class _AddBillPageState extends State<AddBillPage> {
       }
       // 编辑模式：异步加载该账单已有标签
       _loadExistingTags(bill.id);
+      // 编辑模式异步加载已入库图片回显；复制模式不带图（凭证不复制）
+      if (widget.editBill != null) _loadExistingImages(bill.id);
     } else {
       _type = BillType.expense;
       _date = DateTime.now();
@@ -189,8 +212,20 @@ class _AddBillPageState extends State<AddBillPage> {
     });
   }
 
+  /// 编辑模式加载已入库图片回显
+  Future<void> _loadExistingImages(int billId) async {
+    final images = await _imageRepo.getImagesByBillId(billId);
+    if (!mounted) return;
+    setState(() => _existingImages = images);
+  }
+
   @override
   void dispose() {
+    // 页面退出且未保存：清掉本次会话暂存的图片临时文件（已保存的
+    // 路径经 attachStagedImages 转正移走，此处 discard 为空操作）
+    for (final path in _stagedImages) {
+      unawaited(_imageRepo.discardStagedImage(path));
+    }
     _noteFocus.dispose();
     _noteController.dispose();
     super.dispose();
@@ -580,44 +615,134 @@ class _AddBillPageState extends State<AddBillPage> {
         AppDimens.pagePadding,
         4,
       ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: _pickDate,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.fill,
+      // 胶囊行横向可滚动：小屏上日期/优惠/图片/定位摆不下时滑动查看，
+      // 不再挤压定位胶囊的文字宽度。
+      // 满宽是关键：SingleChildScrollView 会收缩到内容宽度，被外层
+      // Column（默认居中）摆到屏幕中间，包一层无穷宽让胶囊贴左排列
+      child: SizedBox(
+        width: double.infinity,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              InkWell(
+                onTap: _pickDate,
                 borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.fill,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_outlined,
+                        size: 12,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.calendar_today_outlined,
-                    size: 12,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
+              if (_type == BillType.expense) ...[
+                const SizedBox(width: 8),
+                _buildDiscountChip(),
+              ],
+              // 图片入口：仅在用户已启用云存储后出现（未配置完全隐藏）
+              if (_imageEntryVisible) ...[
+                const SizedBox(width: 8),
+                _buildImageChip(),
+              ],
+              if (showLocation) ...[
+                const SizedBox(width: 8),
+                _buildLocationChip(),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 图片入口可见性：云存储已启用才显示（watch 保证配置页开启后
+  /// 返回记一笔页时胶囊即时出现）
+  bool get _imageEntryVisible => context.watch<CloudStorageProvider>().enabled;
+
+  /// 图片胶囊：点击弹出图片面板。中性灰底——计数态不用绿色，
+  /// 绿色保留给"省钱"语义；增删都在面板里，胶囊无 ✕ 态
+  Widget _buildImageChip() {
+    final count = _imageCount;
+    return InkWell(
+      onTap: _showImageSheet,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.fill,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.image_outlined,
+              size: 12,
+              color: AppColors.primary,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              count > 0 ? '图片($count)' : '图片',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
               ),
             ),
-          ),
-          if (_type == BillType.expense) ...[
-            const SizedBox(width: 8),
-            _buildDiscountChip(),
           ],
-          if (showLocation) ...[const SizedBox(width: 8), _buildLocationChip()],
-        ],
+        ),
+      ),
+    );
+  }
+
+  /// 打开图片面板：已入库图与暂存图一起交给面板管理，
+  /// 变更实时回传（保存时才真正写库/删记录/触发上传）
+  Future<void> _showImageSheet() async {
+    // 备注聚焦时先收起系统键盘，避免弹层被键盘挡住
+    _noteFocus.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BillImageSheet(
+        repo: _imageRepo,
+        initialExisting: _existingImages,
+        initialStaged: _stagedImages,
+        onChanged: (existing, staged) {
+          setState(() {
+            // 对比找出门板里被移除的已入库图，保存时统一清理
+            for (final old in _existingImages) {
+              if (!existing.any((e) => e.id == old.id)) {
+                _removedExistingImages.add(old);
+              }
+            }
+            _existingImages = existing;
+            _stagedImages = staged;
+          });
+        },
       ),
     );
   }
@@ -633,45 +758,42 @@ class _AddBillPageState extends State<AddBillPage> {
     final bg = (active || hasDiscount)
         ? AppColors.tint(AppColors.income)
         : AppColors.fill;
-    final fg = (active || hasDiscount) ? AppColors.income : AppColors.textPrimary;
-    return Flexible(
-      child: InkWell(
-        onTap: () => setState(() => _discountMode = !_discountMode),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  hasDiscount
-                      ? '省 ¥${MoneyUtil.centsToYuanTrimmed(discountCents)}'
-                      : '优惠',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: fg,
-                  ),
-                ),
+    final fg = (active || hasDiscount)
+        ? AppColors.income
+        : AppColors.textPrimary;
+    return InkWell(
+      onTap: () => setState(() => _discountMode = !_discountMode),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              hasDiscount
+                  ? '省 ¥${MoneyUtil.centsToYuanTrimmed(discountCents)}'
+                  : '优惠',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: fg,
               ),
-              // 输入模式中展示 ✕：仅收起优惠行切回实付模式（钱迹语义），
-              // 已填优惠保留；清零请用键盘 C 键
-              if (active) ...[
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () => setState(() => _discountMode = false),
-                  child: Icon(Icons.cancel, size: 14, color: fg),
-                ),
-              ],
+            ),
+            // 输入模式中展示 ✕：仅收起优惠行切回实付模式（钱迹语义），
+            // 已填优惠保留；清零请用键盘 C 键
+            if (active) ...[
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () => setState(() => _discountMode = false),
+                child: Icon(Icons.cancel, size: 14, color: fg),
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -681,55 +803,50 @@ class _AddBillPageState extends State<AddBillPage> {
   /// 已定位显示地名与清除按钮。样式与日期胶囊保持一致。
   Widget _buildLocationChip() {
     final hasLocation = _locationName != null;
-    return Flexible(
-      child: InkWell(
-        onTap: _locate,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.fill,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.place_outlined,
-                size: 12,
-                color: AppColors.primary,
+    return InkWell(
+      onTap: _locate,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.fill,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.place_outlined,
+              size: 12,
+              color: AppColors.primary,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              hasLocation ? _locationName! : '定位',
+              maxLines: 1,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
               ),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  hasLocation ? _locationName! : '定位',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
+            ),
+            // 已定位时提供清除入口，长地名不至于挤掉清除按钮
+            if (hasLocation) ...[
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () => setState(() {
+                  _locationName = null;
+                  _locationFull = null;
+                  _selectedPoint = null;
+                }),
+                child: const Icon(
+                  Icons.cancel,
+                  size: 14,
+                  color: AppColors.textSecondary,
                 ),
               ),
-              // 已定位时提供清除入口，长地名不至于挤掉清除按钮
-              if (hasLocation) ...[
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () => setState(() {
-                    _locationName = null;
-                    _locationFull = null;
-                    _selectedPoint = null;
-                  }),
-                  child: const Icon(
-                    Icons.cancel,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -836,8 +953,7 @@ class _AddBillPageState extends State<AddBillPage> {
     setState(() {
       if (_discountMode) {
         if (_discountText.isEmpty) return;
-        _discountText =
-            _discountText.substring(0, _discountText.length - 1);
+        _discountText = _discountText.substring(0, _discountText.length - 1);
       } else {
         if (_amountText.isEmpty) return;
         _amountText = _amountText.substring(0, _amountText.length - 1);
@@ -892,8 +1008,12 @@ class _AddBillPageState extends State<AddBillPage> {
     final note = _noteController.text.trim();
     final provider = context.read<BillProvider>();
     final tagRepo = context.read<TagRepository>();
+    // 图片收尾要用云存储配置：在首个 await 前取好，避免跨异步间隙用 context
+    final cloud = context.read<CloudStorageProvider>();
+    late final int savedBillId;
     if (_isEditing) {
       final bill = widget.editBill!;
+      savedBillId = bill.id;
       await provider.updateBill(
         Bill(
           id: bill.id,
@@ -929,15 +1049,33 @@ class _AddBillPageState extends State<AddBillPage> {
           lng: Value(_selectedPoint?.lng),
         ),
       );
+      savedBillId = billId;
       // 新增：关联标签
       if (_selectedTagIds.isNotEmpty) {
         await tagRepo.setBillTags(billId, _selectedTagIds.toList());
       }
     }
+    // 图片收尾：暂存图转正入库并异步上传（不阻塞保存返回）；面板里
+    // 移除的已入库图统一删记录/本地文件/云端对象
+    final attached = await _imageRepo.attachStagedImages(
+      savedBillId,
+      _stagedImages,
+    );
+    for (final removed in _removedExistingImages) {
+      await _imageRepo.deleteImage(removed, client: cloud.createClient());
+    }
+    if (attached.isNotEmpty) {
+      final client = cloud.createClient();
+      if (client != null) {
+        unawaited(_imageRepo.uploadImages(attached, client));
+      }
+    }
+    _stagedImages = [];
+    _removedExistingImages.clear();
     // 记账成功后检查预算用量（仅支出记账会占预算）
     if (_type == BillType.expense) await _checkBudgetHint();
     if (stay) {
-      // 再记：重置金额与备注，继续记录下一笔
+      // 再记：重置金额与备注，继续记录下一笔（图片已随上一笔保存，一并清空）
       if (!mounted) return;
       setState(() {
         _amountText = '';
@@ -945,6 +1083,7 @@ class _AddBillPageState extends State<AddBillPage> {
         _discountMode = false;
         _noteController.clear();
         _selectedTagIds.clear();
+        _existingImages = [];
       });
     } else if (mounted) {
       Navigator.of(context).pop();

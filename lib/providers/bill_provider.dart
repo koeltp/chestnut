@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import '../data/repositories/bill_image_repository.dart';
 import '../data/repositories/bill_repository.dart';
 import '../models/enums.dart';
 import '../models/summaries.dart';
+import 'cloud_storage_provider.dart';
 
 /// 账单状态管理
 ///
@@ -12,9 +14,14 @@ import '../models/summaries.dart';
 /// 月份/模式切换时 StreamBuilder 会自动取消旧订阅并建立新订阅，
 /// 无需在这里手动管理监听器生命周期。
 class BillProvider extends ChangeNotifier {
-  BillProvider(this._repo);
+  BillProvider(this._repo, this._imageRepo, this._cloud);
 
   final BillRepository _repo;
+
+  final BillImageRepository _imageRepo;
+
+  /// 删除账单时按此配置级联清理云端图片对象
+  final CloudStorageProvider _cloud;
 
   /// 当前查看的月份（按月/按年模式的基准；按年只取其年份）
   DateTime _selectedMonth = DateTime.now();
@@ -89,6 +96,11 @@ class BillProvider extends ChangeNotifier {
   /// 更新账单
   Future<void> updateBill(Bill bill) => _repo.updateBill(bill);
 
-  /// 删除账单
-  Future<void> deleteBill(int id) => _repo.deleteBill(id);
+  /// 删除账单：级联清理其全部图片（记录 / 本地文件同步删，云端对象
+  /// 异步删、失败留孤儿可接受）。已配置云存储就传客户端——即使开关
+  /// 暂时关闭，之前传上去的对象也应一并清理
+  Future<void> deleteBill(int id) async {
+    await _repo.deleteBill(id);
+    await _imageRepo.deleteImagesOfBill(id, client: _cloud.createClient());
+  }
 }

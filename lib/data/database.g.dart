@@ -2171,6 +2171,473 @@ class BillTagsCompanion extends UpdateCompanion<BillTag> {
   }
 }
 
+class $BillImagesTable extends BillImages
+    with TableInfo<$BillImagesTable, BillImage> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BillImagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _billIdMeta = const VerificationMeta('billId');
+  @override
+  late final GeneratedColumn<int> billId = GeneratedColumn<int>(
+    'bill_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _objectKeyMeta = const VerificationMeta(
+    'objectKey',
+  );
+  @override
+  late final GeneratedColumn<String> objectKey = GeneratedColumn<String>(
+    'object_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localPathMeta = const VerificationMeta(
+    'localPath',
+  );
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+    'local_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<BillImageUploadState, int>
+  uploadState = GeneratedColumn<int>(
+    'upload_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  ).withConverter<BillImageUploadState>($BillImagesTable.$converteruploadState);
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _sortMeta = const VerificationMeta('sort');
+  @override
+  late final GeneratedColumn<int> sort = GeneratedColumn<int>(
+    'sort',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    billId,
+    objectKey,
+    localPath,
+    uploadState,
+    createdAt,
+    sort,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'bill_images';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BillImage> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('bill_id')) {
+      context.handle(
+        _billIdMeta,
+        billId.isAcceptableOrUnknown(data['bill_id']!, _billIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_billIdMeta);
+    }
+    if (data.containsKey('object_key')) {
+      context.handle(
+        _objectKeyMeta,
+        objectKey.isAcceptableOrUnknown(data['object_key']!, _objectKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_objectKeyMeta);
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(
+        _localPathMeta,
+        localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localPathMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('sort')) {
+      context.handle(
+        _sortMeta,
+        sort.isAcceptableOrUnknown(data['sort']!, _sortMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BillImage map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BillImage(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      billId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bill_id'],
+      )!,
+      objectKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}object_key'],
+      )!,
+      localPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_path'],
+      )!,
+      uploadState: $BillImagesTable.$converteruploadState.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}upload_state'],
+        )!,
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      sort: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort'],
+      )!,
+    );
+  }
+
+  @override
+  $BillImagesTable createAlias(String alias) {
+    return $BillImagesTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<BillImageUploadState, int, int>
+  $converteruploadState = const EnumIndexConverter<BillImageUploadState>(
+    BillImageUploadState.values,
+  );
+}
+
+class BillImage extends DataClass implements Insertable<BillImage> {
+  final int id;
+
+  /// 所属账单：删除账单时由仓储级联清理记录 / 本地文件 / 云端对象
+  final int billId;
+
+  /// 云端对象键（bucket 内唯一路径），生成规则见 BillImageRepository
+  final String objectKey;
+
+  /// 本地缓存文件绝对路径（应用支持目录 receipts/ 下）
+  final String localPath;
+
+  /// 上传状态
+  final BillImageUploadState uploadState;
+
+  /// 添加时间
+  final DateTime createdAt;
+
+  /// 同一账单内的展示顺序（按添加先后）
+  final int sort;
+  const BillImage({
+    required this.id,
+    required this.billId,
+    required this.objectKey,
+    required this.localPath,
+    required this.uploadState,
+    required this.createdAt,
+    required this.sort,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['bill_id'] = Variable<int>(billId);
+    map['object_key'] = Variable<String>(objectKey);
+    map['local_path'] = Variable<String>(localPath);
+    {
+      map['upload_state'] = Variable<int>(
+        $BillImagesTable.$converteruploadState.toSql(uploadState),
+      );
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['sort'] = Variable<int>(sort);
+    return map;
+  }
+
+  BillImagesCompanion toCompanion(bool nullToAbsent) {
+    return BillImagesCompanion(
+      id: Value(id),
+      billId: Value(billId),
+      objectKey: Value(objectKey),
+      localPath: Value(localPath),
+      uploadState: Value(uploadState),
+      createdAt: Value(createdAt),
+      sort: Value(sort),
+    );
+  }
+
+  factory BillImage.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BillImage(
+      id: serializer.fromJson<int>(json['id']),
+      billId: serializer.fromJson<int>(json['billId']),
+      objectKey: serializer.fromJson<String>(json['objectKey']),
+      localPath: serializer.fromJson<String>(json['localPath']),
+      uploadState: $BillImagesTable.$converteruploadState.fromJson(
+        serializer.fromJson<int>(json['uploadState']),
+      ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      sort: serializer.fromJson<int>(json['sort']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'billId': serializer.toJson<int>(billId),
+      'objectKey': serializer.toJson<String>(objectKey),
+      'localPath': serializer.toJson<String>(localPath),
+      'uploadState': serializer.toJson<int>(
+        $BillImagesTable.$converteruploadState.toJson(uploadState),
+      ),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'sort': serializer.toJson<int>(sort),
+    };
+  }
+
+  BillImage copyWith({
+    int? id,
+    int? billId,
+    String? objectKey,
+    String? localPath,
+    BillImageUploadState? uploadState,
+    DateTime? createdAt,
+    int? sort,
+  }) => BillImage(
+    id: id ?? this.id,
+    billId: billId ?? this.billId,
+    objectKey: objectKey ?? this.objectKey,
+    localPath: localPath ?? this.localPath,
+    uploadState: uploadState ?? this.uploadState,
+    createdAt: createdAt ?? this.createdAt,
+    sort: sort ?? this.sort,
+  );
+  BillImage copyWithCompanion(BillImagesCompanion data) {
+    return BillImage(
+      id: data.id.present ? data.id.value : this.id,
+      billId: data.billId.present ? data.billId.value : this.billId,
+      objectKey: data.objectKey.present ? data.objectKey.value : this.objectKey,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      uploadState: data.uploadState.present
+          ? data.uploadState.value
+          : this.uploadState,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      sort: data.sort.present ? data.sort.value : this.sort,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BillImage(')
+          ..write('id: $id, ')
+          ..write('billId: $billId, ')
+          ..write('objectKey: $objectKey, ')
+          ..write('localPath: $localPath, ')
+          ..write('uploadState: $uploadState, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('sort: $sort')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    billId,
+    objectKey,
+    localPath,
+    uploadState,
+    createdAt,
+    sort,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BillImage &&
+          other.id == this.id &&
+          other.billId == this.billId &&
+          other.objectKey == this.objectKey &&
+          other.localPath == this.localPath &&
+          other.uploadState == this.uploadState &&
+          other.createdAt == this.createdAt &&
+          other.sort == this.sort);
+}
+
+class BillImagesCompanion extends UpdateCompanion<BillImage> {
+  final Value<int> id;
+  final Value<int> billId;
+  final Value<String> objectKey;
+  final Value<String> localPath;
+  final Value<BillImageUploadState> uploadState;
+  final Value<DateTime> createdAt;
+  final Value<int> sort;
+  const BillImagesCompanion({
+    this.id = const Value.absent(),
+    this.billId = const Value.absent(),
+    this.objectKey = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.uploadState = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.sort = const Value.absent(),
+  });
+  BillImagesCompanion.insert({
+    this.id = const Value.absent(),
+    required int billId,
+    required String objectKey,
+    required String localPath,
+    required BillImageUploadState uploadState,
+    this.createdAt = const Value.absent(),
+    this.sort = const Value.absent(),
+  }) : billId = Value(billId),
+       objectKey = Value(objectKey),
+       localPath = Value(localPath),
+       uploadState = Value(uploadState);
+  static Insertable<BillImage> custom({
+    Expression<int>? id,
+    Expression<int>? billId,
+    Expression<String>? objectKey,
+    Expression<String>? localPath,
+    Expression<int>? uploadState,
+    Expression<DateTime>? createdAt,
+    Expression<int>? sort,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (billId != null) 'bill_id': billId,
+      if (objectKey != null) 'object_key': objectKey,
+      if (localPath != null) 'local_path': localPath,
+      if (uploadState != null) 'upload_state': uploadState,
+      if (createdAt != null) 'created_at': createdAt,
+      if (sort != null) 'sort': sort,
+    });
+  }
+
+  BillImagesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? billId,
+    Value<String>? objectKey,
+    Value<String>? localPath,
+    Value<BillImageUploadState>? uploadState,
+    Value<DateTime>? createdAt,
+    Value<int>? sort,
+  }) {
+    return BillImagesCompanion(
+      id: id ?? this.id,
+      billId: billId ?? this.billId,
+      objectKey: objectKey ?? this.objectKey,
+      localPath: localPath ?? this.localPath,
+      uploadState: uploadState ?? this.uploadState,
+      createdAt: createdAt ?? this.createdAt,
+      sort: sort ?? this.sort,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (billId.present) {
+      map['bill_id'] = Variable<int>(billId.value);
+    }
+    if (objectKey.present) {
+      map['object_key'] = Variable<String>(objectKey.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (uploadState.present) {
+      map['upload_state'] = Variable<int>(
+        $BillImagesTable.$converteruploadState.toSql(uploadState.value),
+      );
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (sort.present) {
+      map['sort'] = Variable<int>(sort.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BillImagesCompanion(')
+          ..write('id: $id, ')
+          ..write('billId: $billId, ')
+          ..write('objectKey: $objectKey, ')
+          ..write('localPath: $localPath, ')
+          ..write('uploadState: $uploadState, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('sort: $sort')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2179,6 +2646,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BudgetsTable budgets = $BudgetsTable(this);
   late final $TagsTable tags = $TagsTable(this);
   late final $BillTagsTable billTags = $BillTagsTable(this);
+  late final $BillImagesTable billImages = $BillImagesTable(this);
   late final Index billsDateCreated = Index(
     'bills_date_created',
     'CREATE INDEX bills_date_created ON bills (date, created_at)',
@@ -2191,6 +2659,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'tags_name',
     'CREATE INDEX tags_name ON tags (name)',
   );
+  late final Index billImagesBill = Index(
+    'bill_images_bill',
+    'CREATE INDEX bill_images_bill ON bill_images (bill_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2201,9 +2673,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     budgets,
     tags,
     billTags,
+    billImages,
     billsDateCreated,
     billsCategory,
     tagsName,
+    billImagesBill,
   ];
 }
 
@@ -3300,6 +3774,243 @@ typedef $$BillTagsTableProcessedTableManager =
       BillTag,
       PrefetchHooks Function()
     >;
+typedef $$BillImagesTableCreateCompanionBuilder =
+    BillImagesCompanion Function({
+      Value<int> id,
+      required int billId,
+      required String objectKey,
+      required String localPath,
+      required BillImageUploadState uploadState,
+      Value<DateTime> createdAt,
+      Value<int> sort,
+    });
+typedef $$BillImagesTableUpdateCompanionBuilder =
+    BillImagesCompanion Function({
+      Value<int> id,
+      Value<int> billId,
+      Value<String> objectKey,
+      Value<String> localPath,
+      Value<BillImageUploadState> uploadState,
+      Value<DateTime> createdAt,
+      Value<int> sort,
+    });
+
+class $$BillImagesTableFilterComposer
+    extends Composer<_$AppDatabase, $BillImagesTable> {
+  $$BillImagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get billId => $composableBuilder(
+    column: $table.billId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get objectKey => $composableBuilder(
+    column: $table.objectKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<
+    BillImageUploadState,
+    BillImageUploadState,
+    int
+  >
+  get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sort => $composableBuilder(
+    column: $table.sort,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BillImagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $BillImagesTable> {
+  $$BillImagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get billId => $composableBuilder(
+    column: $table.billId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get objectKey => $composableBuilder(
+    column: $table.objectKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sort => $composableBuilder(
+    column: $table.sort,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BillImagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BillImagesTable> {
+  $$BillImagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get billId =>
+      $composableBuilder(column: $table.billId, builder: (column) => column);
+
+  GeneratedColumn<String> get objectKey =>
+      $composableBuilder(column: $table.objectKey, builder: (column) => column);
+
+  GeneratedColumn<String> get localPath =>
+      $composableBuilder(column: $table.localPath, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<BillImageUploadState, int> get uploadState =>
+      $composableBuilder(
+        column: $table.uploadState,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get sort =>
+      $composableBuilder(column: $table.sort, builder: (column) => column);
+}
+
+class $$BillImagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BillImagesTable,
+          BillImage,
+          $$BillImagesTableFilterComposer,
+          $$BillImagesTableOrderingComposer,
+          $$BillImagesTableAnnotationComposer,
+          $$BillImagesTableCreateCompanionBuilder,
+          $$BillImagesTableUpdateCompanionBuilder,
+          (
+            BillImage,
+            BaseReferences<_$AppDatabase, $BillImagesTable, BillImage>,
+          ),
+          BillImage,
+          PrefetchHooks Function()
+        > {
+  $$BillImagesTableTableManager(_$AppDatabase db, $BillImagesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BillImagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BillImagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BillImagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> billId = const Value.absent(),
+                Value<String> objectKey = const Value.absent(),
+                Value<String> localPath = const Value.absent(),
+                Value<BillImageUploadState> uploadState = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> sort = const Value.absent(),
+              }) => BillImagesCompanion(
+                id: id,
+                billId: billId,
+                objectKey: objectKey,
+                localPath: localPath,
+                uploadState: uploadState,
+                createdAt: createdAt,
+                sort: sort,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int billId,
+                required String objectKey,
+                required String localPath,
+                required BillImageUploadState uploadState,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> sort = const Value.absent(),
+              }) => BillImagesCompanion.insert(
+                id: id,
+                billId: billId,
+                objectKey: objectKey,
+                localPath: localPath,
+                uploadState: uploadState,
+                createdAt: createdAt,
+                sort: sort,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BillImagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BillImagesTable,
+      BillImage,
+      $$BillImagesTableFilterComposer,
+      $$BillImagesTableOrderingComposer,
+      $$BillImagesTableAnnotationComposer,
+      $$BillImagesTableCreateCompanionBuilder,
+      $$BillImagesTableUpdateCompanionBuilder,
+      (BillImage, BaseReferences<_$AppDatabase, $BillImagesTable, BillImage>),
+      BillImage,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3313,4 +4024,6 @@ class $AppDatabaseManager {
   $$TagsTableTableManager get tags => $$TagsTableTableManager(_db, _db.tags);
   $$BillTagsTableTableManager get billTags =>
       $$BillTagsTableTableManager(_db, _db.billTags);
+  $$BillImagesTableTableManager get billImages =>
+      $$BillImagesTableTableManager(_db, _db.billImages);
 }

@@ -23,6 +23,7 @@ class BillListItem extends StatelessWidget {
     this.note,
     this.location,
     this.tags,
+    this.hasImage = false,
     this.onTap,
     this.onLongPress,
   });
@@ -43,6 +44,10 @@ class BillListItem extends StatelessWidget {
   /// 该账单的标签列表（可为空）
   final List<Tag>? tags;
 
+  /// 是否带图片：分类头像右下角叠相机小角标。列表保持极简——
+  /// 不显示缩略图也不显示数量，图片入口只在详情弹窗
+  final bool hasImage;
+
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -59,7 +64,40 @@ class BillListItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CategoryAvatar(name: name, iconCode: iconCode, color: colorValue),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CategoryAvatar(
+                  name: name,
+                  iconCode: iconCode,
+                  color: colorValue,
+                ),
+                // 相机角标：白底圆片叠在头像右下角内侧。
+                // 内嵌不越界——负偏移在某些裁剪容器下会被裁掉看不见
+                if (hasImage)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.divider,
+                          width: 1,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.photo_camera,
+                        size: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(width: AppDimens.gapMd),
             Expanded(
               child: Column(
@@ -193,8 +231,9 @@ class BillListItem extends StatelessWidget {
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       fontFeatures: const [FontFeature.tabularFigures()],
+                      // 金额颜色与记一笔输入金额一致：支出红 / 收入绿
                       color:
-                          isExpense ? AppColors.textPrimary : AppColors.income,
+                          isExpense ? AppColors.expense : AppColors.income,
                     ),
                   ),
           ],

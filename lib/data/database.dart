@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../models/enums.dart';
+import 'tables/bill_images.dart';
 import 'tables/bills.dart';
 import 'tables/budgets.dart';
 import 'tables/categories.dart';
@@ -21,7 +22,7 @@ part 'database.g.dart';
 ///
 /// 开发期 v1~v8 的历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 4;
+const int kSchemaVersion = 5;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -42,7 +43,7 @@ const String kDowngradeDetectedKey = 'db_downgrade_detected';
 /// 应用数据库
 ///
 /// 单例式入口：负责建库、迁移与首次预置默认分类。
-@DriftDatabase(tables: [Categories, Bills, Budgets, Tags, BillTags])
+@DriftDatabase(tables: [Categories, Bills, Budgets, Tags, BillTags, BillImages])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection(kSchemaVersion));
 
@@ -93,6 +94,12 @@ class AppDatabase extends _$AppDatabase {
         if (from < 4) {
           await m.createTable(tags);
           await m.createTable(billTags);
+        }
+        // 账单图片：新增 bill_images 表（小票/发票凭证）。
+        // 注意 @TableIndex 声明的索引不随 createTable 创建，需显式建索引
+        if (from < 5) {
+          await m.createTable(billImages);
+          await m.createIndex(billImagesBill);
         }
       }
     },

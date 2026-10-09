@@ -1,7 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/bill_image_repository.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../providers/bill_provider.dart';
@@ -51,6 +53,11 @@ class _StatsPageState extends State<StatsPage> {
   /// 分类字典缓存：标题父名、面板回显派生、条件→视图映射都要查。
   /// build 每帧随流刷新；漏斗面板只能由点击打开，此时缓存必已就绪
   Map<int, Category> _categoriesCache = const {};
+
+  /// 图片标记流及其 bills-id 键缓存：集合不变时复用同一流，
+  /// StreamBuilder 不重订阅（换流空窗会让相机角标闪一下）
+  Stream<Set<int>>? _imageIdsStream;
+  List<int> _imageIdsKey = const [];
 
   @override
   void initState() {
@@ -384,14 +391,24 @@ class _StatsPageState extends State<StatsPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 final bills = snapshot.data!;
-                // 统一批量加载当前 bills 的标签（本地小表，一次查询）：
-                // 既用于下方条目显示标签，也用于按选中标签过滤
+                // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
+                // 按当前 bills 的 id 集合缓存流实例，集合不变时 StreamBuilder
+                // 不重订阅，避免换流空窗闪一下
+                final ids = bills.map((b) => b.id).toList();
+                if (!listEquals(ids, _imageIdsKey)) {
+                  _imageIdsKey = ids;
+                  _imageIdsStream = context
+                      .read<BillImageRepository>()
+                      .watchBillIdsWithImages(ids);
+                }
+                // 标签批量加载（既用于条目显示也用于按选中标签过滤）
                 return FutureBuilder<Map<int, List<Tag>>>(
-                  future: context.read<TagRepository>().getTagsByBillIds(
-                        bills.map((b) => b.id).toList(),
-                      ),
+                  future: context
+                      .read<TagRepository>()
+                      .getTagsByBillIds(ids),
                   builder: (context, tagSnapshot) {
-                    final tagsByBill = tagSnapshot.data ?? const <int, List<Tag>>{};
+                    final tagsByBill = tagSnapshot.data ??
+                        const <int, List<Tag>>{};
                     // 标签过滤：账单挂了任一选中标签即保留；未选标签则全部保留
                     final visible = _query.tagIds.isEmpty
                         ? bills
@@ -400,16 +417,24 @@ class _StatsPageState extends State<StatsPage> {
                                 (tagsByBill[b.id] ?? const [])
                                     .any((t) => _query.tagIds.contains(t.id)))
                             .toList();
-                    return StreamBuilder<List<Bill>>(
-                      stream: _compareStream(provider),
-                      builder: (context, prevSnapshot) {
-                        return _buildBody(
-                          visible,
-                          categories,
-                          viewCat,
-                          isAllView,
-                          prevSnapshot.data ?? const <Bill>[],
-                          tagsByBill: tagsByBill,
+                    return StreamBuilder<Set<int>>(
+                      stream: _imageIdsStream,
+                      builder: (context, imgSnapshot) {
+                        final imageBillIds =
+                            imgSnapshot.data ?? const <int>{};
+                        return StreamBuilder<List<Bill>>(
+                          stream: _compareStream(provider),
+                          builder: (context, prevSnapshot) {
+                            return _buildBody(
+                              visible,
+                              categories,
+                              viewCat,
+                              isAllView,
+                              prevSnapshot.data ?? const <Bill>[],
+                              tagsByBill: tagsByBill,
+                              imageBillIds: imageBillIds,
+                            );
+                          },
                         );
                       },
                     );
@@ -463,6 +488,7 @@ class _StatsPageState extends State<StatsPage> {
     bool isAllView,
     List<Bill> prevBills, {
     Map<int, List<Tag>> tagsByBill = const {},
+    Set<int> imageBillIds = const {},
   }) {
     // 范围过滤（数据层为全量流，内存过滤足够）
     final (start, end) = _query.range;
@@ -716,6 +742,7 @@ class _StatsPageState extends State<StatsPage> {
                     onDelete: _confirmDelete,
                     onCategoryTap: _jumpToCategory,
                     tagsByBill: tagsByBill,
+                    imageBillIds: imageBillIds,
                     onTagTap: (tag) => Navigator.push(
                       context,
                       MaterialPageRoute<void>(

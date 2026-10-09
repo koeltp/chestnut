@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
+import '../../providers/cloud_storage_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/export_service.dart';
 import '../../services/update_service.dart';
@@ -17,6 +18,7 @@ import '../../widgets/update_dialog.dart';
 import 'about_page.dart';
 import 'backup_page.dart';
 import 'category_manage_page.dart';
+import 'cloud_storage_page.dart';
 import 'passcode_settings_page.dart';
 import 'tag_manage_page.dart';
 
@@ -173,6 +175,21 @@ class _SettingsPageState extends State<SettingsPage> {
             value: locationEnabled,
             onChanged: (v) =>
                 context.read<SettingsProvider>().setBillLocationEnabled(v),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _menuItem(
+            context,
+            icon: Icons.cloud_upload_outlined,
+            color: AppColors.primary,
+            title: '图片云存储',
+            subtitle: context.watch<CloudStorageProvider>().enabled
+                ? '已启用 · ${context.read<CloudStorageProvider>().bucket}'
+                : '小票凭证存到你自己的云存储',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const CloudStoragePage(),
+              ),
+            ),
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(

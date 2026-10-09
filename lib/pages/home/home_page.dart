@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/bill_image_repository.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
@@ -339,19 +342,30 @@ class _BillListState extends State<_BillList> {
   /// billId → 标签列表缓存：bills 变化时批量加载一次
   Map<int, List<Tag>> _tagsByBill = {};
 
+  /// 带图片的账单 id 集合：订阅 bill_images 表变化（列表相机角标用）。
+  /// 必须用流——删图不更新 bills 表，一次性快照会让角标残留
+  Set<int> _billIdsWithImages = {};
+
+  StreamSubscription<Set<int>>? _imageIdsSub;
+
   final ScrollController _controller = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _loadTags();
+    _subscribeImageIds();
   }
 
   @override
   void didUpdateWidget(covariant _BillList oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 账单列表变化（切月/新增/编辑/删除）时重新批量加载标签
-    if (oldWidget.bills != widget.bills) _loadTags();
+    if (oldWidget.bills != widget.bills) {
+      _loadTags();
+      // 当前可见账单集合变了，按新 ids 重订阅图片标记流
+      _subscribeImageIds();
+    }
     // 切月（非当月内增删）时滚回顶部，从最新一天看起
     if (widget.month != oldWidget.month && _controller.hasClients) {
       _controller.jumpTo(0);
@@ -360,19 +374,41 @@ class _BillListState extends State<_BillList> {
 
   @override
   void dispose() {
+    unawaited(_imageIdsSub?.cancel());
     _controller.dispose();
     super.dispose();
   }
 
+  /// 订阅当前账单集合的图片标记流：面板删图、级联删图等 bill_images
+  /// 表变化都会实时重新发射，角标即时消失/出现
+  void _subscribeImageIds() {
+    unawaited(_imageIdsSub?.cancel());
+    _imageIdsSub = null;
+    if (widget.bills.isEmpty) {
+      _billIdsWithImages = {};
+      return;
+    }
+    _imageIdsSub = context
+        .read<BillImageRepository>()
+        .watchBillIdsWithImages(widget.bills.map((b) => b.id).toList())
+        .listen((set) {
+      // 流仅在 bill_images 表变化时发射，频率极低，直接刷新即可
+      if (mounted) setState(() => _billIdsWithImages = set);
+    });
+  }
+
+  /// 批量加载标签缓存（一次刷新）。图片角标不走这里——
+  /// 已改为订阅 watchBillIdsWithImages 流，删图后角标实时消失
   Future<void> _loadTags() async {
     if (widget.bills.isEmpty) {
       setState(() => _tagsByBill = {});
       return;
     }
-    final ids = widget.bills.map((b) => b.id).toList();
-    final map = await context.read<TagRepository>().getTagsByBillIds(ids);
+    final tags = await context
+        .read<TagRepository>()
+        .getTagsByBillIds(widget.bills.map((b) => b.id).toList());
     if (!mounted) return;
-    setState(() => _tagsByBill = map);
+    setState(() => _tagsByBill = tags);
   }
 
   @override
@@ -424,6 +460,7 @@ class _BillListState extends State<_BillList> {
             dayBills: dayBills,
             categories: widget.categories,
             tagsByBill: _tagsByBill,
+            imageBillIds: _billIdsWithImages,
             showYear: crossYear,
           ),
         );
@@ -439,6 +476,7 @@ class _DayCard extends StatelessWidget {
     required this.dayBills,
     required this.categories,
     required this.tagsByBill,
+    required this.imageBillIds,
     required this.showYear,
   });
 
@@ -448,6 +486,9 @@ class _DayCard extends StatelessWidget {
 
   /// billId → 标签列表（由 _BillList 批量加载后传入）
   final Map<int, List<Tag>> tagsByBill;
+
+  /// 带图片的账单 id 集合（相机角标用）
+  final Set<int> imageBillIds;
 
   /// 分组头是否带年份：列表数据跨年时为 true（年份按需消歧）
   final bool showYear;
@@ -527,6 +568,7 @@ class _DayCard extends StatelessWidget {
       note: bill.note,
       location: bill.location,
       tags: tagsByBill[bill.id],
+      hasImage: imageBillIds.contains(bill.id),
       onTap: () => showBillDetailSheet(
         context,
         bill: bill,

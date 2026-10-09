@@ -336,6 +336,7 @@ class StatsDayCard extends StatelessWidget {
     required this.onCategoryTap,
     required this.showYear,
     this.tagsByBill = const {},
+    this.imageBillIds = const {},
     this.onTagTap,
   });
 
@@ -349,6 +350,9 @@ class StatsDayCard extends StatelessWidget {
 
   /// billId → 标签列表（由宿主批量加载后传入，条目与详情共用）
   final Map<int, List<Tag>> tagsByBill;
+
+  /// 挂有图片的账单 id 集合（宿主批量加载，条目显示相机小角标）
+  final Set<int> imageBillIds;
 
   /// 详情弹窗里点击标签的跳转（宿主决定落点）
   final void Function(Tag tag)? onTagTap;
@@ -420,6 +424,7 @@ class StatsDayCard extends StatelessWidget {
                   note: bill.note,
                   location: bill.location,
                   tags: tagsByBill[bill.id],
+                  hasImage: imageBillIds.contains(bill.id),
                   onTap: () => showBillDetailSheet(
                     context,
                     bill: bill,
