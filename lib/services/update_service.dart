@@ -134,7 +134,21 @@ class UpdateService {
   }) async {
     final cacheDir = await getTemporaryDirectory();
     final updateDir = Directory(p.join(cacheDir.path, 'updates'));
-    if (!await updateDir.exists()) await updateDir.create(recursive: true);
+    // 下载前清掉目录里历次更新残留的旧 APK：包体约 60MB 且文件名带版本号
+    // 互不覆盖，不清会随版本更替无限堆积；旧包安装完成后即无用，
+    // 只保留本次要下的这份。删除失败不阻断下载。
+    if (await updateDir.exists()) {
+      await for (final entity in updateDir.list()) {
+        if (entity is File) {
+          try {
+            await entity.delete();
+          } catch (_) {
+            // 删不掉就留着，不影响本次下载
+          }
+        }
+      }
+    }
+    await updateDir.create(recursive: true);
     final apkFile = File(
       p.join(updateDir.path, 'chestnut-${info.versionName}.apk'),
     );

@@ -540,6 +540,8 @@ abstract final class QianjiImportService {
       } finally {
         raw?.dispose();
       }
+      // 留底限量：保留最近 2 份。测试/重复导入场景下快照会无限堆积
+      pruneBackupsByPrefix(dir, prefix: 'chestnut_before_qianji_');
     } catch (_) {
       // 留底失败不阻断导入
     }

@@ -140,6 +140,10 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
+/// 各类历史备份文件的文件名前缀（与 BackupService 的类型识别约定一致）
+const _kUpgradeBackupPrefix = 'chestnut_backup_v';
+const _kDowngradeBackupPrefix = 'chestnut_downgrade_';
+
 /// 数据库连接：后台线程执行 SQLite 操作，避免阻塞 UI 线程
 ///
 /// 打开前先做版本预检（[schemaVersion] 由调用方传入）：升级与降级
@@ -171,10 +175,14 @@ Future<void> _backupBeforeOpen(File file, int schemaVersion) async {
     final dir = await getApplicationDocumentsDirectory();
     final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final name = fileVersion < schemaVersion
-        ? 'chestnut_backup_v${fileVersion}_$stamp.sqlite'
-        : 'chestnut_downgrade_v${fileVersion}_$stamp.sqlite';
+        ? '$_kUpgradeBackupPrefix${fileVersion}_$stamp.sqlite'
+        : '${_kDowngradeBackupPrefix}v${fileVersion}_$stamp.sqlite';
     raw.execute("VACUUM INTO '${p.join(dir.path, name)}'");
-    if (fileVersion < schemaVersion) _pruneOldBackups(dir);
+    // 升级前备份：正常升级保留最近 2 份
+    pruneBackupsByPrefix(dir, prefix: _kUpgradeBackupPrefix);
+    // 降级留底：同样只保留最近 2 份。降级是回退场景，反复装旧版
+    // 会让快照无限堆积，限量兜底
+    pruneBackupsByPrefix(dir, prefix: _kDowngradeBackupPrefix);
   } catch (_) {
     // 预检/备份失败放行：升级有事务保护，降级仍有重建兜底
   } finally {
@@ -182,13 +190,14 @@ Future<void> _backupBeforeOpen(File file, int schemaVersion) async {
   }
 }
 
-/// 升级前备份只保留最近 [keep] 份（文件名含时间戳，字典序即时间序）
-void _pruneOldBackups(Directory dir, {int keep = 2}) {
+/// 按 [prefix] 清理历史备份，只保留最近 [keep] 份
+/// （文件名含时间戳，字典序即时间序）。公开供钱迹导入留底复用。
+void pruneBackupsByPrefix(Directory dir, {required String prefix, int keep = 2}) {
   final files =
       dir
           .listSync()
           .whereType<File>()
-          .where((f) => p.basename(f.path).startsWith('chestnut_backup_v'))
+          .where((f) => p.basename(f.path).startsWith(prefix))
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
   if (files.length <= keep) return;
