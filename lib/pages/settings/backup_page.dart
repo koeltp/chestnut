@@ -132,7 +132,7 @@ class _BackupPageState extends State<BackupPage> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              '备份包含全部账单、分类与预算数据。建议定期导出并保存到网盘，'
+              '备份包含全部账单、分类、预算与资产数据。建议定期导出并保存到网盘，'
               '换机或重装时导入即可完整恢复；导入会覆盖当前数据，导入前会'
               '自动把当前数据备份一份，选错了能找回来。',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),

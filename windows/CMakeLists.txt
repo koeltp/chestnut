@@ -32,6 +32,12 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# MSVC 14.51+（VS 18）的 STL 将 <experimental/coroutine> 从废弃警告升级为
+# 直接报错（STL1011），而 local_auth_windows 插件的 C++ 源码仍在使用它。
+# 目录级定义会被所有子目录（含插件）继承，全局抑制该废弃报错即可，
+# 无需修改 pub 缓存里的插件源码。
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by

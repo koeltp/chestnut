@@ -396,7 +396,7 @@ abstract final class QianjiImportService {
           BillsCompanion.insert(
             type: bill.type,
             amountCents: bill.amountCents,
-            categoryId: target!.id,
+            categoryId: Value(target!.id),
             note: Value(_buildNote(bill.note, origin, withOriginCategory)),
             date: DateTime(
               bill.dateTime.year,

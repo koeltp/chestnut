@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../../models/enums.dart';
+import 'assets.dart';
 import 'categories.dart';
 
 /// 账单表
@@ -15,7 +16,7 @@ import 'categories.dart';
 class Bills extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-  /// 账单类型（支出 / 收入）
+  /// 账单类型（支出 / 收入 / 转账）
   IntColumn get type => intEnum<BillType>()();
 
   /// 金额，单位：分（用户实际支付的金额，统计/预算一律以此为准）
@@ -26,8 +27,8 @@ class Bills extends Table {
   /// 约束 0 < discountCents <= amountCents 由保存逻辑保证
   IntColumn get discountCents => integer().nullable()();
 
-  /// 所属分类
-  IntColumn get categoryId => integer().references(Categories, #id)();
+  /// 所属分类；null = 转账（转账无分类语义）
+  IntColumn get categoryId => integer().nullable().references(Categories, #id)();
 
   /// 备注，可为空
   TextColumn get note => text().nullable()();
@@ -57,4 +58,15 @@ class Bills extends Table {
   /// 导入批次号：null = 手动记账；非空 = 批量导入（毫秒时间戳）。
   /// 同一次导入的账单共享一个批次号，结果页据此"整批撤销"
   IntColumn get importBatchId => integer().nullable()();
+
+  /// 关联资产账户：
+  /// · 支出 = 付款账户（余额减少，信用卡欠款增加）
+  /// · 收入 = 收款账户（余额增加，信用卡欠款减少）
+  /// · 转账 = 转出账户
+  /// · null = 不关联账户（纯记账，余额不动；旧数据均为 null）
+  IntColumn get assetId => integer().nullable().references(Assets, #id)();
+
+  /// 转入账户（仅转账账单使用）：储蓄卡 → 信用卡即还款。
+  /// 与 [assetId] 组成"转出 → 转入"对；非转账恒为 null
+  IntColumn get toAssetId => integer().nullable().references(Assets, #id)();
 }

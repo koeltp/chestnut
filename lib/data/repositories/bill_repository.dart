@@ -3,12 +3,16 @@ import 'package:drift/drift.dart';
 import '../database.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
+import 'asset_repository.dart';
 
 /// 账单仓储：封装账单相关的全部数据访问，UI 与 Provider 不直接接触 SQL
 class BillRepository {
   BillRepository(this._db);
 
   final AppDatabase _db;
+
+  /// 记账联动引擎（AssetRepository 无状态仅持 _db，就地构造零成本）
+  late final _assetRepo = AssetRepository(_db);
 
   /// 查询某月的全部账单（按日期倒序，同日按创建时间倒序）
   Stream<List<Bill>> watchBillsInMonth(DateTime month) {
@@ -37,6 +41,19 @@ class BillRepository {
   Stream<Bill?> watchBillById(int id) {
     return (_db.select(_db.bills)..where((b) => b.id.equals(id)))
         .watchSingleOrNull();
+  }
+
+  /// 某账户的流水（账户明细页）：关联为付款方或收款方的账单都要，
+  /// 按日期倒序、同日按创建时间倒序。转账账单会在同一列表出现两次
+  /// （一次作为转出方、一次作为转入方），UI 按"本方视角"展示方向
+  Stream<List<Bill>> watchBillsOfAsset(int assetId) {
+    return (_db.select(_db.bills)
+          ..where((b) => b.assetId.equals(assetId) | b.toAssetId.equals(assetId))
+          ..orderBy([
+            (b) => OrderingTerm.desc(b.date),
+            (b) => OrderingTerm.desc(b.createdAt),
+          ]))
+        .watch();
   }
 
   /// 某分类（含其全部子分类）的账单流（分类统计详情页）
@@ -118,12 +135,14 @@ class BillRepository {
       for (final row in rows) {
         final total = row.read(sum) ?? 0;
         // intEnum 列在 selectOnly 聚合场景读出的是原始 int，与枚举 index 比较
-        if (row.read(_db.bills.type) == BillType.expense.index) {
+        final type = row.read(_db.bills.type);
+        if (type == BillType.expense.index) {
           expense = total;
           discount = row.read(discountSum) ?? 0;
-        } else {
+        } else if (type == BillType.income.index) {
           income = total;
         }
+        // 转账不计收支
       }
       return MonthSummary(
         expenseCents: expense,
@@ -228,6 +247,8 @@ class BillRepository {
             );
           }
           for (final bill in list) {
+            // 转账不计收支
+            if (bill.type == BillType.transfer) continue;
             final key = '${bill.date.year}-${bill.date.month}';
             final old = map[key];
             if (old == null) continue;
@@ -251,35 +272,67 @@ class BillRepository {
         });
   }
 
-  /// 新增账单
+  /// 新增账单：落库并联动账户余额（关联了账户时）
   Future<int> addBill(BillsCompanion entry) =>
-      _db.into(_db.bills).insert(entry);
+      _db.transaction(() async {
+        final id = await _db.into(_db.bills).insert(entry);
+        // 重查拿全量实体：联动引擎按 type/amount/账户计算余额影响
+        final bill = await (_db.select(_db.bills)
+              ..where((b) => b.id.equals(id)))
+            .getSingle();
+        await _assetRepo.applyBillEffect(newBill: bill);
+        return id;
+      });
 
   /// 更新账单（返回受影响行数）
   ///
   /// 必须用显式 Companion 而非直接 write(bill)：drift 的
   /// DataClass.toCompanion(true) 会把 null 字段转为 absent（UPDATE SET
   /// 不含该列），导致编辑账单清除位置（location/lat/lng 置 NULL）静默失效
+  ///
+  /// 联动：先查旧账单，撤销旧余额影响再应用新影响（同事务）
   Future<int> updateBill(Bill bill) =>
-      (_db.update(_db.bills)..where((b) => b.id.equals(bill.id))).write(
-        BillsCompanion(
-          type: Value(bill.type),
-          amountCents: Value(bill.amountCents),
-          discountCents: Value(bill.discountCents),
-          categoryId: Value(bill.categoryId),
-          note: Value(bill.note),
-          date: Value(bill.date),
-          timeMinute: Value(bill.timeMinute),
-          location: Value(bill.location),
-          locationFull: Value(bill.locationFull),
-          lat: Value(bill.lat),
-          lng: Value(bill.lng),
-        ),
-      );
+      _db.transaction(() async {
+        final old = await (_db.select(_db.bills)
+              ..where((b) => b.id.equals(bill.id)))
+            .getSingle();
+        final rows = await (_db.update(_db.bills)
+              ..where((b) => b.id.equals(bill.id)))
+            .write(
+          BillsCompanion(
+            type: Value(bill.type),
+            amountCents: Value(bill.amountCents),
+            discountCents: Value(bill.discountCents),
+            categoryId: Value(bill.categoryId),
+            note: Value(bill.note),
+            date: Value(bill.date),
+            timeMinute: Value(bill.timeMinute),
+            location: Value(bill.location),
+            locationFull: Value(bill.locationFull),
+            lat: Value(bill.lat),
+            lng: Value(bill.lng),
+            assetId: Value(bill.assetId),
+            toAssetId: Value(bill.toAssetId),
+          ),
+        );
+        await _assetRepo.applyBillEffect(oldBill: old, newBill: bill);
+        return rows;
+      });
 
-  /// 删除账单
+  /// 删除账单：同步撤销该账单对账户余额的影响（同事务）
   Future<int> deleteBill(int id) =>
-      (_db.delete(_db.bills)..where((b) => b.id.equals(id))).go();
+      _db.transaction(() async {
+        final old = await (_db.select(_db.bills)
+              ..where((b) => b.id.equals(id)))
+            .getSingleOrNull();
+        final rows = await (_db.delete(_db.bills)
+              ..where((b) => b.id.equals(id)))
+            .go();
+        if (old != null) {
+          await _assetRepo.applyBillEffect(oldBill: old);
+        }
+        return rows;
+      });
 
   /// 查询全部账单（CSV 导出用）
   Future<List<Bill>> getAllBills() => _db.select(_db.bills).get();

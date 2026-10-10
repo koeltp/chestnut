@@ -1,9 +1,17 @@
+import 'package:flutter/services.dart';
+
 /// 金额工具类
 ///
 /// 全应用统一以"分"（int）存储金额，此处集中处理分与元之间的转换，
 /// 避免散落在 UI 中的重复换算与精度问题。
 class MoneyUtil {
   MoneyUtil._();
+
+  /// 金额输入框通用限制：只允许正数、最多两位小数——金额最终按分
+  /// 取整入库，任意位小数会制造"输入值 ≠ 落库值"的错觉
+  static final List<TextInputFormatter> amountInputFormatters = [
+    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+  ];
 
   /// 分转元字符串，如 12345 -> "123.45"；零头为 0 时保留两位小数
   static String centsToYuan(int cents) => _format(cents, grouped: false);

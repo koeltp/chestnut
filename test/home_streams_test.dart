@@ -25,7 +25,7 @@ void main() {
     // 插入 2026-09-02 与 2026-10-01 两笔支出（对应用户场景）
     await repo.addBill(
       BillsCompanion.insert(
-        categoryId: categoryId,
+        categoryId: Value(categoryId),
         type: BillType.expense,
         amountCents: 500,
         date: DateTime(2026, 9, 2),
@@ -34,7 +34,7 @@ void main() {
     );
     await repo.addBill(
       BillsCompanion.insert(
-        categoryId: categoryId,
+        categoryId: Value(categoryId),
         type: BillType.expense,
         amountCents: 300,
         date: DateTime(2026, 10, 1),

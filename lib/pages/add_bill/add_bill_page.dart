@@ -7,9 +7,11 @@ import 'package:provider/provider.dart';
 import '../../data/database.dart';
 import '../../data/repositories/bill_image_repository.dart';
 import '../../data/repositories/tag_repository.dart';
+import '../../models/asset_category.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
 import '../../pages/settings/category_manage_page.dart';
+import '../../providers/asset_provider.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/category_provider.dart';
@@ -19,6 +21,8 @@ import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
+import '../../widgets/asset_circle_icon.dart';
+import '../../widgets/asset_pick_sheet.dart';
 import '../../widgets/number_keyboard.dart';
 import '../../widgets/tag_picker_sheet.dart';
 import 'bill_image_sheet.dart';
@@ -30,8 +34,8 @@ import 'wheel_date_picker.dart';
 ///
 /// 新增、编辑与复制共用：传入 [editBill] 进入编辑模式（保存覆盖原记录）；
 /// 传入 [copyOf] 进入复制模式（预填数据，保存生成一条新记录，见详情弹窗"复制"）。
-/// 布局自上而下：顶栏（关闭/类型Tab/+）→ 分类区（分组展开）→
-/// 备注与金额行 → 日期/定位胶囊 → 数字键盘。
+/// 布局自上而下：顶栏（关闭/类型Tab/+）→ 账户条 + 分类区（转账类型为
+/// 转出/转入账户选择区）→ 备注与金额行 → 日期/定位胶囊 → 数字键盘。
 class AddBillPage extends StatefulWidget {
   const AddBillPage({super.key, this.editBill, this.copyOf});
 
@@ -58,6 +62,19 @@ class _AddBillPageState extends State<AddBillPage> {
 
   int? _selectedCategoryId;
   late DateTime _date;
+
+  /// 关联账户（支出 = 付款账户，收入 = 收款账户，转账 = 转出账户）；
+  /// null = 不关联（纯记账，余额不动）
+  int? _selectedAssetId;
+
+  /// 转入账户（仅转账账单）：储蓄卡 → 信用卡即还款
+  int? _toAssetId;
+
+  /// 未归档账户缓存（账户选择行/弹窗渲染用；资产流订阅实时刷新）
+  List<Asset> _allAssets = [];
+
+  /// 资产流订阅：页面存活期间保持缓存刷新，退出时取消
+  StreamSubscription<List<Asset>>? _assetsSub;
 
   /// 已选标签 id 集合（空 = 未打标签）；# 按钮显示数量，弹层内勾选
   final Set<int> _selectedTagIds = {};
@@ -178,6 +195,8 @@ class _AddBillPageState extends State<AddBillPage> {
       _noteController.text = bill.note ?? '';
       _locationName = bill.location;
       _locationFull = bill.locationFull;
+      _selectedAssetId = bill.assetId;
+      _toAssetId = bill.toAssetId;
       if (bill.lat != null && bill.lng != null) {
         _selectedPoint = Gcj02Point(lat: bill.lat!, lng: bill.lng!);
       }
@@ -189,6 +208,7 @@ class _AddBillPageState extends State<AddBillPage> {
       _type = BillType.expense;
       _date = DateTime.now();
       _timeMinute = nowMinute;
+      // 新建模式：不做任何历史恢复，每次打开都是全新输入
     }
     // 异步加载全部标签（供弹层渲染，不阻塞首帧）
     _loadAllTags();
@@ -226,6 +246,7 @@ class _AddBillPageState extends State<AddBillPage> {
     for (final path in _stagedImages) {
       unawaited(_imageRepo.discardStagedImage(path));
     }
+    unawaited(_assetsSub?.cancel());
     _noteFocus.dispose();
     _noteController.dispose();
     super.dispose();
@@ -241,6 +262,24 @@ class _AddBillPageState extends State<AddBillPage> {
       _noteFocus.unfocus();
     }
     _keyboardWasVisible = visible;
+    // 订阅资产流：缓存未归档账户供账户条/弹窗渲染；账户被删除或
+    // 归档时清掉悬挂的已选 id，避免保存时关联到失效账户
+    _assetsSub ??= context
+        .read<AssetProvider>()
+        .activeStream()
+        .listen((list) {
+          if (!mounted) return;
+          setState(() {
+            _allAssets = list;
+            if (_selectedAssetId != null &&
+                !list.any((a) => a.id == _selectedAssetId)) {
+              _selectedAssetId = null;
+            }
+            if (_toAssetId != null && !list.any((a) => a.id == _toAssetId)) {
+              _toAssetId = null;
+            }
+          });
+        });
   }
 
   @override
@@ -271,7 +310,13 @@ class _AddBillPageState extends State<AddBillPage> {
                 child: Column(
                   children: [
                     _buildTopBar(),
-                    Expanded(child: _buildCategoryGrid()),
+                    Expanded(
+                      // 转账无分类：整区替换为转出/转入账户选择；
+                      // 支出/收入的账户在底部胶囊行选择，这里只放分类树
+                      child: _type == BillType.transfer
+                          ? _buildTransferAccountArea()
+                          : _buildCategoryGrid(),
+                    ),
                   ],
                 ),
               ),
@@ -287,7 +332,7 @@ class _AddBillPageState extends State<AddBillPage> {
                     KeyedSubtree(
                       key: _belowNoteKey,
                       child: Column(
-                        children: [_buildDateChip(), _buildKeyboard()],
+                        children: [_buildChipRow(), _buildKeyboard()],
                       ),
                     ),
                   ],
@@ -300,7 +345,7 @@ class _AddBillPageState extends State<AddBillPage> {
     );
   }
 
-  /// 顶栏：左关闭 ｜ 支出/收入 Tab（下划线选中态）｜ 右上角 +
+  /// 顶栏：左关闭 ｜ 支出/收入/转账 Tab（下划线选中态）｜ 右上角 +
   Widget _buildTopBar() {
     // 白底顶栏 + 底部渐变条实现"只有下边"的立体效果（BoxShadow 无法单边）
     return Column(
@@ -361,11 +406,15 @@ class _AddBillPageState extends State<AddBillPage> {
           _type = type;
           // 切换类型后原分类不再适用，重置为空（由分类区默认选中补齐）
           _selectedCategoryId = null;
-          // 优惠只属于支出：切到收入时退出优惠模式并清空，
-          // 防止已填优惠被误带进收入账单
-          if (type == BillType.income) {
+          // 优惠只属于支出：切到收入/转账时退出优惠模式并清空，
+          // 防止已填优惠被误带进收入或转账账单
+          if (type != BillType.expense) {
             _discountMode = false;
             _discountText = '';
+          }
+          // 转入账户只属于转账：切出转账时清掉，支出/收入不保存该值
+          if (type != BillType.transfer) {
+            _toAssetId = null;
           }
         });
       },
@@ -403,11 +452,14 @@ class _AddBillPageState extends State<AddBillPage> {
 
   /// 备注与金额行：# 备注输入 ｜ 金额 + 币种
   Widget _buildNoteRow() {
-    final color = _type == BillType.expense
-        ? AppColors.expense
-        : AppColors.income;
-    // 空金额时不显示大字"0"，改为中号灰色"实付金额"提示，
-    // 明确录入的是实付（优惠另有独立入口）；CNY 始终保留
+    // 转账金额用中性色：非收非支，与明细列表/详情弹窗同口径
+    final color = switch (_type) {
+      BillType.expense => AppColors.expense,
+      BillType.income => AppColors.income,
+      BillType.transfer => AppColors.textPrimary,
+    };
+    // 空金额时不显示大字"0"，改为中号灰色提示，明确录入的是实付
+    // （优惠另有独立入口）；转账语义不同提示"转账金额"；CNY 始终保留
     final amountEmpty = _amountText.isEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -473,7 +525,9 @@ class _AddBillPageState extends State<AddBillPage> {
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  amountEmpty ? '实付金额' : _amountText,
+                  amountEmpty
+                      ? (_type == BillType.transfer ? '转账金额' : '实付金额')
+                      : _amountText,
                   maxLines: 1,
                   textAlign: TextAlign.right,
                   style: amountEmpty
@@ -587,9 +641,10 @@ class _AddBillPageState extends State<AddBillPage> {
     );
   }
 
-  /// 日期胶囊：今天/昨天/前天显示相对日期，其余显示 M月d日，统一附带时间。
+  /// 胶囊行：账户（支出/收入，弹窗选择）/ 日期 / 优惠 / 图片 / 定位。
+  /// 日期胶囊：今天/昨天/前天显示相对日期，其余显示 M月d日，统一附带时间；
   /// 点击弹出日期滚轮（内含今/昨/前快捷与时间选择入口）。
-  Widget _buildDateChip() {
+  Widget _buildChipRow() {
     final now = DateTime.now();
     final diff = DateTime(
       now.year,
@@ -625,6 +680,11 @@ class _AddBillPageState extends State<AddBillPage> {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
+              // 账户胶囊放最前（支出/收入）；转账的两个账户在内容区选择行
+              if (_type != BillType.transfer) ...[
+                _buildAssetChip(),
+                const SizedBox(width: 8),
+              ],
               InkWell(
                 onTap: _pickDate,
                 borderRadius: BorderRadius.circular(14),
@@ -879,6 +939,298 @@ class _AddBillPageState extends State<AddBillPage> {
     }
   }
 
+  // ---------- 账户选择（支出/收入胶囊 + 弹窗，转账选择区） ----------
+
+  /// 账户胶囊：显示当前关联账户（未选显示"不关联"），点击弹出
+  /// 账户选择面板（与图片胶囊同交互）；上次使用的账户进页时已自动
+  /// 带上（见 _restoreLastAsset）。转账模式不显示——两个账户在内容区选
+  Widget _buildAssetChip() {
+    final asset = _assetById(_selectedAssetId);
+    return InkWell(
+      onTap: _pickAsset,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.fill,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (asset == null)
+              const Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 12,
+                color: AppColors.textSecondary,
+              )
+            else
+              AssetCircleIcon(category: asset.category, size: 14),
+            const SizedBox(width: 5),
+            Text(
+              asset?.name ?? '不关联',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 弹窗选择账户：支出/收入允许"不关联"（余额不动）；
+  /// 下滑关闭等取消操作返回 null，保持当前选择不变
+  Future<void> _pickAsset() async {
+    final result = await showAssetPickSheet(
+      context,
+      assets: _allAssets,
+      allowNone: true,
+    );
+    if (result == null || !mounted) return;
+    setState(() => _selectedAssetId = result.$1?.id);
+  }
+
+  /// 转账模式内容区：账户卡片——转出/转入两行账户（图标+名称+余额）
+  /// + 中间贯穿分隔线上的互换浮钮。两账户均必选（联动余额的前提），
+  /// 储蓄卡 → 信用卡即为还款
+  Widget _buildTransferAccountArea() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppDimens.pagePadding,
+        16,
+        AppDimens.pagePadding,
+        16,
+      ),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: [
+              // 极浅投影把卡片从白底页面托起（与 SectionCard 同强度）
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              _transferAccountRow(
+                asset: _assetById(_selectedAssetId),
+                hint: '选择转出账户',
+                onTap: () => _pickTransferAsset(to: false),
+              ),
+              _swapDivider(),
+              _transferAccountRow(
+                asset: _assetById(_toAssetId),
+                hint: '选择转入账户',
+                onTap: () => _pickTransferAsset(to: true),
+              ),
+            ],
+          ),
+        ),
+        // 还款提示独立成卡：仅转入信用卡组账户时才有意义
+        if (_isToCreditCard) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.fill,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              '转入信用卡账户即为还款，不计入收支统计与预算',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 转入账户是否为信用卡组账户（信用卡/花呗/白条等）：
+  /// 决定还款提示卡是否显示，其它账户不显示
+  bool get _isToCreditCard {
+    final to = _assetById(_toAssetId);
+    return to != null &&
+        AssetGroups.groupOf(to.category) == AssetGroups.credit;
+  }
+
+  /// 转出/转入之间的分隔：贯穿左右的淡横线，互换浮钮叠压在线的中点
+  Widget _swapDivider() {
+    // 必须显式撑满宽度：Column 松约束下 Stack 会收缩到最宽子项
+    // （40px 浮钮），整条线就会完全被浮钮盖住
+    return SizedBox(
+      width: double.infinity,
+      height: 40,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: Center(
+              child: SizedBox(
+                height: 1,
+                width: double.infinity,
+                child: ColoredBox(color: AppColors.divider),
+              ),
+            ),
+          ),
+          _swapButton(),
+        ],
+      ),
+    );
+  }
+
+  /// 白色圆形互换浮钮：点击交换转出/转入
+  Widget _swapButton() {
+    return InkWell(
+      onTap: () => setState(() {
+        final tmp = _selectedAssetId;
+        _selectedAssetId = _toAssetId;
+        _toAssetId = tmp;
+      }),
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.swap_vert,
+          size: 20,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  /// 按 id 查未归档账户；查不到（未选择/已失效）返回 null
+  Asset? _assetById(int? id) {
+    if (id == null) return null;
+    for (final a in _allAssets) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
+  /// 账户行：彩色圆图标 + 账户名 + 右侧实时余额（对齐主流记账
+  /// App 的账户本体展示）；未选时灰字提示，点击弹账户选择弹窗
+  Widget _transferAccountRow({
+    required Asset? asset,
+    required String hint,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: asset == null
+            ? Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: const BoxDecoration(
+                      color: AppColors.fill,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 17,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    hint,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  AssetCircleIcon(category: asset.category, size: 34),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      asset.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  _balanceText(asset),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// 余额文本：信用卡显示红色负数欠款（溢缴款按普通余额展示），
+  /// 资产正常色——转账选账户时余额一目了然
+  Widget _balanceText(Asset asset) {
+    final owed = asset.kind == AssetKind.liability && asset.valueCents > 0;
+    final balance = MoneyUtil.centsToYuanGroupedTrimmed(asset.valueCents);
+    return Text(
+      owed ? '-¥$balance' : '¥$balance',
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: owed ? AppColors.expense : AppColors.textPrimary,
+      ),
+    );
+  }
+
+  /// 弹窗选择转账账户：转出/转入均必选（allowNone = false），
+  /// 下滑关闭等取消操作返回 null，保持当前值不变
+  Future<void> _pickTransferAsset({required bool to}) async {
+    final result = await showAssetPickSheet(
+      context,
+      assets: _allAssets,
+    );
+    if (result == null || !mounted) return;
+    final pickedId = result.$1?.id;
+    setState(() {
+      if (to) {
+        _toAssetId = pickedId;
+      } else {
+        _selectedAssetId = pickedId;
+      }
+    });
+  }
+
   /// 分类选择：委托通用 [CategoryTreeSelector] 单选模式
   ///
   /// 点一级 = 挂一级本身并展开二级面板（不预选二级）；点二级选中；
@@ -993,15 +1345,25 @@ class _AddBillPageState extends State<AddBillPage> {
     // 留空按 0 处理，使用户在优惠模式直接保存即可记一笔免单
     final cents = MoneyUtil.yuanToCents(_amountText) ?? 0;
     // 优惠额：0/空视为未优惠存 null；优惠可大于实付（平台补贴券等），
-    // 不设上限约束。收入账单入口已隐藏且切类型会清空，这里再兜底
+    // 不设上限约束。收入/转账入口已隐藏且切类型会清空，这里再兜底
     var discountCents = MoneyUtil.yuanToCents(_discountText);
     if (discountCents != null && discountCents == 0) discountCents = null;
-    if (_type == BillType.income) discountCents = null;
+    if (_type != BillType.expense) discountCents = null;
     if (cents == 0 && discountCents == null) {
       showAppToast(context, '请输入正确的金额');
       return;
     }
-    if (_selectedCategoryId == null) {
+    // 转账：两账户必选且不能相同，不挂分类；其余类型维持分类必选校验
+    if (_type == BillType.transfer) {
+      if (_selectedAssetId == null || _toAssetId == null) {
+        showAppToast(context, '请选择转出与转入账户');
+        return;
+      }
+      if (_selectedAssetId == _toAssetId) {
+        showAppToast(context, '转出与转入不能是同一账户');
+        return;
+      }
+    } else if (_selectedCategoryId == null) {
       showAppToast(context, '请选择分类');
       return;
     }
@@ -1020,7 +1382,7 @@ class _AddBillPageState extends State<AddBillPage> {
           type: _type,
           amountCents: cents,
           discountCents: discountCents,
-          categoryId: _selectedCategoryId!,
+          categoryId: _selectedCategoryId,
           note: note.isEmpty ? null : note,
           date: _date,
           timeMinute: _timeMinute,
@@ -1028,6 +1390,8 @@ class _AddBillPageState extends State<AddBillPage> {
           locationFull: _locationFull,
           lat: _selectedPoint?.lat,
           lng: _selectedPoint?.lng,
+          assetId: _selectedAssetId,
+          toAssetId: _type == BillType.transfer ? _toAssetId : null,
           createdAt: bill.createdAt,
         ),
       );
@@ -1039,7 +1403,7 @@ class _AddBillPageState extends State<AddBillPage> {
           type: _type,
           amountCents: cents,
           discountCents: Value(discountCents),
-          categoryId: _selectedCategoryId!,
+          categoryId: Value(_selectedCategoryId),
           date: _date,
           timeMinute: Value(_timeMinute),
           note: Value(note.isEmpty ? null : note),
@@ -1047,6 +1411,8 @@ class _AddBillPageState extends State<AddBillPage> {
           locationFull: Value(_locationFull),
           lat: Value(_selectedPoint?.lat),
           lng: Value(_selectedPoint?.lng),
+          assetId: Value(_selectedAssetId),
+          toAssetId: Value(_type == BillType.transfer ? _toAssetId : null),
         ),
       );
       savedBillId = billId;
@@ -1072,7 +1438,7 @@ class _AddBillPageState extends State<AddBillPage> {
     }
     _stagedImages = [];
     _removedExistingImages.clear();
-    // 记账成功后检查预算用量（仅支出记账会占预算）
+    // 记账后检查预算用量（仅支出记账会占预算）
     if (_type == BillType.expense) await _checkBudgetHint();
     if (stay) {
       // 再记：重置金额与备注，继续记录下一笔（图片已随上一笔保存，一并清空）

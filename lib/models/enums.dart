@@ -6,10 +6,42 @@ enum BillType {
   expense,
 
   /// 收入
-  income;
+  income,
+
+  /// 转账（账户间划转 / 信用卡还款）：不计收支、无分类；
+  /// assetId = 转出账户，toAssetId = 转入账户
+  transfer;
 
   /// 中文名称，用于 UI 展示
-  String get label => this == BillType.expense ? '支出' : '收入';
+  String get label => switch (this) {
+    BillType.expense => '支出',
+    BillType.income => '收入',
+    BillType.transfer => '转账',
+  };
+}
+
+/// 资产 / 负债类型枚举（与 BillType 同口径：int 枚举存储）
+enum AssetKind {
+  /// 资产（现金存款、房产、理财等）
+  asset,
+
+  /// 负债（房贷、车贷、借款等）
+  liability;
+
+  /// 中文名称，用于 UI 展示
+  String get label => this == AssetKind.asset ? '资产' : '负债';
+}
+
+/// 借条方向枚举（与 BillType 同口径：int 枚举存储）
+enum DebtDirection {
+  /// 借出：钱借给了别人，别人欠我（计入我的资产）
+  lendOut,
+
+  /// 借入：别人借给了我，我欠别人（计入我的负债）
+  borrowIn;
+
+  /// 中文名称，用于 UI 展示
+  String get label => this == DebtDirection.lendOut ? '借出' : '借入';
 }
 
 /// 账单图片上传状态

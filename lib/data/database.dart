@@ -10,19 +10,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../models/enums.dart';
+import 'tables/assets.dart';
 import 'tables/bill_images.dart';
 import 'tables/bills.dart';
 import 'tables/budgets.dart';
 import 'tables/categories.dart';
+import 'tables/debt_note_images.dart';
+import 'tables/debt_notes.dart';
 import 'tables/tags.dart';
 
 part 'database.g.dart';
 
 /// 当前数据库结构版本
 ///
-/// 开发期 v1~v8 的历史迁移已在发布前整体重置归一，自 v1 起每次结构
+/// 开发期历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 5;
+const int kSchemaVersion = 10;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -43,7 +46,18 @@ const String kDowngradeDetectedKey = 'db_downgrade_detected';
 /// 应用数据库
 ///
 /// 单例式入口：负责建库、迁移与首次预置默认分类。
-@DriftDatabase(tables: [Categories, Bills, Budgets, Tags, BillTags, BillImages])
+@DriftDatabase(tables: [
+  Categories,
+  Bills,
+  Budgets,
+  Tags,
+  BillTags,
+  BillImages,
+  Assets,
+  AssetSnapshots,
+  DebtNotes,
+  DebtNoteImages,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection(kSchemaVersion));
 
@@ -101,6 +115,93 @@ class AppDatabase extends _$AppDatabase {
           await m.createTable(billImages);
           await m.createIndex(billImagesBill);
         }
+        // 资产管理：新增 assets 与 asset_snapshots 两表（净资产盘点）。
+        // 索引同理需随迁移显式创建
+        if (from < 6) {
+          await m.createTable(assets);
+          await m.createTable(assetSnapshots);
+          await m.createIndex(assetSnapshotsAssetDay);
+        }
+        // 资产管理 v2（钱迹式）：assets 加净值开关与信用卡字段，
+        // 新增借条表 debt_notes；旧资产分类名映射到新分类体系。
+        // 全部做幂等保护：若上次迁移半途中断（列已加、版本号未落），
+        // 重复 ADD COLUMN 会报 duplicate column 导致 App 不可用
+        if (from < 7) {
+          await _ensureColumn(m, assets, assets.includeInNet);
+          await _ensureColumn(m, assets, assets.creditLimitCents);
+          await _ensureColumn(m, assets, assets.billDay);
+          await _ensureColumn(m, assets, assets.repayDay);
+          if (!await _tableExists('debt_notes')) {
+            await m.createTable(debtNotes);
+          }
+          await _migrateLegacyAssetCategories();
+        }
+        // 借据照片云端双写：debt_notes 补云端对象键与上传状态列。
+        // 幂等加列（原生 SQL：这三列已从 drift 表定义移除，
+        // v10 借据多图改造后不再由 drift 管理）
+        if (from < 8) {
+          await _ensureRawColumn(
+            'debt_notes',
+            'object_key',
+            'object_key TEXT NULL',
+          );
+          await _ensureRawColumn(
+            'debt_notes',
+            'upload_state',
+            'upload_state INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+        // 记账联动账户：bills 加 assetId/toAssetId 两列，categoryId 改可空
+        // （转账无分类语义）。SQLite 无法直接改列约束，用 TableMigration
+        // 重建 bills 表（索引随迁移一并重建）；加列走幂等 _ensureColumn。
+        // 注意 categoryId 不能放 newColumns——那是"旧表不存在的新列"语义，
+        // 复制数据时会被填 NULL 而非拷贝旧值；空迁移即按新定义重建并复制全部旧列
+        if (from < 9) {
+          await _ensureColumn(m, bills, bills.assetId);
+          await _ensureColumn(m, bills, bills.toAssetId);
+          await m.alterTable(
+            // ignore: experimental_member_use
+            TableMigration(bills),
+          );
+        }
+        // 借据照片改多图：新增 debt_note_images 表（与 bill_images 同构）。
+        // 先把旧单图三列（photo_path/object_key/upload_state）的数据迁入
+        // 新表，再重建 debt_notes 去掉这三列（SQLite 无法直接删列）。
+        // 注意 TableMigration 按新旧表同名列复制数据，借条主键 id 原样保留
+        if (from < 10) {
+          await m.createTable(debtNoteImages);
+          await m.createIndex(debtNoteImagesNote);
+          if (await _tableExists('debt_notes')) {
+            // 旧结构才有单图列（当前代码建的表已无 photo_path，直接跳过）
+            final noteCols = (await customSelect(
+              'PRAGMA table_info([debt_notes])',
+            ).get()).map((r) => r.data['name'] as String).toSet();
+            if (noteCols.contains('photo_path')) {
+              final legacy = await customSelect(
+                'SELECT id, photo_path, object_key, upload_state '
+                'FROM debt_notes WHERE photo_path IS NOT NULL',
+              ).get();
+              for (final row in legacy) {
+                final state = (row.data['upload_state'] as int?) ?? 0;
+                await into(debtNoteImages).insert(
+                  DebtNoteImagesCompanion.insert(
+                    noteId: row.data['id'] as int,
+                    objectKey: (row.data['object_key'] as String?) ?? '',
+                    localPath: row.data['photo_path'] as String,
+                    uploadState: BillImageUploadState.values[state],
+                  ),
+                );
+              }
+            }
+            await m.alterTable(
+              // ignore: experimental_member_use
+              TableMigration(debtNotes),
+            );
+          } else {
+            // 极端情况兜底：库中缺 debt_notes（如测试最小骨架）按新定义补建
+            await m.createTable(debtNotes);
+          }
+        }
       }
     },
   );
@@ -137,6 +238,67 @@ class AppDatabase extends _$AppDatabase {
         await batch((b) => b.insertAll(categories, childRows));
       }
     }
+  }
+
+  /// 列存在才补差量的安全加列：列已在（半迁移中间态）时跳过
+  Future<void> _ensureColumn(
+    Migrator m,
+    TableInfo table,
+    GeneratedColumn column,
+  ) async {
+    final rows = await customSelect(
+      'PRAGMA table_info([${table.actualTableName}])',
+    ).get();
+    final exists = rows.any((r) => r.data['name'] == column.$name);
+    if (!exists) {
+      await m.addColumn(table, column);
+    }
+  }
+
+  /// 判断表是否已存在（迁移幂等检查用）
+  Future<bool> _tableExists(String name) async {
+    final rows = await customSelect(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+      variables: [Variable(name)],
+    ).get();
+    return rows.isNotEmpty;
+  }
+
+  /// 列存在才补差量的原生 SQL 加列：列已在（半迁移中间态）时跳过。
+  /// 供已从 drift 表定义移除的历史列使用（v10 借据多图改造），
+  /// drift 不再认识这些列，只能走原生 DDL
+  Future<void> _ensureRawColumn(
+    String table,
+    String name,
+    String definition,
+  ) async {
+    final rows = await customSelect('PRAGMA table_info([$table])').get();
+    final exists = rows.any((r) => r.data['name'] == name);
+    if (!exists) {
+      await customStatement('ALTER TABLE $table ADD COLUMN $definition');
+    }
+  }
+
+  /// v7 迁移：旧资产分类名映射到钱迹式新分类体系
+  ///
+  /// 持久化只存分类名（无分类 ID），分类体系重构后旧数据按 kind 分别
+  /// 映射：资产侧旧名 → 新名；负债侧"借款/其他"统一并入"其它负债"
+  /// 承接（房贷/车贷新名不变，无需处理）。
+  Future<void> _migrateLegacyAssetCategories() async {
+    const assetRenames = <String, String>{
+      '现金存款': '现金',
+      '金融理财': '其它理财',
+      '其他': '其它',
+    };
+    for (final entry in assetRenames.entries) {
+      await customUpdate(
+        "UPDATE assets SET category = ? WHERE category = ? AND kind = 0",
+        variables: [Variable(entry.value), Variable(entry.key)],
+      );
+    }
+    await customUpdate(
+      "UPDATE assets SET category = '其它负债' WHERE category IN ('借款', '其他') AND kind = 1",
+    );
   }
 }
 

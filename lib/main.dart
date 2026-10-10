@@ -9,19 +9,23 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/database.dart';
+import 'data/repositories/asset_repository.dart';
 import 'data/repositories/bill_image_repository.dart';
 import 'data/repositories/bill_repository.dart';
 import 'data/repositories/budget_repository.dart';
 import 'data/repositories/category_repository.dart';
+import 'data/repositories/debt_note_repository.dart';
 import 'data/repositories/tag_repository.dart';
 import 'pages/db_error_page.dart';
 import 'pages/lock/lock_screen.dart';
 import 'pages/main_page.dart';
 import 'pages/privacy/privacy_consent_page.dart';
+import 'providers/asset_provider.dart';
 import 'providers/bill_provider.dart';
 import 'providers/budget_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/cloud_storage_provider.dart';
+import 'providers/debt_note_provider.dart';
 import 'providers/lock_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/backup_service.dart';
@@ -58,6 +62,8 @@ Future<void> main() async {
   if (dbHealthy) await BackupService().autoBackupIfNeeded(prefs);
   // 清理图片暂存目录：上次会话选了图但没保存的残留文件
   await BillImageRepository.cleanupStaging();
+  // 清理借条照片暂存目录：同理（借据照片选了没保存的残留）
+  await DebtNoteRepository.cleanupStaging();
   runApp(ChestnutApp(prefs: prefs, dbHealthy: dbHealthy));
 }
 
@@ -168,6 +174,12 @@ class _ProvidersApp extends StatelessWidget {
         Provider<BillImageRepository>(
           create: (ctx) => BillImageRepository(ctx.read<AppDatabase>()),
         ),
+        Provider<AssetRepository>(
+          create: (ctx) => AssetRepository(ctx.read<AppDatabase>()),
+        ),
+        Provider<DebtNoteRepository>(
+          create: (ctx) => DebtNoteRepository(ctx.read<AppDatabase>()),
+        ),
         // 图片云存储配置：未配置/未启用时 App 内不出现任何图片入口。
         // 必须注册在 BillProvider 之前——MultiProvider 列表前面的包住
         // 后面的（祖先方向），BillProvider 的 create 要 read 它
@@ -190,6 +202,12 @@ class _ProvidersApp extends StatelessWidget {
             ctx.read<BudgetRepository>(),
             ctx.read<BillRepository>(),
           ),
+        ),
+        ChangeNotifierProvider<AssetProvider>(
+          create: (ctx) => AssetProvider(ctx.read<AssetRepository>()),
+        ),
+        ChangeNotifierProvider<DebtNoteProvider>(
+          create: (ctx) => DebtNoteProvider(ctx.read<DebtNoteRepository>()),
         ),
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(prefs),
@@ -230,12 +248,16 @@ class _StartupGateState extends State<_StartupGate> {
   /// 延迟触发启动补传：避开启动高峰，也让弱网下首屏请求优先。
   /// 未配置/未启用云存储时 createClient 为 null，无任何图片网络行为
   Future<void> _uploadPendingImages() async {
+    // 捕获依赖后再进入 await：补传是异步任务，不能依赖 async gap 后的 context
+    final repo = context.read<BillImageRepository>();
+    final debtRepo = context.read<DebtNoteRepository>();
     await Future<void>.delayed(const Duration(seconds: 5));
     if (!mounted) return;
     final client = context.read<CloudStorageProvider>().createClient();
     if (client == null) return;
-    final repo = context.read<BillImageRepository>();
     await repo.uploadPending(client);
+    // 借据照片同口径补传（失败的单张由下次启动继续重试）
+    await debtRepo.uploadPending(client);
   }
 
   Future<void> _agree() async {

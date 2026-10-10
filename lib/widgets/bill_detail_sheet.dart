@@ -353,7 +353,11 @@ class _DetailBodyState extends State<_DetailBody> {
   @override
   Widget build(BuildContext context) {
     final isExpense = widget.bill.type == BillType.expense;
-    final amountColor = isExpense ? AppColors.expense : AppColors.income;
+    // 转账不计收支：金额中性色无符号
+    final isTransfer = widget.bill.type == BillType.transfer;
+    final amountColor = isTransfer
+        ? AppColors.textPrimary
+        : (isExpense ? AppColors.expense : AppColors.income);
     final category = widget.categories[widget.bill.categoryId];
     // 位置展示用完整地址（含店名），无完整地址退回短地名
     final location = widget.bill.locationFull ?? widget.bill.location;
@@ -407,7 +411,7 @@ class _DetailBodyState extends State<_DetailBody> {
                             ),
                           )
                         : Text(
-                            '${isExpense ? '-' : '+'}¥'
+                            '${isTransfer ? '' : isExpense ? '-' : '+'}¥'
                             '${MoneyUtil.centsToYuanGroupedTrimmed(widget.bill.amountCents)}',
                             textAlign: TextAlign.right,
                             style: TextStyle(
@@ -469,10 +473,11 @@ class _DetailBodyState extends State<_DetailBody> {
                 label: '分类',
                 onTap: category == null ? null : () => _tapCategory(context),
                 child: category == null
-                    ? const Text(
-                        '未知分类',
+                    ? Text(
+                        // 转账账单无分类（categoryId 为 null）
+                        isTransfer ? '转账' : '未知分类',
                         textAlign: TextAlign.right,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 15,
                           color: AppColors.textSecondary,
                         ),

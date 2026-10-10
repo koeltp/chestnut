@@ -301,7 +301,7 @@ class _ThumbCell extends StatelessWidget {
             ),
           ),
         ),
-        // 右上角删除：小黑圆 + 白 ×（内嵌，避免越界被裁）
+        // 右上角删除：红底圆 + 白 ×（内嵌，避免越界被裁）
         Positioned(
           top: 3,
           right: 3,
@@ -310,8 +310,8 @@ class _ThumbCell extends StatelessWidget {
             child: Container(
               width: 18,
               height: 18,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.45),
+              decoration: const BoxDecoration(
+                color: AppColors.expense,
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.close, size: 12, color: Colors.white),

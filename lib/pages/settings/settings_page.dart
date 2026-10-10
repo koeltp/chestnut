@@ -7,14 +7,18 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/asset_repository.dart' show AssetSummary;
+import '../../providers/asset_provider.dart';
 import '../../providers/cloud_storage_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/export_service.dart';
 import '../../services/update_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/update_dialog.dart';
+import '../asset/asset_page.dart';
 import 'about_page.dart';
 import 'backup_page.dart';
 import 'category_manage_page.dart';
@@ -54,6 +58,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         children: [
           _buildHeader(),
+          const SizedBox(height: AppDimens.gapSection),
+          _buildAssetEntry(context),
           const SizedBox(height: AppDimens.gapSection),
           _buildMenuCard(context),
           const SizedBox(height: AppDimens.gapSection),
@@ -108,6 +114,73 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  /// 资产管理入口卡：常驻"我的"页最上方，展示总净值（默认模糊）
+  ///
+  /// 金额模糊状态与资产页共享（AssetProvider.masked），
+  /// 点击卡片进资产页，点击金额区域切换明文/模糊。
+  Widget _buildAssetEntry(BuildContext context) {
+    // watch masked：资产页里切换明文/模糊后返回本页需同步刷新
+    final masked = context.watch<AssetProvider>().masked;
+    return SectionCard(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const AssetPage()),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            width: AppDimens.iconTile,
+            height: AppDimens.iconTile,
+            decoration: const BoxDecoration(
+              color: AppColors.primary,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.savings_outlined, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: AppDimens.gapMd),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '资产管理',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                StreamBuilder<AssetSummary>(
+                  stream: context.read<AssetProvider>().summaryStream(),
+                  builder: (context, snapshot) {
+                    final summary = snapshot.data;
+                    if (summary == null) {
+                      return const SizedBox(height: 16);
+                    }
+                    final text = masked
+                        ? '总净值 ¥ ****'
+                        : '总净值 ${summary.netCents < 0 ? '-' : ''}'
+                            '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.netCents.abs())}';
+                    return Text(
+                      text,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: AppColors.textSecondary),
         ],
       ),
     );

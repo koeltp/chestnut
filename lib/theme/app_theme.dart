@@ -24,6 +24,11 @@ class AppTheme {
     );
 
     return base.copyWith(
+      // 输入框提示文字统一灰色：Material 3 默认 hint 色偏深，
+      // 灰底输入框里看起来像已填值，用户会误以为不用输入
+      inputDecorationTheme: const InputDecorationThemeData(
+        hintStyle: TextStyle(color: AppColors.textSecondary),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,

@@ -74,8 +74,10 @@ List<CategoryEntry> pieEntries(
   var direct = 0;
   for (final b in bills) {
     final c = categories[b.categoryId];
-    if (c != null && c.parentId == parent.id) {
-      subSums[b.categoryId] = (subSums[b.categoryId] ?? 0) + b.amountCents;
+    final cid = b.categoryId;
+    // categoryId 为空（转账不进分类视图）归入"未细分"兜底
+    if (c != null && cid != null && c.parentId == parent.id) {
+      subSums[cid] = (subSums[cid] ?? 0) + b.amountCents;
     } else {
       direct += b.amountCents;
     }

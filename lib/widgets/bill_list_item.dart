@@ -7,6 +7,32 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimens.dart';
 import '../utils/money_util.dart';
 
+/// 条目"金额下方账户小字"的统一口径：转账显示"转出账户 -> 转入账户"
+/// （方向由数据决定，转出在前），支出/收入显示记这笔时选的账户名；
+/// 未关联账户返回 null（不显示该行）。首页/统计/账户流水三处共用
+String? billAccountLine(Bill bill, Map<int, Asset> assets) {
+  switch (bill.type) {
+    case BillType.transfer:
+      final from = assets[bill.assetId]?.name ?? '已删除账户';
+      final to = assets[bill.toAssetId]?.name ?? '已删除账户';
+      return '$from -> $to';
+    case BillType.expense:
+    case BillType.income:
+      final id = bill.assetId;
+      if (id == null) return null;
+      return assets[id]?.name ?? '已删除账户';
+  }
+}
+
+/// 借条"金额下方关联账户小字"：按 relatedAssetId 查名，
+/// 未关联返回 null（不显示），账户被删除兜底「已删除账户」。
+/// 首页/账户流水/借条台账三处共用
+String? debtAccountLine(DebtNote note, Map<int, Asset> assets) {
+  final id = note.relatedAssetId;
+  if (id == null) return null;
+  return assets[id]?.name ?? '已删除账户';
+}
+
 /// 账单条目
 ///
 /// 首页账单卡片内的基础单元：分类圆形图标 + 名称备注 + 类型着色金额。
@@ -24,6 +50,7 @@ class BillListItem extends StatelessWidget {
     this.location,
     this.tags,
     this.hasImage = false,
+    this.accountLine,
     this.onTap,
     this.onLongPress,
   });
@@ -48,12 +75,18 @@ class BillListItem extends StatelessWidget {
   /// 不显示缩略图也不显示数量，图片入口只在详情弹窗
   final bool hasImage;
 
+  /// 金额下方账户小字：转账"转出 -> 转入"、收支显示所选账户名；
+  /// null/空不显示。口径见 [billAccountLine]
+  final String? accountLine;
+
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final isExpense = type == BillType.expense;
+    // 转账不计收支：金额无 +/- 前缀、中性色（余额影响在双方账户各自体现）
+    final isTransfer = type == BillType.transfer;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -215,27 +248,61 @@ class BillListItem extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppDimens.gapSm),
-            // 免单（实付 0 且有优惠）直接显示绿色"免单"，比"¥0"直观
-            (amountCents == 0 && discountCents != null && discountCents! > 0)
-                ? const Text(
-                    '免单',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.income,
-                    ),
-                  )
-                : Text(
-                    '${isExpense ? '-' : '+'}${MoneyUtil.centsToYuanTrimmed(amountCents)}',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      // 金额颜色与记一笔输入金额一致：支出红 / 收入绿
-                      color:
-                          isExpense ? AppColors.expense : AppColors.income,
+            // 金额 + 账户小字纵排（小字：转账"转出 -> 转入"/收支所选账户）
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 免单（实付 0 且有优惠）直接显示绿色"免单"，比"¥0"直观
+                (amountCents == 0 && discountCents != null && discountCents! > 0)
+                    ? const Text(
+                        '免单',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.income,
+                        ),
+                      )
+                    : isTransfer
+                    ? Text(
+                        MoneyUtil.centsToYuanTrimmed(amountCents),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      )
+                    : Text(
+                        '${isExpense ? '-' : '+'}${MoneyUtil.centsToYuanTrimmed(amountCents)}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          // 金额颜色与记一笔输入金额一致：支出红 / 收入绿
+                          color:
+                              isExpense ? AppColors.expense : AppColors.income,
+                        ),
+                      ),
+                if (accountLine != null && accountLine!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  // 账户名可能较长（转账双方），限宽省略，避免挤压中列
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 150),
+                    child: Text(
+                      accountLine!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
+                ],
+              ],
+            ),
           ],
         ),
       ),

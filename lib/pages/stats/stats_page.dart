@@ -6,6 +6,7 @@ import '../../data/database.dart';
 import '../../data/repositories/bill_image_repository.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
+import '../../providers/asset_provider.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
@@ -425,14 +426,24 @@ class _StatsPageState extends State<StatsPage> {
                         return StreamBuilder<List<Bill>>(
                           stream: _compareStream(provider),
                           builder: (context, prevSnapshot) {
-                            return _buildBody(
-                              visible,
-                              categories,
-                              viewCat,
-                              isAllView,
-                              prevSnapshot.data ?? const <Bill>[],
-                              tagsByBill: tagsByBill,
-                              imageBillIds: imageBillIds,
+                            return StreamBuilder<Map<int, Asset>>(
+                              // id → 资产映射：条目金额下方账户小字查名
+                              stream: context
+                                  .read<AssetProvider>()
+                                  .assetsMapStream(),
+                              builder: (context, assetSnapshot) {
+                                return _buildBody(
+                                  visible,
+                                  categories,
+                                  viewCat,
+                                  isAllView,
+                                  prevSnapshot.data ?? const <Bill>[],
+                                  tagsByBill: tagsByBill,
+                                  imageBillIds: imageBillIds,
+                                  assets: assetSnapshot.data ??
+                                      const <int, Asset>{},
+                                );
+                              },
                             );
                           },
                         );
@@ -489,6 +500,7 @@ class _StatsPageState extends State<StatsPage> {
     List<Bill> prevBills, {
     Map<int, List<Tag>> tagsByBill = const {},
     Set<int> imageBillIds = const {},
+    Map<int, Asset> assets = const {},
   }) {
     // 范围过滤（数据层为全量流，内存过滤足够）
     final (start, end) = _query.range;
@@ -743,6 +755,7 @@ class _StatsPageState extends State<StatsPage> {
                     onCategoryTap: _jumpToCategory,
                     tagsByBill: tagsByBill,
                     imageBillIds: imageBillIds,
+                    assets: assets,
                     onTagTap: (tag) => Navigator.push(
                       context,
                       MaterialPageRoute<void>(
