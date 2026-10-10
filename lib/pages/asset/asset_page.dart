@@ -60,7 +60,9 @@ class AssetPage extends StatelessWidget {
           AppDimens.pagePadding,
           AppDimens.gapSection,
           AppDimens.pagePadding,
-          24,
+          // 底部预留 FAB 高度+边距：已归档展开到底时，
+          // 末行"恢复"按钮能滚到 FAB 上方，不被遮挡
+          88,
         ),
         children: [
           StreamBuilder<AssetSummary>(

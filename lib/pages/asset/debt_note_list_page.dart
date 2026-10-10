@@ -51,7 +51,8 @@ class DebtNoteListPage extends StatelessWidget {
               AppDimens.pagePadding,
               AppDimens.gapSection,
               AppDimens.pagePadding,
-              24,
+              // 底部预留 FAB 高度+边距，末行不被悬浮按钮遮挡
+              88,
             ),
             children: [
               SectionCard(

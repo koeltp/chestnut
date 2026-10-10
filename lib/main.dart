@@ -210,7 +210,8 @@ class _ProvidersApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider<AssetProvider>(
-          create: (ctx) => AssetProvider(ctx.read<AssetRepository>()),
+          create: (ctx) =>
+              AssetProvider(ctx.read<AssetRepository>(), prefs),
         ),
         ChangeNotifierProvider<DebtNoteProvider>(
           create: (ctx) => DebtNoteProvider(ctx.read<DebtNoteRepository>()),

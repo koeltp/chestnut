@@ -623,7 +623,7 @@ class _DayCard extends StatelessWidget {
 /// - 只累计"手指拖到边界后"的越界量（跟手位置，含阻尼放大补偿），
 ///   正常浏览 / 惯性甩动撞边界绝不误触
 /// - 提示区随拉出量跟手生长（转圈 + 文字贴列表一侧）；累计越界跨过
-///   阈值（约手指 80px）后提示变色强调，松手（滚动结束）才真正切月
+///   阈值（约手指 85~90px）后提示变色强调，松手（滚动结束）才真正切月
 /// - 顶部目标月晚于当前真实月（如 10 月下拉看 11 月）时提示低承诺化：
 ///   "还没有到 / 松开仍可查看"——不承诺有数据，预记账单仍可切过去看
 class _MonthPullSwitch extends StatefulWidget {
@@ -646,12 +646,12 @@ class _MonthPullSwitch extends StatefulWidget {
 
 class _MonthPullSwitchState extends State<_MonthPullSwitch> {
   /// 触发切月的累计越界阈值。钳制物理对越界拉距有阻尼衰减，配合
-  /// 1.5 倍放大补偿，阈值 64 约对应手指拉 80px 才切月（避免误触）
-  static const double _threshold = 64;
+  /// 1.5 倍放大补偿，阈值 70 约对应手指拉 85~90px 才切月（避免误触）
+  static const double _threshold = 80;
   static const double _maxDrag = 96;
 
   /// 越界量放大系数：钳制物理的阻尼让越界增量越来越小，放大补偿后
-  /// 手指行程与达标拉距近似 1.5:1 校准——手指拉约 80px 松手即切月
+  /// 手指行程与达标拉距近似 1.5:1 校准——手指拉约 85~90px 松手即切月
   static const double _amplify = 1.5;
 
   /// 提示条是否处于"松手收回"阶段：收回用 150ms 平滑动画；拖出用

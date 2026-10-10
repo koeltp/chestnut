@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/database.dart';
 import '../data/repositories/asset_repository.dart';
@@ -9,16 +10,20 @@ import '../models/enums.dart';
 /// 仓储流的薄封装 + 金额模糊开关：净资产属敏感数字，"我的"页入口卡
 /// 与资产页共享同一 [masked] 状态，点击切换后两处同步明文/模糊。
 class AssetProvider extends ChangeNotifier {
-  AssetProvider(this._repo);
+  AssetProvider(this._repo, this._prefs);
 
   final AssetRepository _repo;
+  final SharedPreferences _prefs;
 
-  /// 金额是否模糊显示（默认模糊，仅内存态：重启 App 恢复模糊）
-  bool _masked = true;
-  bool get masked => _masked;
+  /// 金额模糊开关的持久化键：用户选择跨重启/更新保留
+  static const _kMasked = 'asset_amount_masked';
 
-  void toggleMasked() {
-    _masked = !_masked;
+  /// 金额是否模糊显示。未存过（首次安装）默认模糊；
+  /// 用户切换后写入，重启 App / 覆盖更新均保持上次选择
+  bool get masked => _prefs.getBool(_kMasked) ?? true;
+
+  Future<void> toggleMasked() async {
+    await _prefs.setBool(_kMasked, !masked);
     notifyListeners();
   }
 
