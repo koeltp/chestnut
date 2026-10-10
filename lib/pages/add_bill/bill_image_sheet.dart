@@ -110,7 +110,7 @@ class _BillImageSheetState extends State<BillImageSheet> {
       for (final xfile in picked) {
         if (xfile == null) continue;
         final bytes = await xfile.readAsBytes();
-        final path = await widget.repo.stageImage(bytes);
+        final path = await widget.repo.photos.stage(bytes);
         _staged.add(path);
       }
       _notify();
@@ -128,7 +128,7 @@ class _BillImageSheetState extends State<BillImageSheet> {
       setState(() => _existing.remove(existing));
     } else if (staged != null) {
       setState(() => _staged.remove(staged));
-      await widget.repo.discardStagedImage(staged);
+      await widget.repo.photos.discard(staged);
     }
     _notify();
   }

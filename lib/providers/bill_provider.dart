@@ -87,11 +87,6 @@ class BillProvider extends ChangeNotifier {
   Stream<List<Bill>> categoryBillsStream(int categoryId) =>
       _repo.watchBillsInCategory(categoryId);
 
-  /// 某账户关联流水流（账户明细页）：支出/收入按 assetId 匹配，
-  /// 转账含转出与转入两侧
-  Stream<List<Bill>> assetBillsStream(int assetId) =>
-      _repo.watchBillsOfAsset(assetId);
-
   /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；被删发 null
   Stream<Bill?> watchBillById(int id) => _repo.watchBillById(id);
 

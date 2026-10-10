@@ -244,7 +244,7 @@ class _AddBillPageState extends State<AddBillPage> {
     // 页面退出且未保存：清掉本次会话暂存的图片临时文件（已保存的
     // 路径经 attachStagedImages 转正移走，此处 discard 为空操作）
     for (final path in _stagedImages) {
-      unawaited(_imageRepo.discardStagedImage(path));
+      unawaited(_imageRepo.photos.discard(path));
     }
     unawaited(_assetsSub?.cancel());
     _noteFocus.dispose();

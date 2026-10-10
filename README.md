@@ -98,6 +98,22 @@ flutter run --release
 
 > 注意：仓库中的 Key 为作者自用 Key，随源码公开。Android Key 与签名证书指纹绑定无法盗用；Web 服务 Key 为客户端直连，请注意配额监控，自行构建时请替换为自己的 Key。不配置地图 Key 不影响除地图外的记账功能。
 
+## 真机无线调试（二维码配对）
+
+不想插数据线时，可用 [adb-wifi-qr](https://pypi.org/project/adb-wifi-qr/) 在终端生成二维码，手机扫码完成配对：
+
+```bash
+# 安装（Python 3.8+，需 Android platform-tools 31+）
+pip install adb-wifi-qr
+
+# 生成二维码并在配对后自动连接
+adb-wifi-qr --connect
+```
+
+手机端操作：**设置 → 系统管理 → 开发者选项 → 无线调试 → 使用二维码配对设备**，扫描终端中的二维码即可。
+
+前提：手机系统 Android 11+，且手机与电脑在同一 Wi-Fi 下。配对只需一次；无线调试的连接端口每次开启会变化，重新打开后重跑上述命令，或用 `adb mdns services` 查到连接端口后 `adb connect <IP:端口>`。扫码不成功时可把终端调大、换深色背景，或加 `--timeout 120` 延长等待时间。
+
 ## 发布构建
 
 只打 arm64 架构（近十年安卓手机均为该架构）：

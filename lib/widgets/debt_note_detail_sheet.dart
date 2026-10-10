@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,7 @@ import '../providers/debt_note_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
 import '../utils/show_toast.dart';
+import 'detail_widgets.dart';
 import 'photo_viewer_page.dart';
 
 /// 借条详情底部弹窗：点击明细条目中的借条时展示完整信息
@@ -195,7 +196,8 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
     final amountColor = isLend ? AppColors.expense : AppColors.income;
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        // 边距与账单详情弹窗完全一致
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,17 +214,17 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
                   ),
                 ),
                 const Spacer(),
-                _pill('修改', onTap: _openEditor),
+                DetailPill('修改', onTap: _openEditor),
                 const SizedBox(width: 8),
-                _pill(
+                DetailPill(
                   '删除',
-                  red: true,
+                  danger: true,
                   onTap: () => _confirmDelete(context),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            _Row(
+            DetailInfoRow(
               label: '金额',
               child: Text(
                 '${isLend ? '-' : '+'}¥'
@@ -239,7 +241,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
             // 借据照片条：56px 圆角横滑缩略图（点击全屏预览）
             if (_images.isNotEmpty) ...[
               const Divider(height: 1, color: AppColors.divider),
-              _Row(
+              DetailInfoRow(
                 label: '借据',
                 child: SizedBox(
                   height: 56,
@@ -247,13 +249,21 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
                     scrollDirection: Axis.horizontal,
                     itemCount: _images.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) => _thumbCell(_images[i]),
+                    itemBuilder: (_, i) {
+                      final img = _images[i];
+                      return DetailPhotoThumb(
+                        file: _localFiles[img.id],
+                        uploadState: img.uploadState,
+                        onTap: () => _preview(img),
+                        onRetry: () => unawaited(_reupload(img)),
+                      );
+                    },
                   ),
                 ),
               ),
             ],
             const Divider(height: 1, color: AppColors.divider),
-            _Row(
+            DetailInfoRow(
               label: '对方',
               child: Text(
                 isLendOut
@@ -267,7 +277,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
               ),
             ),
             const Divider(height: 1, color: AppColors.divider),
-            _Row(
+            DetailInfoRow(
               label: '借款日期',
               child: Text(
                 _fmtDate(widget.note.borrowedAt),
@@ -279,7 +289,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
               ),
             ),
             const Divider(height: 1, color: AppColors.divider),
-            _Row(
+            DetailInfoRow(
               label: '约定还款日',
               child: Text(
                 widget.note.repayDueAt == null
@@ -296,7 +306,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
             ),
             const Divider(height: 1, color: AppColors.divider),
             // 关联账户按 id 查名（流快照；已删除的账户显示兜底文案）
-            _Row(
+            DetailInfoRow(
               label: '关联账户',
               child: FutureBuilder<Map<int, Asset>>(
                 future: context.read<AssetProvider>().assetsMapStream().first,
@@ -321,7 +331,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
               ),
             ),
             const Divider(height: 1, color: AppColors.divider),
-            _Row(
+            DetailInfoRow(
               label: '计入统计',
               child: Text(
                 widget.note.includeInTotal ? '计入' : '未计入',
@@ -337,7 +347,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
             // 备注：无备注不占行
             if (widget.note.note != null && widget.note.note!.isNotEmpty) ...[
               const Divider(height: 1, color: AppColors.divider),
-              _Row(
+              DetailInfoRow(
                 label: '备注',
                 child: Text(
                   widget.note.note!,
@@ -357,132 +367,4 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
 
   String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  /// 56px 照片格：文件就绪显图，缺失/裂图占位；未上传角标可点重传
-  Widget _thumbCell(DebtNoteImage img) {
-    final file = _localFiles[img.id];
-    final uploading = img.uploadState == BillImageUploadState.uploading;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        GestureDetector(
-          onTap: () => _preview(img),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: file == null
-                ? Container(
-                    width: 56,
-                    height: 56,
-                    color: AppColors.fill,
-                    child: const Icon(
-                      Icons.image_outlined,
-                      size: 20,
-                      color: AppColors.textSecondary,
-                    ),
-                  )
-                : Image.file(
-                    file,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(
-                      width: 56,
-                      height: 56,
-                      color: AppColors.fill,
-                      child: const Icon(
-                        Icons.image_outlined,
-                        size: 20,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-        // 未上传角标：上传中转圈，等待/失败橙点；点角标手动重传
-        if (img.uploadState != BillImageUploadState.done)
-          Positioned(
-            right: -3,
-            top: -3,
-            child: GestureDetector(
-              onTap: uploading ? null : () => unawaited(_reupload(img)),
-              child: Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
-                ),
-                child: uploading
-                    ? const Padding(
-                        padding: EdgeInsets.all(3),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.error_outline,
-                        size: 14,
-                        color: AppColors.expense,
-                      ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// 操作胶囊：删除红底红字提示危险操作（与账单详情同款）
-  Widget _pill(String text, {required VoidCallback onTap, bool red = false}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(17),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: red
-              ? AppColors.expense.withValues(alpha: 0.08)
-              : AppColors.fill,
-          borderRadius: BorderRadius.circular(17),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: red ? AppColors.expense : AppColors.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 详情信息行：左侧灰色字段名，右侧值（与账单详情同款）
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.child});
-
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(child: child),
-        ],
-      ),
-    );
-  }
 }

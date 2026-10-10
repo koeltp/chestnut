@@ -6,14 +6,12 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
-import '../../data/repositories/bill_image_repository.dart';
+import '../../data/flow_entry.dart';
+import '../../data/repositories/asset_flow_view_repository.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
-import '../../providers/asset_provider.dart';
 import '../../providers/bill_provider.dart';
-import '../../providers/category_provider.dart';
-import '../../providers/debt_note_provider.dart';
 import '../../providers/lock_provider.dart';
 import '../../services/update_service.dart';
 import '../../theme/app_colors.dart';
@@ -31,7 +29,7 @@ import '../settings/backup_page.dart';
 import '../stats/stats_page.dart';
 import 'period_picker_dialog.dart';
 
-/// 首页：当前查看范围（月/年/全部）的收支汇总 + 按日分组的账单卡片列表
+/// 首页：当前查看范围（月/年/全部）的收支汇总 + 按日分组的流水卡片列表
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -39,24 +37,11 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-/// 借条是否落在当前查看范围：按月/按年比对借款日期，全部则恒真
-bool _debtInRange(DebtNote debt, HomePeriod period, DateTime month) {
-  switch (period) {
-    case HomePeriod.month:
-      return debt.borrowedAt.year == month.year &&
-          debt.borrowedAt.month == month.month;
-    case HomePeriod.year:
-      return debt.borrowedAt.year == month.year;
-    case HomePeriod.all:
-      return true;
-  }
-}
-
 class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // 数据库为惰性打开：首页账单流订阅即触发打开，降级发生时才写入
+    // 数据库为惰性打开：首页流水流订阅即触发打开，降级发生时才写入
     // 标记，延迟 2 秒检查确保标记已落盘
     Future<void>.delayed(const Duration(seconds: 2), _showDowngradeNotice);
     // 自更新检测：再延后 1.5 秒避开启动任务与降级提示，失败完全静默。
@@ -123,8 +108,6 @@ class _HomePageState extends State<HomePage> {
     // watch：月份/查看模式切换（notifyListeners）时重建，
     // StreamBuilder 随之订阅新范围的流
     final provider = context.watch<BillProvider>();
-    // 在 build 中取流：模式或月份变化时重建重新取，避免旧流订阅问题
-    final billsStream = provider.homeBillsStream();
     return Column(
       children: [
         _SummaryHeader(provider: provider),
@@ -134,53 +117,34 @@ class _HomePageState extends State<HomePage> {
             enabled: provider.period == HomePeriod.month,
             selectedMonth: provider.selectedMonth,
             onSwitch: provider.changeMonth,
-            child: StreamBuilder<List<Bill>>(
-              stream: billsStream,
+            child: StreamBuilder<FlowView>(
+              // 账单/借条/分类/账户/图片标记全部由视图仓储组装，
+              // 页面只订阅这一层
+              stream: context
+                  .read<AssetFlowViewRepository>()
+                  .watchHomeFlow(provider.period, provider.selectedMonth),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                // 借出/借入按借款日期落进首页明细（借条不生成账单，
-                // 单独订阅 debt_notes 按当前查看范围过滤）
-                return StreamBuilder<List<DebtNote>>(
-                  stream: context.read<DebtNoteProvider>().allStream(),
-                  builder: (context, debtSnapshot) {
-                    final debts = (debtSnapshot.data ?? const <DebtNote>[])
-                        .where((d) => _debtInRange(
-                              d,
-                              provider.period,
-                              provider.selectedMonth,
-                            ))
-                        .toList();
-                    return StreamBuilder<Map<int, Category>>(
-                      stream: context.read<CategoryProvider>()
-                          .categoriesMapStream(),
-                      builder: (context, catSnapshot) {
-                        final categories = catSnapshot.data ?? const {};
-                        final bills = snapshot.data!;
-                        if (bills.isEmpty && debts.isEmpty) {
-                          // 空月也要能拉：包进可滚动视图（SliverFillRemaining
-                          // 占满一屏且 AlwaysScrollable 保证边界 overscroll 可用）
-                          return CustomScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            slivers: [
-                              SliverFillRemaining(
-                                hasScrollBody: false,
-                                child: const _EmptyState(),
-                              ),
-                            ],
-                          );
-                        }
-                        return _BillList(
-                          bills: bills,
-                          debts: debts,
-                          categories: categories,
-                          month: provider.selectedMonth,
-                          showAll: provider.period == HomePeriod.all,
-                        );
-                      },
-                    );
-                  },
+                final view = snapshot.data!;
+                if (view.entries.isEmpty) {
+                  // 空月也要能拉：包进可滚动视图（SliverFillRemaining
+                  // 占满一屏且 AlwaysScrollable 保证边界 overscroll 可用）
+                  return CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: const _EmptyState(),
+                      ),
+                    ],
+                  );
+                }
+                return _FlowList(
+                  view: view,
+                  month: provider.selectedMonth,
+                  showAll: provider.period == HomePeriod.all,
                 );
               },
             ),
@@ -240,7 +204,8 @@ class _SummaryHeader extends StatelessWidget {
                       showArrows: false,
                       text: switch (period) {
                         HomePeriod.month => null,
-                        HomePeriod.year => '${provider.selectedMonth.year}年',
+                        HomePeriod.year =>
+                          '${provider.selectedMonth.year}年',
                         HomePeriod.all => '全部',
                       },
                       onTapText: () => _pickPeriod(context),
@@ -348,21 +313,15 @@ class _SummaryItem extends StatelessWidget {
   }
 }
 
-/// 按日分组的账单卡片列表：每天一张白色圆角卡片（账单 + 借条混排）
-class _BillList extends StatefulWidget {
-  const _BillList({
-    required this.bills,
-    required this.debts,
-    required this.categories,
+/// 按日分组的流水卡片列表：每天一张白色圆角卡片（账单 + 借条混排）
+class _FlowList extends StatefulWidget {
+  const _FlowList({
+    required this.view,
     required this.month,
     this.showAll = false,
   });
 
-  final List<Bill> bills;
-
-  /// 当前查看范围内的借条：按借款日期混入日分组（不参与收支小计）
-  final List<DebtNote> debts;
-  final Map<int, Category> categories;
+  final FlowView view;
 
   /// 当前查看月份：变化时列表滚回顶部（切月后从最新一天看起）
   final DateTime month;
@@ -371,22 +330,13 @@ class _BillList extends StatefulWidget {
   final bool showAll;
 
   @override
-  State<_BillList> createState() => _BillListState();
+  State<_FlowList> createState() => _FlowListState();
 }
 
-class _BillListState extends State<_BillList> {
-  /// billId → 标签列表缓存：bills 变化时批量加载一次
+class _FlowListState extends State<_FlowList> {
+  /// billId → 标签列表缓存：流水条目变化时批量加载一次。
+  /// 标签数据未纳入视图模型（仅首页行展示标签），保留本地加载
   Map<int, List<Tag>> _tagsByBill = {};
-
-  /// 带图片的账单 id 集合：订阅 bill_images 表变化（列表相机角标用）。
-  /// 必须用流——删图不更新 bills 表，一次性快照会让角标残留
-  Set<int> _billIdsWithImages = {};
-
-  StreamSubscription<Set<int>>? _imageIdsSub;
-
-  /// 有借据照片的借条 id 集合：订阅 debt_note_images 表变化（借条行相机角标）
-  Set<int> _debtIdsWithImages = {};
-  StreamSubscription<Set<int>>? _debtImageIdsSub;
 
   final ScrollController _controller = ScrollController();
 
@@ -394,24 +344,14 @@ class _BillListState extends State<_BillList> {
   void initState() {
     super.initState();
     _loadTags();
-    _subscribeImageIds();
-    // 借据照片标记为全表流：一次订阅即可，与当前查看范围无关
-    _debtImageIdsSub = context
-        .read<DebtNoteProvider>()
-        .photoNoteIdsStream()
-        .listen((set) {
-      if (mounted) setState(() => _debtIdsWithImages = set);
-    });
   }
 
   @override
-  void didUpdateWidget(covariant _BillList oldWidget) {
+  void didUpdateWidget(covariant _FlowList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 账单列表变化（切月/新增/编辑/删除）时重新批量加载标签
-    if (oldWidget.bills != widget.bills) {
+    // 流水条目变化（切月/新增/编辑/删除）时重新批量加载标签
+    if (oldWidget.view.entries != widget.view.entries) {
       _loadTags();
-      // 当前可见账单集合变了，按新 ids 重订阅图片标记流
-      _subscribeImageIds();
     }
     // 切月（非当月内增删）时滚回顶部，从最新一天看起
     if (widget.month != oldWidget.month && _controller.hasClients) {
@@ -421,173 +361,107 @@ class _BillListState extends State<_BillList> {
 
   @override
   void dispose() {
-    unawaited(_imageIdsSub?.cancel());
-    unawaited(_debtImageIdsSub?.cancel());
     _controller.dispose();
     super.dispose();
   }
 
-  /// 订阅当前账单集合的图片标记流：面板删图、级联删图等 bill_images
-  /// 表变化都会实时重新发射，角标即时消失/出现
-  void _subscribeImageIds() {
-    unawaited(_imageIdsSub?.cancel());
-    _imageIdsSub = null;
-    if (widget.bills.isEmpty) {
-      _billIdsWithImages = {};
-      return;
-    }
-    _imageIdsSub = context
-        .read<BillImageRepository>()
-        .watchBillIdsWithImages(widget.bills.map((b) => b.id).toList())
-        .listen((set) {
-      // 流仅在 bill_images 表变化时发射，频率极低，直接刷新即可
-      if (mounted) setState(() => _billIdsWithImages = set);
-    });
-  }
-
-  /// 批量加载标签缓存（一次刷新）。图片角标不走这里——
-  /// 已改为订阅 watchBillIdsWithImages 流，删图后角标实时消失
+  /// 批量加载标签缓存（一次刷新）
   Future<void> _loadTags() async {
-    if (widget.bills.isEmpty) {
+    final billIds = widget.view.entries
+        .map((e) => e.bill?.id)
+        .whereType<int>()
+        .toList();
+    if (billIds.isEmpty) {
       setState(() => _tagsByBill = {});
       return;
     }
-    final tags = await context
-        .read<TagRepository>()
-        .getTagsByBillIds(widget.bills.map((b) => b.id).toList());
+    final tags = await context.read<TagRepository>().getTagsByBillIds(billIds);
     if (!mounted) return;
     setState(() => _tagsByBill = tags);
   }
 
   @override
   Widget build(BuildContext context) {
-    // 先按日分组（账单 + 借条混排，组内按发生时间倒序），再依序生成每日卡片
+    final view = widget.view;
+    // 按日分组：条目全局已按(日期倒序,创建时间倒序)排好，分组后
+    // 组内顺序天然正确，无需再次排序
     final dayKeys = <String>[];
-    final dayEntriesMap = <String, List<_ListEntry>>{};
-    void add(DateTime date, _ListEntry entry) {
-      final key = '${date.year}-${date.month}-${date.day}';
-      if (!dayEntriesMap.containsKey(key)) {
-        dayEntriesMap[key] = [];
+    final dayEntriesMap = <String, List<FlowEntry>>{};
+    for (final entry in view.entries) {
+      final d = entry.date;
+      final key = '${d.year}-${d.month}-${d.day}';
+      final list = dayEntriesMap[key];
+      if (list == null) {
+        dayEntriesMap[key] = [entry];
         dayKeys.add(key);
+      } else {
+        list.add(entry);
       }
-      dayEntriesMap[key]!.add(entry);
-    }
-
-    for (final bill in widget.bills) {
-      add(bill.date, _ListEntry(date: bill.date, at: bill.createdAt, bill: bill));
-    }
-    for (final debt in widget.debts) {
-      add(
-        debt.borrowedAt,
-        _ListEntry(date: debt.borrowedAt, at: debt.createdAt, debt: debt),
-      );
-    }
-    for (final list in dayEntriesMap.values) {
-      list.sort((a, b) => b.at.compareTo(a.at));
     }
     // 年份按需显示：列表数据跨年时分组头带年份消歧，同年内省略
-    final crossYear = {
-      ...widget.bills.map((b) => b.date.year),
-      ...widget.debts.map((d) => d.borrowedAt.year),
-    }.length > 1;
+    final crossYear =
+        view.entries.map((e) => e.date.year).toSet().length > 1;
 
-    return StreamBuilder<Map<int, Asset>>(
-      // id → 资产映射（含归档）：条目金额下方账户小字按 id 查名
-      stream: context.read<AssetProvider>().assetsMapStream(),
-      builder: (context, assetSnap) {
-        final assets = assetSnap.data ?? const <int, Asset>{};
-        return ListView.builder(
-          controller: _controller,
-          padding: const EdgeInsets.fromLTRB(
-            AppDimens.pagePadding,
-            AppDimens.gapMd,
-            AppDimens.pagePadding,
-            24,
-          ),
-          itemCount: dayKeys.length + 1,
-          itemBuilder: (context, index) {
-            if (index == dayKeys.length) {
-              // 列表尾部留白提示
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppDimens.gapLg),
-                child: Center(
-                  child: Text(
-                    widget.showAll ? '· 全部账单到底啦 ·' : '· 本月账单到底啦 ·',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+    return ListView.builder(
+      controller: _controller,
+      padding: const EdgeInsets.fromLTRB(
+        AppDimens.pagePadding,
+        AppDimens.gapMd,
+        AppDimens.pagePadding,
+        24,
+      ),
+      itemCount: dayKeys.length + 1,
+      itemBuilder: (context, index) {
+        if (index == dayKeys.length) {
+          // 列表尾部留白提示
+          return Padding(
+            padding:
+                const EdgeInsets.symmetric(vertical: AppDimens.gapLg),
+            child: Center(
+              child: Text(
+                widget.showAll ? '· 全部账单到底啦 ·' : '· 本月账单到底啦 ·',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
                 ),
-              );
-            }
-            final dayEntries = dayEntriesMap[dayKeys[index]]!;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppDimens.gapSection),
-              child: _DayCard(
-                date: dayEntries.first.date,
-                dayEntries: dayEntries,
-                categories: widget.categories,
-                tagsByBill: _tagsByBill,
-                imageBillIds: _billIdsWithImages,
-                debtImageIds: _debtIdsWithImages,
-                assets: assets,
-                showYear: crossYear,
               ),
-            );
-          },
+            ),
+          );
+        }
+        final dayEntries = dayEntriesMap[dayKeys[index]]!;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppDimens.gapSection),
+          child: _DayCard(
+            date: dayEntries.first.date,
+            entries: dayEntries,
+            view: view,
+            tagsByBill: _tagsByBill,
+            showYear: crossYear,
+          ),
         );
       },
     );
   }
 }
 
-/// 日分组内的混排条目：账单或借条取其一（date 为业务日期，
-/// at 为记录创建时间，组内按 at 倒序）
-class _ListEntry {
-  const _ListEntry({
-    required this.date,
-    required this.at,
-    this.bill,
-    this.debt,
-  });
-
-  final DateTime date;
-  final DateTime at;
-  final Bill? bill;
-  final DebtNote? debt;
-}
-
 /// 单日卡片：日期头 + 当日条目（账单 + 借条混排）
 class _DayCard extends StatelessWidget {
   const _DayCard({
     required this.date,
-    required this.dayEntries,
-    required this.categories,
+    required this.entries,
+    required this.view,
     required this.tagsByBill,
-    required this.imageBillIds,
-    required this.debtImageIds,
-    required this.assets,
     required this.showYear,
   });
 
   final DateTime date;
 
   /// 当日混排条目（组内已按时间倒序）
-  final List<_ListEntry> dayEntries;
-  final Map<int, Category> categories;
+  final List<FlowEntry> entries;
+  final FlowView view;
 
-  /// billId → 标签列表（由 _BillList 批量加载后传入）
+  /// billId → 标签列表（由 _FlowList 批量加载后传入）
   final Map<int, List<Tag>> tagsByBill;
-
-  /// 带图片的账单 id 集合（相机角标用）
-  final Set<int> imageBillIds;
-
-  /// 有借据照片的借条 id 集合（借条行相机角标用）
-  final Set<int> debtImageIds;
-
-  /// id → 资产映射（金额下方账户小字查名用）
-  final Map<int, Asset> assets;
 
   /// 分组头是否带年份：列表数据跨年时为 true（年份按需消歧）
   final bool showYear;
@@ -596,12 +470,17 @@ class _DayCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // 收支小计只算账单：借条是资金移动不是消费（与转账同口径），
     // 计入会污染消费统计
-    final expenseCents = dayEntries
-        .where((e) => e.bill?.type == BillType.expense)
-        .fold(0, (s, e) => s + e.bill!.amountCents);
-    final incomeCents = dayEntries
-        .where((e) => e.bill?.type == BillType.income)
-        .fold(0, (s, e) => s + e.bill!.amountCents);
+    var expenseCents = 0;
+    var incomeCents = 0;
+    for (final entry in entries) {
+      final bill = entry.bill;
+      if (bill == null) continue;
+      if (bill.type == BillType.expense) {
+        expenseCents += bill.amountCents;
+      } else if (bill.type == BillType.income) {
+        incomeCents += bill.amountCents;
+      }
+    }
 
     return SectionCard(
       padding: EdgeInsets.zero,
@@ -609,18 +488,20 @@ class _DayCard extends StatelessWidget {
         children: [
           _buildHeader(expenseCents, incomeCents),
           // 条目之间以左对齐分割线区分
-          for (var i = 0; i < dayEntries.length; i++) ...[
+          for (var i = 0; i < entries.length; i++) ...[
             if (i > 0) const Divider(indent: 68, endIndent: 16),
-            if (dayEntries[i].bill != null)
-              _buildItem(context, dayEntries[i].bill!)
+            if (entries[i].bill != null)
+              _buildBillItem(context, entries[i].bill!)
             else
               DebtFlowRow(
-                note: dayEntries[i].debt!,
-                hasImage: debtImageIds.contains(dayEntries[i].debt!.id),
-                accountLine: debtAccountLine(dayEntries[i].debt!, assets),
+                note: entries[i].debt!,
+                hasImage: view.debtIdsWithPhotos
+                    .contains(entries[i].debt!.id),
+                accountLine:
+                    debtAccountLine(entries[i].debt!, view.relatedAssets),
                 onTap: () => showDebtNoteDetailSheet(
                   context,
-                  note: dayEntries[i].debt!,
+                  note: entries[i].debt!,
                 ),
               ),
           ],
@@ -633,7 +514,8 @@ class _DayCard extends StatelessWidget {
   /// 右侧当日收支小计。年份按需显示（数据跨年才带年份，见 DateLabelUtil）
   Widget _buildHeader(int expenseCents, int incomeCents) {
     final parts = <String>[
-      if (expenseCents > 0) '支 ${MoneyUtil.centsToYuanTrimmed(expenseCents)}',
+      if (expenseCents > 0)
+        '支 ${MoneyUtil.centsToYuanTrimmed(expenseCents)}',
       if (incomeCents > 0) '收 ${MoneyUtil.centsToYuanTrimmed(incomeCents)}',
     ];
     return Padding(
@@ -668,14 +550,16 @@ class _DayCard extends StatelessWidget {
   }
 
   /// 单条账单（点击弹详情、长按删除）
-  Widget _buildItem(BuildContext context, Bill bill) {
-    final category = categories[bill.categoryId];
-    // 转账无分类：固定中性"转账"呈现（账户方向在详情与账户明细页看）
+  Widget _buildBillItem(BuildContext context, Bill bill) {
+    final category = view.categories[bill.categoryId];
+    // 转账无分类：固定中性"转账"呈现（账户方向看金额下方小字）
     final isTransfer = bill.type == BillType.transfer;
     return BillListItem(
       name: category?.name ?? (isTransfer ? '转账' : '未知分类'),
       iconCode: category?.iconCode ??
-          (isTransfer ? Icons.swap_horiz.codePoint : Icons.help_outline.codePoint),
+          (isTransfer
+              ? Icons.swap_horiz.codePoint
+              : Icons.help_outline.codePoint),
       colorValue: category?.colorValue ??
           (isTransfer ? 0xFF8A8A8A : 0xFFA8A8A8),
       type: bill.type,
@@ -684,12 +568,12 @@ class _DayCard extends StatelessWidget {
       note: bill.note,
       location: bill.location,
       tags: tagsByBill[bill.id],
-      hasImage: imageBillIds.contains(bill.id),
-      accountLine: billAccountLine(bill, assets),
+      hasImage: view.billIdsWithImages.contains(bill.id),
+      accountLine: billAccountLine(bill, view.relatedAssets),
       onTap: () => showBillDetailSheet(
         context,
         bill: bill,
-        categories: categories,
+        categories: view.categories,
         // 详情里点分类：跳转到该分类的统计页
         onCategoryTap: (c) => Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -926,7 +810,7 @@ class _MonthPullSwitchState extends State<_MonthPullSwitch> {
           : const EdgeInsets.only(top: 10),
       color: AppColors.fill,
       // OverflowBox 让内容按自然高渲染（不受矮容器约束），超出部分
-      // 被容器 clip 裁掉——根治 RenderFlex bottom 溢出报错，同时内容
+      // 被容器 clip 裁掉——根治 RenderFlex 溢出报错，同时内容
       // 随拉出渐进露出、无门槛跳变
       child: OverflowBox(
         alignment: isTop ? Alignment.bottomCenter : Alignment.topCenter,

@@ -5,6 +5,7 @@ import 'package:chestnut/data/database.dart';
 import 'package:chestnut/data/repositories/asset_repository.dart';
 import 'package:chestnut/data/repositories/debt_note_repository.dart';
 import 'package:chestnut/models/enums.dart';
+import 'package:chestnut/services/photo_staging_service.dart';
 import 'package:chestnut/services/s3_compatible_client.dart';
 import 'package:drift/drift.dart' show Variable;
 import 'package:drift/native.dart';
@@ -319,9 +320,13 @@ void main() {
     });
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
 
-    // stagePhoto 的压缩对非法图片必然失败 → 退回原图，无需真 JPEG
-    final staged1 = await debtRepo.stagePhoto(Uint8List.fromList([1, 2, 3]));
-    final staged2 = await debtRepo.stagePhoto(Uint8List.fromList([4, 5, 6]));
+    // 暂存走共享服务（压缩对非法图片必然失败 → 退回原图，无需真 JPEG）
+    final staged1 =
+        await PhotoStagingService(dirName: 'debt_photos')
+            .stage(Uint8List.fromList([1, 2, 3]));
+    final staged2 =
+        await PhotoStagingService(dirName: 'debt_photos')
+            .stage(Uint8List.fromList([4, 5, 6]));
     final note = await debtRepo.insertDebtNote(
       direction: DebtDirection.lendOut,
       personName: '老王',
@@ -364,7 +369,9 @@ void main() {
     });
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
 
-    final staged = await debtRepo.stagePhoto(Uint8List.fromList([1, 2, 3]));
+    final staged =
+        await PhotoStagingService(dirName: 'debt_photos')
+            .stage(Uint8List.fromList([1, 2, 3]));
     final note = await debtRepo.insertDebtNote(
       direction: DebtDirection.borrowIn,
       personName: '老李',
@@ -397,7 +404,9 @@ void main() {
     });
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
 
-    final s1 = await debtRepo.stagePhoto(Uint8List.fromList([1]));
+    final s1 =
+        await PhotoStagingService(dirName: 'debt_photos')
+            .stage(Uint8List.fromList([1]));
     final note = await debtRepo.insertDebtNote(
       direction: DebtDirection.lendOut,
       personName: '老王',
@@ -408,7 +417,9 @@ void main() {
     final before = await debtRepo.getPhotosByNoteId(note.id);
 
     // 删旧图 + 加新图一次保存：旧记录/文件/云端对象清掉，新图 pending
-    final s2 = await debtRepo.stagePhoto(Uint8List.fromList([2, 3]));
+    final s2 =
+        await PhotoStagingService(dirName: 'debt_photos')
+            .stage(Uint8List.fromList([2, 3]));
     final client = _FakeS3();
     await debtRepo.updateDebtNote(
       note,

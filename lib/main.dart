@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/database.dart';
 import 'data/repositories/asset_repository.dart';
+import 'data/repositories/asset_flow_view_repository.dart';
 import 'data/repositories/bill_image_repository.dart';
 import 'data/repositories/bill_repository.dart';
 import 'data/repositories/budget_repository.dart';
@@ -29,6 +30,7 @@ import 'providers/debt_note_provider.dart';
 import 'providers/lock_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/backup_service.dart';
+import 'services/photo_staging_service.dart';
 import 'theme/app_theme.dart';
 
 /// 隐私政策同意标记：未同意前不初始化高德等第三方 SDK、不进入主界面
@@ -61,9 +63,9 @@ Future<void> main() async {
   // 每日自动备份：用户开启开关后每天首次启动执行（库不健康时跳过）
   if (dbHealthy) await BackupService().autoBackupIfNeeded(prefs);
   // 清理图片暂存目录：上次会话选了图但没保存的残留文件
-  await BillImageRepository.cleanupStaging();
+  await PhotoStagingService(dirName: 'receipts').cleanupStaging();
   // 清理借条照片暂存目录：同理（借据照片选了没保存的残留）
-  await DebtNoteRepository.cleanupStaging();
+  await PhotoStagingService(dirName: 'debt_photos').cleanupStaging();
   runApp(ChestnutApp(prefs: prefs, dbHealthy: dbHealthy));
 }
 
@@ -179,6 +181,10 @@ class _ProvidersApp extends StatelessWidget {
         ),
         Provider<DebtNoteRepository>(
           create: (ctx) => DebtNoteRepository(ctx.read<AppDatabase>()),
+        ),
+        Provider<AssetFlowViewRepository>(
+          create: (ctx) =>
+              AssetFlowViewRepository(ctx.read<AppDatabase>()),
         ),
         // 图片云存储配置：未配置/未启用时 App 内不出现任何图片入口。
         // 必须注册在 BillProvider 之前——MultiProvider 列表前面的包住

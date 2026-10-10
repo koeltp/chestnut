@@ -25,8 +25,9 @@ import 'stats_widgets.dart';
 /// 全部只看这一份数据：
 /// - 外部跳入（分类管理/详情）= 带初始参数 push，系统返回退出
 /// - 点排行项/环图扇区/明细分类 = 当前参数快照压栈 + 换参数出结果
-/// - 漏斗面板搜索 = 快照压栈 + 整组替换参数出结果
-/// - 顶栏 ← = 弹栈还原快照；栈空交给系统默认返回（退出页面）
+/// - 漏斗面板搜索 = **只替换当前参数不压栈**（同层数据换看法，
+///   不算导航；连续改条件后 ← 直接退出本页/视图）
+/// - 顶栏 ← 与系统返回键一致：弹栈还原快照；栈空退出页面
 /// - 切月份/分段器 = 当前页内调节，不进栈
 ///
 /// 视图形态由参数推导：categoryId 非空 = 分类视图（汇总卡 + 子分类
@@ -48,7 +49,8 @@ class _StatsPageState extends State<StatsPage> {
   /// 当前查询参数：唯一状态源
   StatsQuery _query = StatsQuery(month: DateTime.now());
 
-  /// 参数快照栈：跳转/搜索前的参数整体存档，← 逐级还原
+  /// 参数快照栈：仅钻取（点排行/扇区进下级分类）前整体存档，
+  /// ←/系统返回逐级还原；改搜索条件不入栈
   final List<StatsQuery> _history = [];
 
   /// 分类字典缓存：标题父名、面板回显派生、条件→视图映射都要查。
@@ -142,7 +144,8 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   /// 漏斗面板应用回调（区间 + 关键词 + 标签 + 分类一并应用）：
-  /// 快照压栈 + 整组替换参数出结果（每次搜索都是一次新导航，← 可回退）
+  /// **不压栈，只整组替换当前参数**——搜索是同层换看法而非钻取，
+  /// 连续改条件不产生历史层级，返回时直接退出当前视图/页面。
   ///
   /// 面板只回传具体日期区间，此处把恰好整月/整年的区间归整回
   /// month/year 模式（标题、柱状图、年月条高亮与普通浏览一致）；
@@ -194,7 +197,6 @@ class _StatsPageState extends State<StatsPage> {
     // 分类条件 → 视图身份映射（完整单组归入视图，混合多选作过滤条件）
     final viewCatId = _fullGroupCategoryId(categoryIds);
     setState(() {
-      _history.add(_query);
       _query = _query.copyWith(
         period: period,
         month: month,
@@ -321,7 +323,14 @@ class _StatsPageState extends State<StatsPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.read<BillProvider>();
-    return Scaffold(
+    return PopScope(
+      // 系统返回键（手势/物理键）与顶栏 ← 同一口径：
+      // 栈非空先弹一层视图，栈空才退出页面回来源页
+      canPop: _history.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _popView();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       // AppBar 依赖分类字典（标题父名），放进字典流的 builder 内构建
       body: StreamBuilder<Map<int, Category>>(
@@ -455,6 +464,7 @@ class _StatsPageState extends State<StatsPage> {
             ),
           );
         },
+      ),
       ),
     );
   }

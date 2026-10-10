@@ -14,19 +14,15 @@ class DebtNoteProvider extends ChangeNotifier {
   /// 全部借条流（借条列表页 / 主页合计卡的间接数据源）
   Stream<List<DebtNote>> allStream() => _repo.watchAll();
 
-  /// 关联某账户的借条流（账户明细页流水混排用）
-  Stream<List<DebtNote>> debtsOfAssetStream(int assetId) =>
-      _repo.watchOfAsset(assetId);
-
   /// 监听哪些借条有照片（列表页附件角标用）
   Stream<Set<int>> photoNoteIdsStream() => _repo.watchNoteIdsWithPhotos();
 
   /// 压缩并暂存一张借据照片，返回暂存路径
-  Future<String> stagePhoto(Uint8List raw) => _repo.stagePhoto(raw);
+  Future<String> stagePhoto(Uint8List raw) => _repo.photos.stage(raw);
 
   /// 丢弃一张暂存照片
   Future<void> discardStagedPhoto(String path) =>
-      _repo.discardStagedPhoto(path);
+      _repo.photos.discard(path);
 
   /// 某借条的全部照片（编辑页初始化回显用）
   Future<List<DebtNoteImage>> photosByNoteId(int noteId) =>

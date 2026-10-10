@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -16,6 +16,7 @@ import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
 import '../utils/show_toast.dart';
 import 'category_avatar.dart';
+import 'detail_widgets.dart';
 import 'photo_viewer_page.dart';
 
 /// 账单详情底部弹窗：点击明细条目时展示完整信息，代替"直接进编辑页"
@@ -384,15 +385,19 @@ class _DetailBodyState extends State<_DetailBody> {
                     ),
                   ),
                   const Spacer(),
-                  _pill('复制', onTap: () => _openEditor(false)),
+                  DetailPill('复制', onTap: () => _openEditor(false)),
                   const SizedBox(width: 8),
-                  _pill('修改', onTap: () => _openEditor(true)),
+                  DetailPill('修改', onTap: () => _openEditor(true)),
                   const SizedBox(width: 8),
-                  _pill('删除', red: true, onTap: () => _confirmDelete(context)),
+                  DetailPill(
+                    '删除',
+                    danger: true,
+                    onTap: () => _confirmDelete(context),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
-              _Row(
+              DetailInfoRow(
                 label: '金额',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -455,7 +460,7 @@ class _DetailBodyState extends State<_DetailBody> {
               // 图片凭证条：金额行下方 56px 圆角横滑缩略图（点击全屏预览）
               if (_images.isNotEmpty) ...[
                 const Divider(height: 1, color: AppColors.divider),
-                _Row(
+                DetailInfoRow(
                   label: '图片',
                   child: SizedBox(
                     height: 56,
@@ -463,13 +468,21 @@ class _DetailBodyState extends State<_DetailBody> {
                       scrollDirection: Axis.horizontal,
                       itemCount: _images.length,
                       separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (_, i) => _thumbCell(_images[i]),
+                      itemBuilder: (_, i) {
+                        final img = _images[i];
+                        return DetailPhotoThumb(
+                          file: _localFiles[img.id],
+                          uploadState: img.uploadState,
+                          onTap: () => _preview(img),
+                          onRetry: () => unawaited(_reupload(img)),
+                        );
+                      },
                     ),
                   ),
                 ),
               ],
               const Divider(height: 1, color: AppColors.divider),
-              _Row(
+              DetailInfoRow(
                 label: '分类',
                 onTap: category == null ? null : () => _tapCategory(context),
                 child: category == null
@@ -525,7 +538,7 @@ class _DetailBodyState extends State<_DetailBody> {
                       ),
               ),
               const Divider(height: 1, color: AppColors.divider),
-              _Row(
+              DetailInfoRow(
                 label: '时间',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -551,7 +564,7 @@ class _DetailBodyState extends State<_DetailBody> {
                 ),
               ),
               const Divider(height: 1, color: AppColors.divider),
-              _Row(
+              DetailInfoRow(
                 label: '备注',
                 // Align 让 Text 按内容自然宽度收缩：短文本窄块靠右
                 //（视觉同右对齐）；长文本撑满内容区、内部左对齐，
@@ -571,7 +584,7 @@ class _DetailBodyState extends State<_DetailBody> {
               ),
               if (_tags.isNotEmpty) ...[
                 const Divider(height: 1, color: AppColors.divider),
-                _Row(
+                DetailInfoRow(
                   label: '标签',
                   child: Wrap(
                     alignment: WrapAlignment.end,
@@ -611,7 +624,7 @@ class _DetailBodyState extends State<_DetailBody> {
               ],
               if (location != null) ...[
                 const Divider(height: 1, color: AppColors.divider),
-                _Row(
+                DetailInfoRow(
                   label: '位置',
                   onTap: hasLocationPoint ? _tapLocation : null,
                   child: Row(
@@ -645,142 +658,6 @@ class _DetailBodyState extends State<_DetailBody> {
               const SizedBox(height: 4),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  /// 缩略图单元：56px 圆角图 + 右上角上传状态角标（点击重传）
-  Widget _thumbCell(BillImage img) {
-    final file = _localFiles[img.id];
-    final uploading = img.uploadState == BillImageUploadState.uploading;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        GestureDetector(
-          onTap: () => _preview(img),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: file == null
-                ? Container(
-                    width: 56,
-                    height: 56,
-                    color: AppColors.fill,
-                    child: const Icon(
-                      Icons.image_outlined,
-                      size: 20,
-                      color: AppColors.textSecondary,
-                    ),
-                  )
-                : Image.file(
-                    file,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    // 文件半路被清（罕见）：退占位，不影响其余图
-                    errorBuilder: (_, _, _) => Container(
-                      width: 56,
-                      height: 56,
-                      color: AppColors.fill,
-                      child: const Icon(
-                        Icons.image_outlined,
-                        size: 20,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-        // 未上传角标：上传中转圈，等待/失败橙点；点角标手动重传
-        if (img.uploadState != BillImageUploadState.done)
-          Positioned(
-            right: -3,
-            top: -3,
-            child: GestureDetector(
-              onTap: uploading ? null : () => unawaited(_reupload(img)),
-              child: Container(
-                width: 16,
-                height: 16,
-                // 半透明黑圆底：角标浮在照片上，白底遇白图会隐身
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
-                ),
-                child: uploading
-                    ? const Padding(
-                        padding: EdgeInsets.all(3),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.error_outline,
-                        size: 14,
-                        color: AppColors.expense,
-                      ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// 操作胶囊：常规操作浅灰底，删除红底红字
-  Widget _pill(String text, {required VoidCallback onTap, bool red = false}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(17),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: red
-              ? AppColors.expense.withValues(alpha: 0.08)
-              : AppColors.fill,
-          borderRadius: BorderRadius.circular(17),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: red ? AppColors.expense : AppColors.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 详情信息行：左侧灰色字段名，右侧值；整行可点（分类跳转）
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.child, this.onTap});
-
-  final String label;
-  final Widget child;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        // 值拿满标签右侧全部宽度：短值靠右（child 自行右对齐），
-        // 长值（地址/备注）自动折行，最多 3 行
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 15,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(child: child),
-          ],
         ),
       ),
     );

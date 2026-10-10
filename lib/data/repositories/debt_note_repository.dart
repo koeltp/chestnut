@@ -1,21 +1,20 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:drift/drift.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../database.dart';
 import '../../models/enums.dart';
+import '../../services/photo_staging_service.dart';
 import '../../services/s3_compatible_client.dart';
 import 'asset_repository.dart';
 
 /// 借条仓储：借出/借入台账的增删改与借据照片管理
 ///
-/// 照片与账单图片同架构的"暂存-转正-双写"（一借条可挂多图）：
-/// · 表单选图 → [stagePhoto] 压缩后进 debt_photos/.staging/；
+/// 照片与账单图片同架构的"暂存-转正-双写"（一借条可挂多图），
+/// 选图/压缩等暂存逻辑统一走 [photos] 服务：
+/// · 表单选图 → [photos].stage 压缩后进 debt_photos/.staging/；
 /// · 借条保存 → [attachStagedPhotos] 把暂存文件转正到
 ///   debt_photos/{noteId}/ 并落 debt_note_images 行（uploadState = pending）；
 /// · 上传 → [uploadPhotos] / [uploadPending]，失败改 failed 等启动补传；
@@ -33,87 +32,9 @@ class DebtNoteRepository {
   /// 记账联动引擎（AssetRepository 无状态仅持 _db，就地构造零成本）
   late final _assetRepo = AssetRepository(_db);
 
-  /// 压缩目标：与账单图片一致（长边 1800、JPEG q80）
-  static const _maxEdge = 1800;
-  static const _quality = 80;
-
-  /// 暂存目录（debt_photos/.staging/，保存时转正移走）
-  Future<Directory> _stagingDir() async {
-    final support = await getApplicationSupportDirectory();
-    return Directory(p.join(support.path, 'debt_photos', '.staging'))
-        .create(recursive: true);
-  }
-
-  /// 正式目录（debt_photos/{noteId}/，与云端按借条分目录的 key 对应）
-  Future<Directory> _noteDir(int noteId) async {
-    final support = await getApplicationSupportDirectory();
-    return Directory(p.join(support.path, 'debt_photos', '$noteId'))
-        .create(recursive: true);
-  }
-
-  /// 云端对象键：chestnut/debt_photos/{noteId}/{时间戳}_{随机}.jpg
-  /// 前缀 chestnut/ 让桶内与本 App 相关的对象聚在一起，便于用户清理
-  String _objectKeyFor(int noteId, String fileName) =>
-      'chestnut/debt_photos/$noteId/$fileName';
-
-  /// 压缩并暂存一张借据照片，返回暂存文件路径；借条保存时转正
-  Future<String> stagePhoto(Uint8List raw) async {
-    Uint8List data = raw;
-    try {
-      final compressed = await FlutterImageCompress.compressWithList(
-        raw,
-        minWidth: _maxEdge,
-        minHeight: _maxEdge,
-        quality: _quality,
-        format: CompressFormat.jpeg,
-        // 拍照原图可能带 EXIF 旋转标记，压缩时一并摆正
-        autoCorrectionAngle: true,
-      );
-      if (compressed.isNotEmpty) data = compressed;
-    } catch (_) {
-      // 压缩失败（动图/异常编码等）退回原图，保证不丢图
-    }
-    final dir = await _stagingDir();
-    final file = File(p.join(dir.path, '${_uniqueName()}.jpg'));
-    await file.writeAsBytes(data, flush: true);
-    return file.path;
-  }
-
-  /// 丢弃一张暂存照片（表单内删除 / 页面退出未保存时清理）
-  Future<void> discardStagedPhoto(String path) async {
-    final f = File(path);
-    if (await f.exists()) {
-      try {
-        await f.delete();
-      } catch (_) {
-        // 单个清理失败忽略，启动时有 [cleanupStaging] 兜底
-      }
-    }
-  }
-
-  /// 清空暂存目录：App 启动时调用，清理崩溃/退出遗留的未转正文件
-  static Future<void> cleanupStaging() async {
-    try {
-      final support = await getApplicationSupportDirectory();
-      final dir = Directory(p.join(support.path, 'debt_photos', '.staging'));
-      if (!await dir.exists()) return;
-      await for (final entity in dir.list()) {
-        try {
-          await entity.delete();
-        } catch (_) {
-          // 单个清理失败忽略
-        }
-      }
-    } catch (_) {
-      // 目录不存在等情况忽略
-    }
-  }
-
-  /// 唯一文件名：毫秒时间戳 + 4 位随机（与账单图片同规则）
-  String _uniqueName() {
-    final rand = Random().nextInt(0xFFFF).toRadixString(16).padLeft(4, '0');
-    return '${DateTime.now().millisecondsSinceEpoch}_$rand';
-  }
+  /// 借据照片暂存服务（debt_photos 目录）：选图/压缩/转正路径共用
+  final PhotoStagingService photos =
+      PhotoStagingService(dirName: 'debt_photos');
 
   /// 把一批暂存照片转正到借条正式目录并落 debt_note_images 行
   /// （uploadState = pending，由调用方触发上传）；
@@ -127,8 +48,8 @@ class DebtNoteRepository {
     for (final stagedPath in stagedPaths) {
       final src = File(stagedPath);
       if (!await src.exists()) continue;
-      final name = '${_uniqueName()}.jpg';
-      final dest = p.join((await _noteDir(noteId)).path, name);
+      final name = photos.uniqueFileName();
+      final dest = p.join((await photos.entityDir(noteId)).path, name);
       try {
         // 同一分区内 rename 是原子操作，比 copy+delete 快且不留中间态
         await src.rename(dest);
@@ -140,7 +61,7 @@ class DebtNoteRepository {
       final id = await _db.into(_db.debtNoteImages).insert(
             DebtNoteImagesCompanion.insert(
               noteId: noteId,
-              objectKey: _objectKeyFor(noteId, name),
+              objectKey: photos.objectKeyFor(noteId, name),
               localPath: dest,
               uploadState: BillImageUploadState.pending,
               sort: Value(sort++),
