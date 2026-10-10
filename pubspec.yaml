@@ -2,7 +2,7 @@ name: chestnut
 description: "栗子记账 - 一款简洁精致的记账 App"
 publish_to: 'none'
 
-version: 1.1.4+2008
+version: 1.1.5+2009
 
 environment:
   sdk: ^3.13.4

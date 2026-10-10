@@ -124,6 +124,8 @@ flutter build apk --release --no-tree-shake-icons --split-per-abi --target-platf
 
 产物：`build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`。签名证书在 `android/key.properties` 中配置（文件不入库）。
 
+完整发版流程（版本号规则、构建后自检、发布后回归）见 [RELEASING.md](RELEASING.md)。
+
 ## 权限说明
 
 | 权限 | 用途 | 是否必须 |
