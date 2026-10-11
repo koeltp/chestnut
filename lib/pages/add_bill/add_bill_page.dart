@@ -18,7 +18,6 @@ import '../../providers/budget_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/cloud_storage_provider.dart';
 import '../../providers/settings_provider.dart';
-import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
@@ -26,6 +25,7 @@ import '../../widgets/asset_circle_icon.dart';
 import '../../widgets/asset_pick_sheet.dart';
 import '../../widgets/number_keyboard.dart';
 import '../../widgets/tag_picker_sheet.dart';
+import 'add_bill_draft.dart';
 import 'bill_image_sheet.dart';
 import 'category_section.dart';
 import 'location_picker_page.dart';
@@ -54,38 +54,23 @@ class AddBillPage extends StatefulWidget {
   State<AddBillPage> createState() => _AddBillPageState();
 }
 
-/// 记一笔页共享状态基类：全部字段集中于此，四个分区 mixin（见 part 文件）
-/// 经由它访问字段；跨分区共用的小工具（_assetById）也放这里
+/// 记一笔页共享状态基类：页面"值"统一住在 [_draft]（见 add_bill_draft.dart），
+/// 基类只留控制器/订阅/测量等"活对象"、UI 输入态与跨分区小工具（_assetById）
 abstract class _AddBillBase extends State<AddBillPage> {
-  late BillType _type;
-  String _amountText = '';
-
-  /// 优惠金额输入文本（元）；空 = 未设置优惠。仅支出账单可用
-  String _discountText = '';
+  /// 值草稿：所有会被保存进账单的数据（类型/金额/分类/日期/账户/标签/
+  /// 备注/定位）都在这里，四个分区 mixin 统一读写 _draft.xxx
+  late AddBillDraft _draft;
 
   /// 输入模式（钱迹式）：true 时数字键盘改道写入优惠，
   /// 备注/金额行整体变身为"优惠"行；
   /// 再点优惠胶囊切回实付模式，已填优惠保留
   bool _discountMode = false;
 
-  int? _selectedCategoryId;
-  late DateTime _date;
-
-  /// 关联账户（支出 = 付款账户，收入 = 收款账户，转账 = 转出账户）；
-  /// null = 不关联（纯记账，余额不动）
-  int? _selectedAssetId;
-
-  /// 转入账户（仅转账账单）：储蓄卡 → 信用卡即还款
-  int? _toAssetId;
-
   /// 未归档账户缓存（账户选择行/弹窗渲染用；资产流订阅实时刷新）
   List<Asset> _allAssets = [];
 
   /// 资产流订阅：页面存活期间保持缓存刷新，退出时取消
   StreamSubscription<List<Asset>>? _assetsSub;
-
-  /// 已选标签 id 集合（空 = 未打标签）；# 按钮显示数量，弹层内勾选
-  final Set<int> _selectedTagIds = {};
 
   /// 图片仓储（选图暂存 / 保存转正 / 退出清理共用）
   late final BillImageRepository _imageRepo = context
@@ -106,8 +91,6 @@ abstract class _AddBillBase extends State<AddBillPage> {
   /// 全部标签缓存（弹层渲染用，initState 时加载，新建标签后追加）
   List<Tag> _allTags = [];
 
-  /// 账单时间（当日 0..1439 分钟）
-  late int _timeMinute;
   final _noteController = TextEditingController();
 
   /// 备注输入框焦点：聚焦时系统软键盘弹出、直接覆盖在常驻数字键盘上
@@ -143,16 +126,6 @@ abstract class _AddBillBase extends State<AddBillPage> {
       }
     });
   }
-
-  /// 定位地名；null = 未定位
-  String? _locationName;
-
-  /// 定位完整信息（省市区街道 + 地点名），专供搜索字段 locationFull；
-  /// 编辑时读旧账单回显，选点页无法补全时保留旧值兜底
-  String? _locationFull;
-
-  /// 定位坐标（与地名一起保存，编辑时选点页据此回到原地点）
-  Gcj02Point? _selectedPoint;
 
   /// 按类型缓存分类查询流：drift 的 watch() 每次调用都生成新 Stream，
   /// 若在 build 中现取现用，金额键入等高频 rebuild 会让 StreamBuilder
@@ -206,33 +179,17 @@ class _AddBillPageState extends _AddBillBase
     final nowMinute = now.hour * 60 + now.minute;
     final bill = _sourceBill;
     if (bill != null) {
-      _type = bill.type;
-      // 零头为 0 时省略小数：用户输入整数保存，回填时不显示 xxx.00
-      _amountText = MoneyUtil.centsToYuanTrimmed(bill.amountCents);
-      _discountText = bill.discountCents == null
-          ? ''
-          : MoneyUtil.centsToYuanTrimmed(bill.discountCents!);
-      _selectedCategoryId = bill.categoryId;
-      _date = bill.date;
-      _timeMinute = bill.timeMinute ?? nowMinute;
-      _noteController.text = bill.note ?? '';
-      _locationName = bill.location;
-      _locationFull = bill.locationFull;
-      _selectedAssetId = bill.assetId;
-      _toAssetId = bill.toAssetId;
-      if (bill.lat != null && bill.lng != null) {
-        _selectedPoint = Gcj02Point(lat: bill.lat!, lng: bill.lng!);
-      }
+      // 编辑/复制：草稿从源账单整体回填，控制器只管备注的显示
+      _draft = AddBillDraft.fromBill(bill, nowMinute: nowMinute);
+      _noteController.text = _draft.note;
       // 编辑模式：异步加载该账单已有标签
       _loadExistingTags(bill.id);
       // 编辑模式异步加载已入库图片回显；复制模式不带图（凭证不复制）
       if (widget.editBill != null) _loadExistingImages(bill.id);
     } else {
-      _type = BillType.expense;
-      _date = DateTime.now();
-      _timeMinute = nowMinute;
       // 新建模式：金额/分类/备注不恢复，但账户默认带上次记账用的，
       // 连续记账大多用同一账户（见 _restoreLastAsset）
+      _draft = AddBillDraft(date: DateTime.now(), timeMinute: nowMinute);
       _restoreLastAsset();
     }
     // 异步加载全部标签（供弹层渲染，不阻塞首帧）
@@ -242,7 +199,7 @@ class _AddBillPageState extends _AddBillBase
   /// 新建模式默认带上次记账关联的账户：账户已被删除或归档时，
   /// didChangeDependencies 的资产流监听会自动清掉这个悬挂 id
   void _restoreLastAsset() {
-    _selectedAssetId = context.read<AssetProvider>().lastBillAssetId;
+    _draft.selectedAssetId = context.read<AssetProvider>().lastBillAssetId;
   }
 
   /// 加载全部标签到缓存（弹层用）
@@ -257,7 +214,7 @@ class _AddBillPageState extends _AddBillBase
     final tags = await context.read<TagRepository>().getTagsByBillId(billId);
     if (!mounted) return;
     setState(() {
-      _selectedTagIds
+      _draft.selectedTagIds
         ..clear()
         ..addAll(tags.map((t) => t.id));
     });
@@ -302,12 +259,12 @@ class _AddBillPageState extends _AddBillBase
           if (!mounted) return;
           setState(() {
             _allAssets = list;
-            if (_selectedAssetId != null &&
-                !list.any((a) => a.id == _selectedAssetId)) {
-              _selectedAssetId = null;
+            if (_draft.selectedAssetId != null &&
+                !list.any((a) => a.id == _draft.selectedAssetId)) {
+              _draft.selectedAssetId = null;
             }
-            if (_toAssetId != null && !list.any((a) => a.id == _toAssetId)) {
-              _toAssetId = null;
+            if (_draft.toAssetId != null && !list.any((a) => a.id == _draft.toAssetId)) {
+              _draft.toAssetId = null;
             }
           });
         });
@@ -344,7 +301,7 @@ class _AddBillPageState extends _AddBillBase
                     Expanded(
                       // 转账无分类：整区替换为转出/转入账户选择；
                       // 支出/收入的账户在底部胶囊行选择，这里只放分类树
-                      child: _type == BillType.transfer
+                      child: _draft.type == BillType.transfer
                           ? _buildTransferAccountArea()
                           : _buildCategoryGrid(),
                     ),
@@ -429,23 +386,23 @@ class _AddBillPageState extends _AddBillBase
 
   /// 顶栏类型 Tab：文字 + 选中态主色下划线
   Widget _buildTopTab(BillType type) {
-    final selected = _type == type;
+    final selected = _draft.type == type;
     return InkWell(
       onTap: () {
         if (selected) return;
         setState(() {
-          _type = type;
+          _draft.type = type;
           // 切换类型后原分类不再适用，重置为空（由分类区默认选中补齐）
-          _selectedCategoryId = null;
+          _draft.selectedCategoryId = null;
           // 优惠只属于支出：切到收入/转账时退出优惠模式并清空，
           // 防止已填优惠被误带进收入或转账账单
           if (type != BillType.expense) {
             _discountMode = false;
-            _discountText = '';
+            _draft.discountText = '';
           }
           // 转入账户只属于转账：切出转账时清掉，支出/收入不保存该值
           if (type != BillType.transfer) {
-            _toAssetId = null;
+            _draft.toAssetId = null;
           }
         });
       },
@@ -487,12 +444,12 @@ class _AddBillPageState extends _AddBillBase
   /// 再点当前已选二级 = 取消、挂回一级。默认挂第一个一级分类本身。
   Widget _buildCategoryGrid() {
     return CategorySection(
-      stream: _categoryStreams[_type]!,
-      type: _type,
-      selectedId: _selectedCategoryId,
-      onSelectedChanged: (id) => setState(() => _selectedCategoryId = id),
+      stream: _categoryStreams[_draft.type]!,
+      type: _draft.type,
+      selectedId: _draft.selectedCategoryId,
+      onSelectedChanged: (id) => setState(() => _draft.selectedCategoryId = id),
       // 选中分类不存在时（如类型切换后）兜底挂第一个一级本身
-      onEnsureSelected: (id) => _selectedCategoryId = id,
+      onEnsureSelected: (id) => _draft.selectedCategoryId = id,
     );
   }
 
@@ -504,12 +461,12 @@ class _AddBillPageState extends _AddBillBase
       onClear: () => setState(() {
         // 清空当前输入模式对应的字段
         if (_discountMode) {
-          _discountText = '';
+          _draft.discountText = '';
         } else {
-          _amountText = '';
+          _draft.amountText = '';
         }
       }),
-      onToday: () => setState(() => _date = DateTime.now()),
+      onToday: () => setState(() => _draft.date = DateTime.now()),
       onAgain: () => _save(stay: true),
       onDone: () => _save(),
     );
@@ -521,13 +478,13 @@ class _AddBillPageState extends _AddBillBase
   /// 两者共用同一套前导零/小数位/上限约束
   void _onAmountKey(String key) {
     setState(() {
-      final current = _discountMode ? _discountText : _amountText;
+      final current = _discountMode ? _draft.discountText : _draft.amountText;
       final next = _constrainAmountInput(current, key);
       if (next == null) return;
       if (_discountMode) {
-        _discountText = next;
+        _draft.discountText = next;
       } else {
-        _amountText = next;
+        _draft.amountText = next;
       }
     });
   }
@@ -554,11 +511,11 @@ class _AddBillPageState extends _AddBillBase
   void _onAmountDelete() {
     setState(() {
       if (_discountMode) {
-        if (_discountText.isEmpty) return;
-        _discountText = _discountText.substring(0, _discountText.length - 1);
+        if (_draft.discountText.isEmpty) return;
+        _draft.discountText = _draft.discountText.substring(0, _draft.discountText.length - 1);
       } else {
-        if (_amountText.isEmpty) return;
-        _amountText = _amountText.substring(0, _amountText.length - 1);
+        if (_draft.amountText.isEmpty) return;
+        _draft.amountText = _draft.amountText.substring(0, _draft.amountText.length - 1);
       }
     });
   }

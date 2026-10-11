@@ -11,14 +11,14 @@ mixin _Chips on _AddBillBase {
       now.year,
       now.month,
       now.day,
-    ).difference(DateTime(_date.year, _date.month, _date.day)).inDays;
-    final hh = (_timeMinute ~/ 60).toString().padLeft(2, '0');
-    final mm = (_timeMinute % 60).toString().padLeft(2, '0');
+    ).difference(DateTime(_draft.date.year, _draft.date.month, _draft.date.day)).inDays;
+    final hh = (_draft.timeMinute ~/ 60).toString().padLeft(2, '0');
+    final mm = (_draft.timeMinute % 60).toString().padLeft(2, '0');
     final label = switch (diff) {
       0 => '今天 $hh:$mm',
       1 => '昨天 $hh:$mm',
       2 => '前天 $hh:$mm',
-      _ => '${_date.month}月${_date.day}日 $hh:$mm',
+      _ => '${_draft.date.month}月${_draft.date.day}日 $hh:$mm',
     };
     // 定位开关关闭时隐藏入口；编辑/复制已有位置的账单除外，保留清除能力
     final showLocation =
@@ -42,7 +42,7 @@ mixin _Chips on _AddBillBase {
           child: Row(
             children: [
               // 账户胶囊放最前（支出/收入）；转账的两个账户在内容区选择行
-              if (_type != BillType.transfer) ...[
+              if (_draft.type != BillType.transfer) ...[
                 _buildAssetChip(),
                 const SizedBox(width: 8),
               ],
@@ -79,7 +79,7 @@ mixin _Chips on _AddBillBase {
                   ),
                 ),
               ),
-              if (_type == BillType.expense) ...[
+              if (_draft.type == BillType.expense) ...[
                 const SizedBox(width: 8),
                 _buildDiscountChip(),
               ],
@@ -173,7 +173,7 @@ mixin _Chips on _AddBillBase {
   /// 优惠输入模式中=浅绿底"优惠 ✕"，✕ 清空优惠并退回实付模式。
   /// 点胶囊本体在实付/优惠输入模式间切换（钱迹式）
   Widget _buildDiscountChip() {
-    final discountCents = MoneyUtil.yuanToCents(_discountText);
+    final discountCents = MoneyUtil.yuanToCents(_draft.discountText);
     final hasDiscount = discountCents != null && discountCents > 0;
     final active = _discountMode;
     final bg = (active || hasDiscount)
@@ -223,7 +223,7 @@ mixin _Chips on _AddBillBase {
   /// 定位胶囊：未定位显示"定位"入口，点击获取当前位置；
   /// 已定位显示地名与清除按钮。样式与日期胶囊保持一致。
   Widget _buildLocationChip() {
-    final hasLocation = _locationName != null;
+    final hasLocation = _draft.locationName != null;
     return InkWell(
       onTap: _locate,
       borderRadius: BorderRadius.circular(14),
@@ -243,7 +243,7 @@ mixin _Chips on _AddBillBase {
             ),
             const SizedBox(width: 5),
             Text(
-              hasLocation ? _locationName! : '定位',
+              hasLocation ? _draft.locationName! : '定位',
               maxLines: 1,
               style: const TextStyle(
                 fontSize: 12,
@@ -256,9 +256,9 @@ mixin _Chips on _AddBillBase {
               const SizedBox(width: 4),
               GestureDetector(
                 onTap: () => setState(() {
-                  _locationName = null;
-                  _locationFull = null;
-                  _selectedPoint = null;
+                  _draft.locationName = null;
+                  _draft.locationFull = null;
+                  _draft.selectedPoint = null;
                 }),
                 child: const Icon(
                   Icons.cancel,
@@ -281,20 +281,20 @@ mixin _Chips on _AddBillBase {
     final selection = await Navigator.of(context).push<LocationSelection>(
       MaterialPageRoute(
         builder: (_) => LocationPickerPage(
-          initialName: _locationName,
-          initialPoint: _selectedPoint,
+          initialName: _draft.locationName,
+          initialPoint: _draft.selectedPoint,
         ),
       ),
     );
     if (!mounted) return;
     if (selection != null && selection.name.isNotEmpty) {
       setState(() {
-        _locationName = selection.name;
-        _selectedPoint = selection.point;
+        _draft.locationName = selection.name;
+        _draft.selectedPoint = selection.point;
         // 选点页补全了完整地址则更新；无法补全（如"已保存的位置"）
         // 保留旧值，避免把已有的完整信息冲掉
         if (selection.fullAddress != null) {
-          _locationFull = selection.fullAddress;
+          _draft.locationFull = selection.fullAddress;
         }
       });
     }
@@ -306,7 +306,7 @@ mixin _Chips on _AddBillBase {
   /// 账户选择面板（与图片胶囊同交互）；上次使用的账户进页时已自动
   /// 带上（见 _restoreLastAsset）。转账模式不显示——两个账户在内容区选
   Widget _buildAssetChip() {
-    final asset = _assetById(_selectedAssetId);
+    final asset = _assetById(_draft.selectedAssetId);
     return InkWell(
       onTap: _pickAsset,
       borderRadius: BorderRadius.circular(14),
@@ -353,7 +353,7 @@ mixin _Chips on _AddBillBase {
       allowNone: true,
     );
     if (result == null || !mounted) return;
-    setState(() => _selectedAssetId = result.$1?.id);
+    setState(() => _draft.selectedAssetId = result.$1?.id);
   }
 
   /// 选择账单日期与时间：滚轮弹窗（年/月/日 + 今昨前快捷 + 时间入口）
@@ -367,12 +367,12 @@ mixin _Chips on _AddBillBase {
         ),
       ),
       builder: (_) =>
-          WheelDatePicker(initial: _date, initialMinute: _timeMinute),
+          WheelDatePicker(initial: _draft.date, initialMinute: _draft.timeMinute),
     );
     if (picked != null) {
       setState(() {
-        _date = picked.$1;
-        _timeMinute = picked.$2;
+        _draft.date = picked.$1;
+        _draft.timeMinute = picked.$2;
       });
     }
   }

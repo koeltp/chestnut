@@ -179,68 +179,43 @@ class BillListItem extends StatelessWidget {
                               spacing: 4,
                               runSpacing: 2,
                               children: [
-                                for (final t in tags!) _MiniTagChip(tag: t),
+                                // 列表保持极简：最多展示前 2 个标签，
+                                // 其余折叠为「+n」；全部标签在详情弹窗可见
+                                for (final t in tags!.take(2))
+                                  _MiniTagChip(tag: t),
+                                if (tags!.length > 2)
+                                  _MiniTagOverflowChip(count: tags!.length - 2),
                               ],
                             ),
                           ),
                       ],
                     ),
                   ],
-                  // 备注与定位同一行：备注（灰）｜ 📍 定位——两者都是
-                  // "文本类"元素放后排；都存在时各占一半、超长省略
+                  // 备注与定位同一行：备注实测宽度封顶半行，分隔线紧贴备注，
+                  // 定位吃掉剩余全部空间——备注短时定位左移且更宽
                   if (hasNote || hasLocation) ...[
                     const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (hasNote)
+                    if (hasNote && hasLocation)
+                      _buildNoteLocationRow(note!, location!)
+                    else if (hasNote)
+                      Row(
+                        children: [
                           Expanded(
                             child: Text(
                               note!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
+                              style: _noteLocationStyle,
                             ),
                           ),
-                        if (hasNote && hasLocation) ...[
-                          const SizedBox(width: 6),
-                          const Text(
-                            '|',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.divider,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
                         ],
-                        if (hasLocation)
-                          Expanded(
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.place_outlined,
-                                  size: 11,
-                                  color: AppColors.textSecondary,
-                                ),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  child: Text(
-                                    location!,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(child: _buildLocationText(location!)),
+                        ],
+                      ),
                   ],
                 ],
               ),
@@ -302,6 +277,101 @@ class BillListItem extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 备注行文本样式：TextPainter 实测与实际渲染必须用同一份样式，
+  /// 抽成常量防止两处漂移
+  static const _noteLocationStyle = TextStyle(
+    fontSize: 12,
+    color: AppColors.textSecondary,
+  );
+
+  /// 备注与定位同行的宽度分配：备注在"最多半行"的约束内自行决定
+  /// 宽度（短则实际宽、长则半行内省略），分隔线紧贴其后，定位吃掉
+  /// 剩余全部空间。备注越长越接近对半分；备注短时定位显著左移
+  ///
+  /// 不用 TextPainter 预测量宽度再定宽占位：紧贴实测值的定宽盒子
+  /// 在真机字体度量有亚像素误差时会被判"放不下"而误触省略号
+  /// （实测整行被吃掉 1-2 个字）；让 Text 在约束内自测自绘，
+  /// 测量与渲染同源，不存在偏差
+  Widget _buildNoteLocationRow(String note, String location) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final half = constraints.maxWidth / 2;
+        return Row(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: half),
+              child: Text(
+                note,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _noteLocationStyle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              '|',
+              style: TextStyle(fontSize: 11, color: AppColors.divider),
+            ),
+            const SizedBox(width: 6),
+            Expanded(child: _buildLocationText(location)),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 📍 定位文本（图标 + 省略文本）：单占一行或与备注共行共用
+  Widget _buildLocationText(String location) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.place_outlined,
+          size: 11,
+          color: AppColors.textSecondary,
+        ),
+        const SizedBox(width: 2),
+        Expanded(
+          child: Text(
+            location,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 标签折叠数量胶囊（「+n」）：与 [_MiniTagChip] 同规格的中性灰样式，
+/// 表示列表中未展示的标签数量，全部标签在详情弹窗可见
+class _MiniTagOverflowChip extends StatelessWidget {
+  const _MiniTagOverflowChip({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppColors.textSecondary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '+$count',
+        style: const TextStyle(
+          fontSize: 10,
+          color: AppColors.textSecondary,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );

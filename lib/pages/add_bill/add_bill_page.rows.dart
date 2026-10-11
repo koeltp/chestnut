@@ -5,14 +5,14 @@ mixin _NoteRows on _AddBillBase {
   /// 备注与金额行：# 备注输入 ｜ 金额 + 币种
   Widget _buildNoteRow() {
     // 转账金额用中性色：非收非支，与明细列表/详情弹窗同口径
-    final color = switch (_type) {
+    final color = switch (_draft.type) {
       BillType.expense => AppColors.expense,
       BillType.income => AppColors.income,
       BillType.transfer => AppColors.textPrimary,
     };
     // 空金额时不显示大字"0"，改为中号灰色提示，明确录入的是实付
     // （优惠另有独立入口）；转账语义不同提示"转账金额"；CNY 始终保留
-    final amountEmpty = _amountText.isEmpty;
+    final amountEmpty = _draft.amountText.isEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppDimens.pagePadding,
@@ -25,11 +25,11 @@ mixin _NoteRows on _AddBillBase {
           GestureDetector(
             onTap: _showTagSheet,
             child: Text(
-              _selectedTagIds.isEmpty ? '#' : '#(${_selectedTagIds.length})',
+              _draft.selectedTagIds.isEmpty ? '#' : '#(${_draft.selectedTagIds.length})',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: _selectedTagIds.isEmpty
+                color: _draft.selectedTagIds.isEmpty
                     ? AppColors.textSecondary
                     : AppColors.primary,
               ),
@@ -45,6 +45,8 @@ mixin _NoteRows on _AddBillBase {
               // 按"完成"键释放焦点：系统键盘收起、数字键盘恢复
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _noteFocus.unfocus(),
+              // 控制器只管显示，备注"值"实时同步进草稿，保存时从 _draft 取
+              onChanged: (v) => _draft.note = v,
               decoration: const InputDecoration(
                 isDense: true,
                 counterText: '',
@@ -78,8 +80,8 @@ mixin _NoteRows on _AddBillBase {
               children: [
                 Text(
                   amountEmpty
-                      ? (_type == BillType.transfer ? '转账金额' : '实付金额')
-                      : _amountText,
+                      ? (_draft.type == BillType.transfer ? '转账金额' : '实付金额')
+                      : _draft.amountText,
                   maxLines: 1,
                   textAlign: TextAlign.right,
                   style: amountEmpty
@@ -143,7 +145,7 @@ mixin _NoteRows on _AddBillBase {
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  _discountText.isEmpty ? '0.00' : _discountText,
+                  _draft.discountText.isEmpty ? '0.00' : _draft.discountText,
                   maxLines: 1,
                   textAlign: TextAlign.right,
                   style: const TextStyle(
@@ -180,11 +182,11 @@ mixin _NoteRows on _AddBillBase {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => TagPickerSheet(
-        selectedIds: _selectedTagIds,
+        selectedIds: _draft.selectedTagIds,
         allTags: _allTags,
         onChanged: (ids) {
           setState(() {
-            _selectedTagIds
+            _draft.selectedTagIds
               ..clear()
               ..addAll(ids);
           });

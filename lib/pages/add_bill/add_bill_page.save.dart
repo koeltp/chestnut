@@ -11,31 +11,31 @@ mixin _SaveAndBudget on _AddBillBase {
   Future<void> _save({bool stay = false}) async {
     // 实付允许为 0（免单），但实付为 0 必须有优惠；无优惠时实付必须 >0。
     // 留空按 0 处理，使用户在优惠模式直接保存即可记一笔免单
-    final cents = MoneyUtil.yuanToCents(_amountText) ?? 0;
+    final cents = MoneyUtil.yuanToCents(_draft.amountText) ?? 0;
     // 优惠额：0/空视为未优惠存 null；优惠可大于实付（平台补贴券等），
     // 不设上限约束。收入/转账入口已隐藏且切类型会清空，这里再兜底
-    var discountCents = MoneyUtil.yuanToCents(_discountText);
+    var discountCents = MoneyUtil.yuanToCents(_draft.discountText);
     if (discountCents != null && discountCents == 0) discountCents = null;
-    if (_type != BillType.expense) discountCents = null;
+    if (_draft.type != BillType.expense) discountCents = null;
     if (cents == 0 && discountCents == null) {
       showAppToast(context, '请输入正确的金额');
       return;
     }
     // 转账：两账户必选且不能相同，不挂分类；其余类型维持分类必选校验
-    if (_type == BillType.transfer) {
-      if (_selectedAssetId == null || _toAssetId == null) {
+    if (_draft.type == BillType.transfer) {
+      if (_draft.selectedAssetId == null || _draft.toAssetId == null) {
         showAppToast(context, '请选择转出与转入账户');
         return;
       }
-      if (_selectedAssetId == _toAssetId) {
+      if (_draft.selectedAssetId == _draft.toAssetId) {
         showAppToast(context, '转出与转入不能是同一账户');
         return;
       }
-    } else if (_selectedCategoryId == null) {
+    } else if (_draft.selectedCategoryId == null) {
       showAppToast(context, '请选择分类');
       return;
     }
-    final note = _noteController.text.trim();
+    final note = _draft.note.trim();
     final provider = context.read<BillProvider>();
     final tagRepo = context.read<TagRepository>();
     // 图片收尾要用云存储配置：在首个 await 前取好，避免跨异步间隙用 context
@@ -52,46 +52,46 @@ mixin _SaveAndBudget on _AddBillBase {
         await provider.updateBill(
           Bill(
             id: bill.id,
-            type: _type,
+            type: _draft.type,
             amountCents: cents,
             discountCents: discountCents,
-            categoryId: _selectedCategoryId,
+            categoryId: _draft.selectedCategoryId,
             note: note.isEmpty ? null : note,
-            date: _date,
-            timeMinute: _timeMinute,
-            location: _locationName,
-            locationFull: _locationFull,
-            lat: _selectedPoint?.lat,
-            lng: _selectedPoint?.lng,
-            assetId: _selectedAssetId,
-            toAssetId: _type == BillType.transfer ? _toAssetId : null,
+            date: _draft.date,
+            timeMinute: _draft.timeMinute,
+            location: _draft.locationName,
+            locationFull: _draft.locationFull,
+            lat: _draft.selectedPoint?.lat,
+            lng: _draft.selectedPoint?.lng,
+            assetId: _draft.selectedAssetId,
+            toAssetId: _draft.type == BillType.transfer ? _draft.toAssetId : null,
             createdAt: bill.createdAt,
           ),
         );
         // 编辑：全量替换标签关联
-        await tagRepo.setBillTags(bill.id, _selectedTagIds.toList());
+        await tagRepo.setBillTags(bill.id, _draft.selectedTagIds.toList());
       } else {
         final billId = await provider.addBill(
           BillsCompanion.insert(
-            type: _type,
+            type: _draft.type,
             amountCents: cents,
             discountCents: Value(discountCents),
-            categoryId: Value(_selectedCategoryId),
-            date: _date,
-            timeMinute: Value(_timeMinute),
+            categoryId: Value(_draft.selectedCategoryId),
+            date: _draft.date,
+            timeMinute: Value(_draft.timeMinute),
             note: Value(note.isEmpty ? null : note),
-            location: Value(_locationName),
-            locationFull: Value(_locationFull),
-            lat: Value(_selectedPoint?.lat),
-            lng: Value(_selectedPoint?.lng),
-            assetId: Value(_selectedAssetId),
-            toAssetId: Value(_type == BillType.transfer ? _toAssetId : null),
+            location: Value(_draft.locationName),
+            locationFull: Value(_draft.locationFull),
+            lat: Value(_draft.selectedPoint?.lat),
+            lng: Value(_draft.selectedPoint?.lng),
+            assetId: Value(_draft.selectedAssetId),
+            toAssetId: Value(_draft.type == BillType.transfer ? _draft.toAssetId : null),
           ),
         );
         savedBillId = billId;
         // 新增：关联标签
-        if (_selectedTagIds.isNotEmpty) {
-          await tagRepo.setBillTags(billId, _selectedTagIds.toList());
+        if (_draft.selectedTagIds.isNotEmpty) {
+          await tagRepo.setBillTags(billId, _draft.selectedTagIds.toList());
         }
       }
     } on InsufficientBalanceException catch (e) {
@@ -107,7 +107,7 @@ mixin _SaveAndBudget on _AddBillBase {
     // "不关联"也照存（null 清除记录），尊重用户的选择。编辑旧账单
     // 不改记忆——历史账单的账户不该影响下一笔的默认值
     if (!_isEditing) {
-      unawaited(assetProvider.setLastBillAssetId(_selectedAssetId));
+      unawaited(assetProvider.setLastBillAssetId(_draft.selectedAssetId));
     }
     // 图片收尾：暂存图转正入库并异步上传（不阻塞保存返回）；面板里
     // 移除的已入库图统一删记录/本地文件/云端对象
@@ -127,16 +127,17 @@ mixin _SaveAndBudget on _AddBillBase {
     _stagedImages = [];
     _removedExistingImages.clear();
     // 记账后检查预算用量（仅支出记账会占预算）
-    if (_type == BillType.expense) await _checkBudgetHint();
+    if (_draft.type == BillType.expense) await _checkBudgetHint();
     if (stay) {
       // 再记：重置金额与备注，继续记录下一笔（图片已随上一笔保存，一并清空）
       if (!mounted) return;
       setState(() {
-        _amountText = '';
-        _discountText = '';
+        _draft.amountText = '';
+        _draft.discountText = '';
         _discountMode = false;
         _noteController.clear();
-        _selectedTagIds.clear();
+        _draft.note = '';
+        _draft.selectedTagIds.clear();
         _existingImages = [];
       });
     } else if (mounted) {
@@ -149,16 +150,16 @@ mixin _SaveAndBudget on _AddBillBase {
   /// 总预算与分类预算同时越线时只提示总预算，避免连弹。
   Future<void> _checkBudgetHint() async {
     final provider = context.read<BudgetProvider>();
-    final month = DateTime(_date.year, _date.month);
+    final month = DateTime(_draft.date.year, _draft.date.month);
     // 分类归并：账单挂在二级分类时按一级分类的预算检查
     final categories = await context
         .read<CategoryProvider>()
         .categoriesMapStream()
         .first;
-    final cat = categories[_selectedCategoryId];
+    final cat = categories[_draft.selectedCategoryId];
     // ?? 0 兜底类型：0 不会匹配任何分类预算（categoryId > 0），
-    // 正常路径下 _selectedCategoryId 在保存时已校验非空
-    final topId = cat?.parentId ?? _selectedCategoryId ?? 0;
+    // 正常路径下 _draft.selectedCategoryId 在保存时已校验非空
+    final topId = cat?.parentId ?? _draft.selectedCategoryId ?? 0;
     if (!mounted) return;
     final topName = cat == null ? '该分类' : categories[topId]?.name ?? cat.name;
 

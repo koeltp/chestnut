@@ -31,13 +31,13 @@ mixin _TransferArea on _AddBillBase {
           child: Column(
             children: [
               _transferAccountRow(
-                asset: _assetById(_selectedAssetId),
+                asset: _assetById(_draft.selectedAssetId),
                 hint: '选择转出账户',
                 onTap: () => _pickTransferAsset(to: false),
               ),
               _swapDivider(),
               _transferAccountRow(
-                asset: _assetById(_toAssetId),
+                asset: _assetById(_draft.toAssetId),
                 hint: '选择转入账户',
                 onTap: () => _pickTransferAsset(to: true),
               ),
@@ -67,7 +67,7 @@ mixin _TransferArea on _AddBillBase {
   /// 转入账户是否为信用卡组账户（信用卡/花呗/白条等）：
   /// 决定还款提示卡是否显示，其它账户不显示
   bool get _isToCreditCard {
-    final to = _assetById(_toAssetId);
+    final to = _assetById(_draft.toAssetId);
     return to != null &&
         AssetGroups.groupOf(to.category) == AssetGroups.credit;
   }
@@ -101,9 +101,9 @@ mixin _TransferArea on _AddBillBase {
   Widget _swapButton() {
     return InkWell(
       onTap: () => setState(() {
-        final tmp = _selectedAssetId;
-        _selectedAssetId = _toAssetId;
-        _toAssetId = tmp;
+        final tmp = _draft.selectedAssetId;
+        _draft.selectedAssetId = _draft.toAssetId;
+        _draft.toAssetId = tmp;
       }),
       customBorder: const CircleBorder(),
       child: Container(
@@ -222,9 +222,9 @@ mixin _TransferArea on _AddBillBase {
     final pickedId = result.$1?.id;
     setState(() {
       if (to) {
-        _toAssetId = pickedId;
+        _draft.toAssetId = pickedId;
       } else {
-        _selectedAssetId = pickedId;
+        _draft.selectedAssetId = pickedId;
       }
     });
   }
