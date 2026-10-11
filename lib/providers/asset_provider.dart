@@ -27,6 +27,22 @@ class AssetProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 上次记账关联账户的持久化键：进记一笔页时默认带回（连续记账
+  /// 大多用同一账户）；保存"不关联"账单时清除记录
+  static const _kLastBillAsset = 'last_bill_asset_id';
+
+  /// 上次记账关联的账户 id；从未记录过返回 null
+  int? get lastBillAssetId => _prefs.getInt(_kLastBillAsset);
+
+  /// 记录/清除上次记账关联的账户 id（[assetId] 传 null 表示清除）
+  Future<void> setLastBillAssetId(int? assetId) async {
+    if (assetId == null) {
+      await _prefs.remove(_kLastBillAsset);
+    } else {
+      await _prefs.setInt(_kLastBillAsset, assetId);
+    }
+  }
+
   /// 未归档资产流（资产区/负债区列表）
   Stream<List<Asset>> activeStream() => _repo.watchActive();
 
