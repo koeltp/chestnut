@@ -4,6 +4,7 @@ import '../../models/asset_category.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../widgets/asset_circle_icon.dart';
+import '../../widgets/bottom_sheet_scaffold.dart';
 
 /// 底部弹窗：选择资产分类（钱迹式，按组分节展示彩色圆图标网格）
 ///
@@ -14,10 +15,9 @@ Future<AssetCategoryDef?> showAssetCategorySheet(
   BuildContext context, {
   List<AssetGroupDef>? groups,
 }) {
-  return showModalBottomSheet<AssetCategoryDef>(
+  return showBottomSheetScaffold<AssetCategoryDef>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
+    title: '选择资产分类',
     builder: (_) => _CategorySheet(groups: groups),
   );
 }
@@ -43,75 +43,39 @@ class _CategorySheet extends StatelessWidget {
         )
         .toList();
     final displayGroups = list ?? AssetGroups.all;
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.72,
-      ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          // 拖动条
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.divider,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppDimens.gapMd),
+    // 骨架（拖动条/标题/分隔线）由 bottom_sheet_scaffold 提供，
+    // 这里只负责分组网格列表
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      children: [
+        for (final group in displayGroups) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
             child: Text(
-              '选择资产分类',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+              group.name,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
               ),
             ),
           ),
-          Divider(height: 1, color: AppColors.divider),
-          Flexible(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-              children: [
-                for (final group in displayGroups) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, bottom: 8),
-                    child: Text(
-                      group.name,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                  // 每行 4 个分类：彩色圆图标 + 名称
-                  GridView.count(
-                    crossAxisCount: 4,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 0.92,
-                    mainAxisSpacing: 8,
-                    children: [
-                      for (final def in group.categories)
-                        _CategoryCell(
-                          def: def,
-                          onTap: () => Navigator.of(context).pop(def),
-                        ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
+          // 每行 4 个分类：彩色圆图标 + 名称
+          GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            childAspectRatio: 0.92,
+            mainAxisSpacing: 8,
+            children: [
+              for (final def in group.categories)
+                _CategoryCell(
+                  def: def,
+                  onTap: () => Navigator.of(context).pop(def),
+                ),
+            ],
           ),
         ],
-      ),
+      ],
     );
   }
 }
