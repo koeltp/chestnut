@@ -21,7 +21,35 @@ flutter test           # 全量通过
 
 真机回归（debug 包即可）：记账、首页、统计、预算、资产、备份等主流程 + 本次改动涉及的页面。
 
-## 构建
+## 一键发布（推荐）
+
+`scripts/release.ps1` 把"发布前检查 → 构建 → 构建后自检 → 产物整理"串成一条命令：
+
+```powershell
+.\scripts\release.ps1 -VersionName 1.1.7   # 指定版本名，构建号自动 +1
+.\scripts\release.ps1                      # 沿用 pubspec 当前版本名，仅构建号 +1
+```
+
+脚本自动完成：
+
+1. 版本号写回 pubspec（构建号 +1，不跳号不复用）
+2. `flutter analyze` + `flutter test`（任一失败立即中止）
+3. arm64 release 构建（`--no-tree-shake-icons --split-per-abi`）
+4. aapt2 自检：versionCode 与 versionName 核对（构建号 + 2000 偏移）、INTERNET 权限显式声明
+5. 产物整理：APK 改名 `dist/chestnut-<版本>-arm64.apk`、SHA-256 与文件大小、生成更新清单 `dist/manifest-<版本>.json`（releaseNotes 自动从 CHANGELOG 同版本段提取）
+
+**脚本运行前必须先写好 CHANGELOG 的新版本条目**——它决定应用内更新弹窗文案，且脚本从其提取 releaseNotes。
+
+脚本不代劳的人工步骤（脚本结尾也会打印提醒）：
+
+1. 主仓库：提交 pubspec + CHANGELOG，打 tag `v<版本>`，`gh release create v<版本> <apk> --title --notes` 仅存档不指 apkUrl，连续建档后收尾 `gh release edit v<最新版> --latest=true`
+2. APK 上传：复制 `dist/chestnut-<版本>-arm64.apk` 到博客仓库 `D:\work\prod\blog\src\.vuepress\public\downloads\`，并删除旧版 APK（博客只保留最新一版，历史版本在 GitHub Releases）
+3. 更新清单：用 `dist/manifest-<版本>.json` 的内容覆盖博客仓库 `D:\work\prod\blog\src\.vuepress\public\chestnut\latest.json`
+4. 博客文章：`D:\work\prod\blog\src\docs\article\栗子记账.md` 同步版本号、下载按钮/直链、SHA-256（内容人工撰写）
+5. push 博客仓库部署，线上验证：latest.json 已是新版、带 `?t=毫秒` 的 APK URL 哈希与本地一致
+6. release 真包回归（见下文"发布后回归"）
+
+## 构建（手动，备用）
 
 只打 arm64 架构，并关闭图标树摇（分类图标码点入库、运行时渲染，树摇会裁掉运行时引用的图标）：
 
@@ -67,4 +95,4 @@ Get-FileHash <apk> -Algorithm SHA256
 
 ## 更新日志
 
-`CHANGELOG.md` 每版本追加条目，与应用内更新弹窗的 releaseNotes 保持同源。
+`CHANGELOG.md` 每版本追加条目，与应用内更新弹窗的 releaseNotes 保持同源。**发版时先更新 CHANGELOG 再跑发布脚本**（顺序不能反，见"一键发布"）。

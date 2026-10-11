@@ -68,3 +68,6 @@ backup_local/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+
+# 发布产物（脚本生成，上传后无需入库）
+/dist/
