@@ -17,6 +17,7 @@ import '../../widgets/form_rows.dart';
 import '../../widgets/institution_logo.dart';
 import 'asset_category_sheet.dart';
 import 'asset_delete.dart';
+import 'asset_edit_form_rows.dart';
 import 'institution_picker_sheet.dart';
 import 'debt_note_edit_page.dart';
 
@@ -147,22 +148,6 @@ class _AssetEditPageState extends State<_AssetEditPage> {
       _category.name == '银行卡' ||
       AssetGroups.investCategories.contains(_category.name);
 
-  /// 机构行的标签文案：卡类叫银行，股票/期货叫券商，基金叫平台，其余叫机构
-  String get _institutionLabel => switch (_category.name) {
-    '信用卡' || '银行卡' => '所属银行',
-    '股票' || '期货' => '所属券商',
-    '基金' => '所属平台',
-    _ => '所属机构',
-  };
-
-  /// 机构行的占位文案（与标签同口径）
-  String get _institutionHint => switch (_institutionLabel) {
-    '所属银行' => '请选择银行',
-    '所属券商' => '请选择券商',
-    '所属平台' => '请选择平台',
-    _ => '请选择机构',
-  };
-
   /// 当前名称是否等于"默认名"（分类名或当前机构名），用于切换分类/机构时
   /// 判断是否跟随更新——用户起过名字则不打扰
   bool _nameIsDefault() {
@@ -239,38 +224,6 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         _repayDay = picked;
       }
     });
-  }
-
-  /// 出账日/还款日行的显示文案：已选显示"每月 X 日"，未选显示占位
-  String _dayText(int? day) =>
-      day == null ? '选填，点此选择' : '每月 $day 日';
-
-  /// 出账日/还款日行尾图标：已选显示 ×（点清除），未选显示 >；
-  /// 两者同为 22×22 盒子，切换时位置不跳
-  Widget _dayTrailing({required bool isBillDay}) {
-    final day = isBillDay ? _billDay : _repayDay;
-    if (day == null) {
-      return const Icon(
-        Icons.chevron_right,
-        size: 22,
-        color: AppColors.textSecondary,
-      );
-    }
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() {
-        if (isBillDay) {
-          _billDay = null;
-        } else {
-          _repayDay = null;
-        }
-      }),
-      child: const SizedBox(
-        width: 22,
-        height: 22,
-        child: Icon(Icons.close, size: 22, color: AppColors.textSecondary),
-      ),
-    );
   }
 
   Future<void> _save() async {
@@ -490,46 +443,11 @@ class _AssetEditPageState extends State<_AssetEditPage> {
             ),
             // 机构选择行：卡类=所属银行，投资理财组=券商/平台
             if (_showInstitutionPicker)
-              FormRow(
-                label: _institutionLabel,
-                onTap: _pickInstitution,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      _institution ?? _institutionHint,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _institution == null
-                            ? AppColors.textSecondary
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    // 已选显示 ×（点 × 只清机构，不影响账户名），
-                    // 未选显示 >；同为 22×22 盒子，切换时位置不跳
-                    if (_institution != null)
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => setState(() => _institution = null),
-                        child: const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: Icon(
-                            Icons.close,
-                            size: 22,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      )
-                    else
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 22,
-                        color: AppColors.textSecondary,
-                      ),
-                  ],
-                ),
+              AssetInstitutionRow(
+                label: assetInstitutionLabel(_category.name),
+                value: _institution,
+                onPick: _pickInstitution,
+                onClear: () => setState(() => _institution = null),
               ),
             if (_isCreditGroup) ...[
               FormInputRow(
@@ -541,43 +459,17 @@ class _AssetEditPageState extends State<_AssetEditPage> {
                 inputFormatters: MoneyUtil.amountInputFormatters,
                 textInputAction: TextInputAction.next,
               ),
-              FormRow(
+              AssetDayRow(
                 label: '出账日',
-                onTap: () => _pickDay(isBillDay: true),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      _dayText(_billDay),
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _billDay == null
-                            ? AppColors.textSecondary
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    _dayTrailing(isBillDay: true),
-                  ],
-                ),
+                day: _billDay,
+                onPick: () => _pickDay(isBillDay: true),
+                onClear: () => setState(() => _billDay = null),
               ),
-              FormRow(
+              AssetDayRow(
                 label: '还款日',
-                onTap: () => _pickDay(isBillDay: false),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      _dayText(_repayDay),
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _repayDay == null
-                            ? AppColors.textSecondary
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    _dayTrailing(isBillDay: false),
-                  ],
-                ),
+                day: _repayDay,
+                onPick: () => _pickDay(isBillDay: false),
+                onClear: () => setState(() => _repayDay = null),
               ),
             ],
           ]),
