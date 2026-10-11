@@ -87,6 +87,10 @@ class BillListItem extends StatelessWidget {
     final isExpense = type == BillType.expense;
     // 转账不计收支：金额无 +/- 前缀、中性色（余额影响在双方账户各自体现）
     final isTransfer = type == BillType.transfer;
+    final hasDiscount = discountCents != null && discountCents! > 0;
+    final hasNote = note != null && note!.isNotEmpty;
+    final hasTags = tags != null && tags!.isNotEmpty;
+    final hasLocation = location != null && location!.isNotEmpty;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -144,14 +148,13 @@ class BillListItem extends StatelessWidget {
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  // 优惠与备注同一行：省 ¥x（绿）｜ 备注（灰），
-                  // 只有二者至少其一时整行才出现
-                  if ((discountCents != null && discountCents! > 0) ||
-                      (note != null && note!.isNotEmpty)) ...[
+                  // 优惠与标签同一行：省 ¥x（绿）｜ 标签胶囊——
+                  // 两者都是"徽章类"短元素放前排；至少其一时整行才出现
+                  if (hasDiscount || hasTags) ...[
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        if (discountCents != null && discountCents! > 0)
+                        if (hasDiscount)
                           Text(
                             '省 ¥${MoneyUtil.centsToYuanTrimmed(discountCents!)}',
                             style: const TextStyle(
@@ -159,9 +162,7 @@ class BillListItem extends StatelessWidget {
                               color: AppColors.income,
                             ),
                           ),
-                        if ((discountCents != null && discountCents! > 0) &&
-                            note != null &&
-                            note!.isNotEmpty) ...[
+                        if (hasDiscount && hasTags) ...[
                           const SizedBox(width: 6),
                           const Text(
                             '|',
@@ -172,7 +173,26 @@ class BillListItem extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                         ],
-                        if (note != null && note!.isNotEmpty)
+                        if (hasTags)
+                          Flexible(
+                            child: Wrap(
+                              spacing: 4,
+                              runSpacing: 2,
+                              children: [
+                                for (final t in tags!) _MiniTagChip(tag: t),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  // 备注与定位同一行：备注（灰）｜ 📍 定位——两者都是
+                  // "文本类"元素放后排；都存在时各占一半、超长省略
+                  if (hasNote || hasLocation) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        if (hasNote)
                           Expanded(
                             child: Text(
                               note!,
@@ -184,29 +204,7 @@ class BillListItem extends StatelessWidget {
                               ),
                             ),
                           ),
-                      ],
-                    ),
-                  ],
-                  // 标签与定位合并一行：标签胶囊 ｜ 📍 定位。
-                  // 标签数量通常很少，固定宽度在前；定位 Expanded 省略。
-                  if ((tags != null && tags!.isNotEmpty) ||
-                      (location != null && location!.isNotEmpty)) ...[
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (tags != null && tags!.isNotEmpty)
-                          Flexible(
-                            child: Wrap(
-                              spacing: 4,
-                              runSpacing: 2,
-                              children: [
-                                for (final t in tags!) _MiniTagChip(tag: t),
-                              ],
-                            ),
-                          ),
-                        if ((tags != null && tags!.isNotEmpty) &&
-                            location != null &&
-                            location!.isNotEmpty) ...[
+                        if (hasNote && hasLocation) ...[
                           const SizedBox(width: 6),
                           const Text(
                             '|',
@@ -217,7 +215,7 @@ class BillListItem extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                         ],
-                        if (location != null && location!.isNotEmpty)
+                        if (hasLocation)
                           Expanded(
                             child: Row(
                               children: [
