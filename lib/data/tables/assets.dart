@@ -21,6 +21,11 @@ class Assets extends Table {
   /// 分类名（预设固定集，见 AssetGroups），如"现金"、"信用卡"
   TextColumn get category => text()();
 
+  /// 所属机构（见 institutions.dart）：银行卡/信用卡=所属银行，
+  /// 投资理财组=券商/平台等。与名称独立存储——账户可起名"工资卡"
+  /// 而机构仍是"招商银行"。null = 未填写；其余分类恒为 null
+  TextColumn get institution => text().nullable()();
+
   /// 当前市值，单位：分（恒为正数，负债由 kind 区分）
   IntColumn get valueCents => integer()();
 

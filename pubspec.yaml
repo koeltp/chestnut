@@ -54,6 +54,8 @@ dependencies:
   image_picker: ^1.1.2
   flutter_image_compress: ^2.3.0
   photo_view: ^0.15.0
+  simple_icons: ^16.23.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +79,8 @@ flutter:
   # 静态图片资源
   assets:
     - assets/images/
+    # 品牌 logo（SVG，账户分类用）
+    - assets/images/brands/
 
 # 桌面图标生成配置（dart run flutter_launcher_icons）
 flutter_launcher_icons:

@@ -1,19 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:simple_icons/simple_icons.dart';
 
 import 'enums.dart';
 
 /// 单个资产分类定义：名称 + 图标 + 主题色
+///
+/// [brand] = true 表示图标为第三方品牌 logo（商标归各品牌方所有，
+/// 此处仅用于指代对应账户），圆底用主题实色、glyph 用白色；
+/// [darkGlyph] = true 时 glyph 用黑色（美团等浅底色品牌）。
+/// [brand] = false 为 Material 品类图标，圆底用主题浅色、glyph 用主题色。
+/// [brandSvg] 非空时优先渲染该 SVG 资源（自带底板的白色剪影 logo），
+/// [icon] 仅作无 SVG 场景（如归档灰行）的兜底。
 class AssetCategoryDef {
-  const AssetCategoryDef(this.name, this.icon, this.color);
+  const AssetCategoryDef(
+    this.name,
+    this.icon,
+    this.color, {
+    this.brand = false,
+    this.darkGlyph = false,
+    this.brandSvg,
+  });
 
   /// 分类名（持久化到 assets.category 的是该名称）
   final String name;
 
-  /// 列表/选择器使用的图标
+  /// 列表/选择器使用的图标（SVG 品牌 logo 存在时仅作兜底）
   final IconData icon;
 
   /// 彩色圆图标的底色（0xAARRGGBB）
   final int color;
+
+  /// 是否为品牌 logo（实色底 + 白 glyph）
+  final bool brand;
+
+  /// 品牌 glyph 是否用深色（仅浅底品牌需要，如美团）
+  final bool darkGlyph;
+
+  /// 品牌 logo 的 SVG 资源路径（assets/images/brands/ 下）；null 用字体图标
+  final String? brandSvg;
 }
 
 /// 资产组定义：钱迹式分组（组名 + 组内分类）
@@ -41,30 +65,31 @@ class AssetGroupDef {
 
 /// 钱迹式资产分类体系（预设固定集，不做分类管理）
 ///
-/// 六个组：资金账户 / 信用卡账户 / 充值账户 / 投资理财账户 / 其它资产
-/// / 债务。持久化只存分类名——后续若调整图标/颜色不影响旧数据；
+/// 五个组：资金账户 / 信用卡账户 / 充值账户 / 投资理财账户 / 债务。持久化只存分类名——后续若调整图标/颜色不影响旧数据；
 /// 名称即分类主键，新增分类时不可与旧名冲突。
 abstract final class AssetGroups {
   // ---------- 资金账户（资产） ----------
 
   static const fund = AssetGroupDef('资金账户', AssetKind.asset, [
     AssetCategoryDef('现金', Icons.payments, 0xFF4CAF50),
-    AssetCategoryDef('微信', Icons.chat_bubble, 0xFF07C160),
-    AssetCategoryDef('微信零钱通', Icons.savings, 0xFF07C160),
-    AssetCategoryDef('支付宝', Icons.account_balance_wallet, 0xFF1677FF),
-    AssetCategoryDef('余额宝', Icons.trending_up, 0xFF1677FF),
-    AssetCategoryDef('余利宝', Icons.show_chart, 0xFF1677FF),
-    AssetCategoryDef('小荷包', Icons.inventory_2, 0xFF1677FF),
-    AssetCategoryDef('云闪付', Icons.credit_card, 0xFFD32F2F),
+    AssetCategoryDef('微信', SimpleIcons.wechat, 0xFF07C160, brand: true),
+    // 同公司子产品不共用主品牌 logo，统一用钱包图标，仅以颜色暗示归属
+    AssetCategoryDef('微信零钱通', Icons.account_balance_wallet, 0xFF07C160),
+    AssetCategoryDef('支付宝', SimpleIcons.alipay, 0xFF1677FF, brandSvg: 'assets/images/brands/alipay.svg'),
+    AssetCategoryDef('余额宝', Icons.account_balance_wallet, 0xFF1677FF, brandSvg: 'assets/images/brands/yuebao.svg'),
+    AssetCategoryDef('余利宝', Icons.account_balance_wallet, 0xFF1677FF, brandSvg: 'assets/images/brands/yulibao.svg'),
+    AssetCategoryDef('小荷包', Icons.account_balance_wallet, 0xFF1677FF, brandSvg: 'assets/images/brands/xiaohuo.svg'),
+    // 云闪付/京东/拼多多/数币用 iconfont 下载的白色剪影 SVG（自带底板）
+    AssetCategoryDef('云闪付', Icons.credit_card, 0xFFE21A26, brand: true, brandSvg: 'assets/images/brands/unionpay.svg'),
     AssetCategoryDef('银行卡', Icons.account_balance, 0xFF5C6BC0),
     AssetCategoryDef('公积金', Icons.home_work, 0xFF26A69A),
-    AssetCategoryDef('QQ钱包', Icons.forum, 0xFF12B7F5),
-    AssetCategoryDef('京东金融', Icons.shopping_cart, 0xFFE93B3D),
+    AssetCategoryDef('QQ钱包', SimpleIcons.qq, 0xFF12B7F5, brand: true),
+    AssetCategoryDef('京东金融', Icons.shopping_cart, 0xFFE1251B, brand: true, brandSvg: 'assets/images/brands/jd_finance.svg'),
     AssetCategoryDef('医保', Icons.local_hospital, 0xFFEF5350),
-    AssetCategoryDef('数字人民币', Icons.currency_yuan, 0xFFE65100),
-    AssetCategoryDef('华为钱包', Icons.smartphone, 0xFFEF6C00),
-    AssetCategoryDef('多多钱包', Icons.shopping_bag, 0xFFE02E24),
-    AssetCategoryDef('Paypal', Icons.public, 0xFF1565C0),
+    AssetCategoryDef('数字人民币', Icons.currency_yuan, 0xFFD4312B, brand: true, brandSvg: 'assets/images/brands/digital_rmb.svg'),
+    AssetCategoryDef('华为钱包', SimpleIcons.huawei, 0xFFCF0A2C, brand: true),
+    AssetCategoryDef('多多钱包', Icons.shopping_bag, 0xFFE02E24, brand: true, brandSvg: 'assets/images/brands/pdd.svg'),
+    AssetCategoryDef('Paypal', SimpleIcons.paypal, 0xFF002991, brand: true),
     AssetCategoryDef('其它', Icons.more_horiz, 0xFF9E9E9E),
   ]);
 
@@ -72,12 +97,17 @@ abstract final class AssetGroups {
 
   static const credit = AssetGroupDef('信用卡账户', AssetKind.liability, [
     AssetCategoryDef('信用卡', Icons.credit_score, 0xFFFF7043),
+    // 花呗/借呗为支付宝子产品，不共用主品牌 logo，统一钱包图标
     AssetCategoryDef('花呗', Icons.account_balance_wallet, 0xFF1677FF),
-    AssetCategoryDef('借呗', Icons.request_quote, 0xFF1296DB),
-    AssetCategoryDef('京东白条', Icons.receipt_long, 0xFFE93B3D),
-    AssetCategoryDef('美团月付', Icons.storefront, 0xFFF57C00),
-    AssetCategoryDef('抖音月付', Icons.music_note, 0xFFFE2C55),
-    AssetCategoryDef('微信分付', Icons.chat_bubble, 0xFF07C160),
+    AssetCategoryDef('借呗', Icons.account_balance_wallet, 0xFF1677FF),
+    AssetCategoryDef('京东白条', Icons.receipt_long, 0xFFE1251B,
+        brand: true, brandSvg: 'assets/images/brands/jd_baitiao.svg'),
+    AssetCategoryDef('美团月付', SimpleIcons.meituan, 0xFFFFD100,
+        brand: true, darkGlyph: true),
+    // 抖音与 TikTok 同一音符标识
+    AssetCategoryDef('抖音月付', SimpleIcons.tiktok, 0xFF161823, brand: true),
+    // 微信分付为微信子产品，不共用主品牌 logo
+    AssetCategoryDef('微信分付', Icons.account_balance_wallet, 0xFF07C160),
     AssetCategoryDef('其它信用卡', Icons.credit_card, 0xFFFF7043),
   ]);
 
@@ -92,7 +122,12 @@ abstract final class AssetGroups {
     AssetCategoryDef('会员卡', Icons.card_membership, 0xFFAB47BC),
     AssetCategoryDef('加油卡', Icons.local_gas_station, 0xFFEF5350),
     AssetCategoryDef('石化钱包', Icons.local_shipping, 0xFFEF6C00),
-    AssetCategoryDef('Apple', Icons.phone_iphone, 0xFF616161),
+    AssetCategoryDef(
+      'Apple',
+      Icons.phone_iphone,
+      0xFF616161,
+      brandSvg: 'assets/images/brands/apple.svg',
+    ),
     AssetCategoryDef('其它充值卡', Icons.more_horiz, 0xFF9E9E9E),
   ]);
 
@@ -108,14 +143,6 @@ abstract final class AssetGroups {
     AssetCategoryDef('固定收益', Icons.account_balance, 0xFF5C6BC0),
     AssetCategoryDef('加密货币', Icons.currency_bitcoin, 0xFFFF7043),
     AssetCategoryDef('其它理财', Icons.trending_up, 0xFF26A69A),
-  ]);
-
-  // ---------- 其它资产（资产，承接房产/车辆等大件） ----------
-
-  static const otherAsset = AssetGroupDef('其它资产', AssetKind.asset, [
-    AssetCategoryDef('房产', Icons.home, 0xFF8D6E63),
-    AssetCategoryDef('车辆', Icons.directions_car, 0xFF42A5F5),
-    AssetCategoryDef('其它', Icons.more_horiz, 0xFF9E9E9E),
   ]);
 
   // ---------- 债务（负债，承接房贷/车贷；借出借入走借条） ----------
@@ -136,7 +163,6 @@ abstract final class AssetGroups {
     credit,
     prepaid,
     invest,
-    otherAsset,
     debt,
   ];
 
@@ -171,36 +197,20 @@ abstract final class AssetGroups {
   /// 分类名 → 净值正负方向（未命中按资产处理）
   static AssetKind kindOfCategory(String name) => groupOf(name).kind;
 
-  // ---------- 信用卡银行列表 ----------
+  // ---------- 机构选择 ----------
 
-  /// 可选银行（选"信用卡"分类时二次选择，账户名默认取银行名）
-  static const List<String> banks = [
-    '中国银行',
-    '工商银行',
-    '农业银行',
-    '建设银行',
-    '交通银行',
-    '招商银行',
-    '邮政储蓄银行',
-    '浦发银行',
-    '中信银行',
-    '兴业银行',
-    '民生银行',
-    '光大银行',
-    '平安银行',
-    '华夏银行',
-    '广发银行',
-    '浙商银行',
-    '北京银行',
-    '上海银行',
-    '江苏银行',
-    '宁波银行',
-    '南京银行',
-    '杭州银行',
-    '成都银行',
-    '重庆银行',
-    '微众银行',
-    '网商银行',
-    '其它银行',
+  /// 投资理财组分类名（编辑页判断是否显示「券商/平台」选择行用）。
+  /// 与 institutions.dart 的分组口径独立：这里只定"哪些分类有机构"，
+  /// 机构名单本身在 institutions.dart
+  static const List<String> investCategories = [
+    '股票',
+    '基金',
+    '黄金',
+    '外汇',
+    '期货',
+    '债券',
+    '固定收益',
+    '加密货币',
+    '其它理财',
   ];
 }

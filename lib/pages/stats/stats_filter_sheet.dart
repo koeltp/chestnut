@@ -8,6 +8,7 @@ import '../../models/enums.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/category_tree_selector.dart';
 import '../add_bill/wheel_date_picker.dart';
+import '../settings/tag_manage_page.dart';
 
 /// 筛选面板应用回调：区间（起止均含当天）+ 关键词 + 标签 + 分类
 typedef FilterApplyCallback =
@@ -21,9 +22,10 @@ typedef FilterApplyCallback =
 /// 漏斗筛选面板（统计页）
 ///
 /// 面板内一切条件只暂存，**必须点"搜索"才统一生效**：
-/// 搜索框 → 账单日期快捷填充 → 起止日期 → 分类多选 → 标签多选。
+/// 搜索框 → 账单日期快捷填充 → 起止日期 → 分类/标签二级弹层多选。
 /// 快捷日期只是"替用户把起止日期填好"，不独立执行、不关闭面板，
-/// 因此可与关键词/分类/标签自由组合。
+/// 因此可与关键词/分类/标签自由组合。标签弹层内含"管理"入口，
+/// 方便临时新建标签。
 class StatsFilterSheet extends StatefulWidget {
   const StatsFilterSheet({
     super.key,
@@ -333,6 +335,34 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
     }
   }
 
+  /// 打开标签多选弹层：结构与分类弹层一致——
+  /// 弹层内改动只写暂存集 [draft]，"确定"才回写面板；
+  /// "取消"/下滑整体丢弃。弹层内"管理"可临时新建标签
+  Future<void> _pickTags() async {
+    // 复制一份暂存：选择器直接在该集合上增删，取消即丢弃
+    final draft = Set<int>.from(_selectedTagIds);
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: SizedBox(
+          height: MediaQuery.of(sheetContext).size.height * 0.75,
+          child: _TagMultiSelector(tags: _allTags, draft: draft),
+        ),
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() => _selectedTagIds
+        ..clear()
+        ..addAll(draft));
+    }
+  }
+
   /// 点搜索：统一应用全部暂存条件并关闭面板（始终可点：
   /// 无条件 = 清除全部筛选回到全部账单）
   void _apply() {
@@ -383,12 +413,8 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
               _buildRangeRow(),
               const SizedBox(height: 20),
               _buildCategorySection(),
-              if (_allTags.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                _sectionTitle('标签'),
-                const SizedBox(height: 10),
-                _buildTagWrap(),
-              ],
+              const SizedBox(height: 20),
+              _buildTagSection(),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -531,7 +557,7 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
           children: [
             for (final p in pills)
               _GroupPill(data: p, onTap: _pickCategories),
-            _addCategoryPill(),
+            _buildAddPill('选择分类', _pickCategories),
           ],
         ),
       ],
@@ -553,68 +579,57 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
     );
   }
 
-  /// "选择分类"入口胶囊
-  Widget _addCategoryPill() {
+  /// 标签区：已选标签实底胶囊（点胶囊同样进弹层编辑）
+  /// + "选择标签"入口（空标签时也能进弹层用"管理"新建）
+  Widget _buildTagSection() {
+    final selectedTags = _allTags
+        .where((t) => _selectedTagIds.contains(t.id))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('标签'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            // 标签无层级，一个标签一个实底胶囊（复用分类全选胶囊样式）
+            for (final t in selectedTags)
+              _GroupPill(
+                data: (label: t.name, color: Color(t.color), full: true),
+                onTap: _pickTags,
+              ),
+            _buildAddPill('选择标签', _pickTags),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// "选择分类/选择标签"入口胶囊（两处共用）
+  Widget _buildAddPill(String label, VoidCallback onTap) {
     return GestureDetector(
-      onTap: _pickCategories,
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: AppColors.fill,
           borderRadius: BorderRadius.circular(AppDimens.radiusCard),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add, size: 14, color: AppColors.textSecondary),
-            SizedBox(width: 2),
+            const Icon(Icons.add, size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 2),
             Text(
-              '选择分类',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              label,
+              style:
+                  const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  /// 标签多选：未选白底彩框、选中实底白字（与标签选择弹层同款）
-  Widget _buildTagWrap() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final t in _allTags)
-          GestureDetector(
-            onTap: () => setState(() => _selectedTagIds.contains(t.id)
-                ? _selectedTagIds.remove(t.id)
-                : _selectedTagIds.add(t.id)),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: _selectedTagIds.contains(t.id)
-                    ? Color(t.color)
-                    : Colors.white,
-                borderRadius:
-                    BorderRadius.circular(AppDimens.radiusCard),
-                border: Border.all(color: Color(t.color)),
-              ),
-              child: Text(
-                t.name,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: _selectedTagIds.contains(t.id)
-                      ? Colors.white
-                      : Color(t.color),
-                  fontWeight: _selectedTagIds.contains(t.id)
-                      ? FontWeight.w500
-                      : FontWeight.w400,
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -743,6 +758,185 @@ class _GroupPill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 标签多选二级弹层（筛选面板专用，与分类弹层结构对齐）
+///
+/// 直接在外部传入的暂存集 [draft] 上增删——外层据此实现"取消即丢弃"；
+/// "管理"进标签管理页，返回后刷新标签并清理已被删除的选中 id
+class _TagMultiSelector extends StatefulWidget {
+  const _TagMultiSelector({required this.tags, required this.draft});
+
+  /// 打开时的全部标签（管理后在内部刷新）
+  final List<Tag> tags;
+
+  /// 暂存选中集（由外层持有引用）
+  final Set<int> draft;
+
+  @override
+  State<_TagMultiSelector> createState() => _TagMultiSelectorState();
+}
+
+class _TagMultiSelectorState extends State<_TagMultiSelector> {
+  late List<Tag> _tags = widget.tags;
+  late final ValueNotifier<int> _count =
+      ValueNotifier<int>(widget.draft.length);
+
+  @override
+  void dispose() {
+    _count.dispose();
+    super.dispose();
+  }
+
+  /// 切换选中：直接改暂存集
+  void _toggle(int id) {
+    setState(() {
+      if (widget.draft.contains(id)) {
+        widget.draft.remove(id);
+      } else {
+        widget.draft.add(id);
+      }
+    });
+    _count.value = widget.draft.length;
+  }
+
+  /// 进标签管理页：返回后刷新标签，清理已被删除的选中 id
+  Future<void> _openManage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const TagManagePage()),
+    );
+    if (!mounted) return;
+    final tags = await context.read<TagRepository>().getTags();
+    if (!mounted) return;
+    setState(() {
+      _tags = tags;
+      widget.draft.removeWhere((id) => !tags.any((t) => t.id == id));
+    });
+    _count.value = widget.draft.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // 标题行：选择标签 ｜ 管理（临时新建）｜ 取消（丢弃暂存）
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+          child: Row(
+            children: [
+              const Text(
+                '选择标签',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _openManage,
+                child: const Text('管理'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            // 强制全宽：Expanded 只撑高，水平方向 Column 给的是宽松约束，
+            // 不收口会让滚动视口缩成内容宽并整体居中
+            child: SizedBox(
+              width: double.infinity,
+              child: _tags.isNotEmpty
+                  ? Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final t in _tags)
+                        GestureDetector(
+                          onTap: () => _toggle(t.id),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              // 未选白底彩框；选中实底白字
+                              color: widget.draft.contains(t.id)
+                                  ? Color(t.color)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(
+                                AppDimens.radiusCard,
+                              ),
+                              border: Border.all(color: Color(t.color)),
+                            ),
+                            child: Text(
+                              t.name,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: widget.draft.contains(t.id)
+                                    ? Colors.white
+                                    : Color(t.color),
+                                fontWeight: widget.draft.contains(t.id)
+                                    ? FontWeight.w500
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  )
+                : const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      '暂无标签，点右上角"管理"创建',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+            ),
+          ),
+        ),
+        // 底部确定：确认后外层把暂存回写到筛选面板
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(64, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: ValueListenableBuilder<int>(
+                valueListenable: _count,
+                builder: (context, n, _) => Text(
+                  n == 0 ? '确定' : '确定（$n）',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

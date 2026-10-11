@@ -54,6 +54,7 @@ class AssetProvider extends ChangeNotifier {
     int? creditLimitCents,
     int? billDay,
     int? repayDay,
+    String? institution,
   }) => _repo.insertAsset(
     name: name,
     kind: kind,
@@ -64,9 +65,10 @@ class AssetProvider extends ChangeNotifier {
     creditLimitCents: creditLimitCents,
     billDay: billDay,
     repayDay: repayDay,
+    institution: institution,
   );
 
-  /// 更新资产信息（名称/分类/备注/开关/信用卡字段）
+  /// 更新资产信息（名称/分类/机构/备注/开关/信用卡字段）
   Future<void> updateInfo(
     Asset asset, {
     required String name,
@@ -76,6 +78,7 @@ class AssetProvider extends ChangeNotifier {
     int? creditLimitCents,
     int? billDay,
     int? repayDay,
+    String? institution,
   }) => _repo.updateInfo(
     asset,
     name: name,
@@ -85,6 +88,7 @@ class AssetProvider extends ChangeNotifier {
     creditLimitCents: creditLimitCents,
     billDay: billDay,
     repayDay: repayDay,
+    institution: institution,
   );
 
   /// 更新市值（落快照）
@@ -94,4 +98,11 @@ class AssetProvider extends ChangeNotifier {
   /// 归档 / 取消归档
   Future<void> setArchived(Asset asset, {required bool archived}) =>
       _repo.setArchived(asset, archived: archived);
+
+  /// 关联账单笔数（删除确认框提示用）
+  Future<int> relatedBillCount(int assetId) =>
+      _repo.relatedBillCount(assetId);
+
+  /// 彻底删除资产：快照连删，关联账单解除关联但保留
+  Future<void> deleteAsset(Asset asset) => _repo.deleteAsset(asset);
 }

@@ -7,7 +7,7 @@ import 'package:chestnut/data/repositories/debt_note_repository.dart';
 import 'package:chestnut/models/enums.dart';
 import 'package:chestnut/services/photo_staging_service.dart';
 import 'package:chestnut/services/s3_compatible_client.dart';
-import 'package:drift/drift.dart' show Variable;
+import 'package:drift/drift.dart' show Variable, Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -521,20 +521,25 @@ void main() {
     );
     final halfDb = AppDatabase.forTesting(halfMigrated);
     addTearDown(halfDb.close);
-    // 触发打开：onUpgrade(6→10) 走幂等路径，不抛 duplicate column
+    // 触发打开：onUpgrade(6→11) 走幂等路径，不抛 duplicate column
     await halfDb.customSelect('SELECT 1').get();
 
-    // 版本已推进到 10
+    // 版本已推进到 11
     final version =
         (await halfDb.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 10);
+    expect(version.data['user_version'], 12);
 
     // 缺失的三列已补齐、debt_notes 已建
     final cols =
         (await halfDb.customSelect('PRAGMA table_info(assets)').get())
             .map((r) => r.data['name'] as String)
             .toList();
-    for (final name in ['credit_limit_cents', 'bill_day', 'repay_day']) {
+    for (final name in [
+      'credit_limit_cents',
+      'bill_day',
+      'repay_day',
+      'institution',
+    ]) {
       expect(cols, contains(name));
     }
     final tables = (await halfDb
@@ -588,6 +593,44 @@ void main() {
         );
         // v7 时代已存在的 bills 表（v9 迁移段会触碰）
         _createV8BillsTable(raw);
+        // 真实 v7 库必有 assets 表（v6 引入，v7 补齐信用卡四列）；
+        // v11 迁移要给它加 institution 列并按账户名精准回填
+        raw.execute('''
+          CREATE TABLE assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            kind INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            value_cents INTEGER NOT NULL,
+            note TEXT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            archived INTEGER NOT NULL DEFAULT 0,
+            include_in_net INTEGER NOT NULL DEFAULT 1,
+            credit_limit_cents INTEGER NULL,
+            bill_day INTEGER NULL,
+            repay_day INTEGER NULL,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        ''');
+        // 名称恰为机构名 → 回填 institution；带后缀的自定义名 → 留空不硬猜；
+        // 投资组分类按券商/平台名单回填
+        raw.execute(
+          "INSERT INTO assets (name, kind, category, value_cents) "
+          "VALUES ('招商银行', 1, '信用卡', 0)",
+        );
+        raw.execute(
+          "INSERT INTO assets (name, kind, category, value_cents) "
+          "VALUES ('招商银行卡', 1, '信用卡', 0)",
+        );
+        raw.execute(
+          "INSERT INTO assets (name, kind, category, value_cents) "
+          "VALUES ('华泰证券', 0, '股票', 0)",
+        );
+        raw.execute(
+          "INSERT INTO assets (name, kind, category, value_cents) "
+          "VALUES ('天天基金', 0, '基金', 0)",
+        );
         raw.execute('PRAGMA user_version = 7');
       },
     );
@@ -597,7 +640,22 @@ void main() {
 
     final version =
         (await v7Db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 10);
+    expect(version.data['user_version'], 12);
+
+    // v11：institution 列回填——账户名恰为机构名的命中，带后缀的不硬猜，
+    // 投资组按券商/平台名单回填
+    final instRows =
+        (await v7Db.customSelect('SELECT name, institution FROM assets').get())
+            .map((r) => MapEntry<String, String?>(
+                  r.data['name'] as String,
+                  r.data['institution'] as String?,
+                ))
+            .toList();
+    final instByName = {for (final e in instRows) e.key: e.value};
+    expect(instByName['招商银行'], '招商银行');
+    expect(instByName['招商银行卡'], isNull);
+    expect(instByName['华泰证券'], '华泰证券');
+    expect(instByName['天天基金'], '天天基金');
 
     // 单图三列已随表重建移除，旧照片数据落入 debt_note_images
     final cols =
@@ -616,6 +674,139 @@ void main() {
     final notes = await v7Db.select(v7Db.debtNotes).get();
     expect(notes, hasLength(2));
     expect(notes.map((n) => n.personName), containsAll(['张三', '李四']));
+  });
+
+  test('v12 迁移：开发期 v11 中间库的 bank 列搬入 institution 并删除', () async {
+    // 模拟装过 v11 中间版（机构列当时叫 bank）的开发库：版本号已是 11、
+    // 不会再重跑 v11 段，institution 列缺失——v12 负责搬运并删列
+    final v11 = NativeDatabase.memory(
+      setup: (raw) {
+        raw.execute('''
+          CREATE TABLE assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            kind INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            value_cents INTEGER NOT NULL,
+            note TEXT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            archived INTEGER NOT NULL DEFAULT 0,
+            include_in_net INTEGER NOT NULL DEFAULT 1,
+            credit_limit_cents INTEGER NULL,
+            bill_day INTEGER NULL,
+            repay_day INTEGER NULL,
+            bank TEXT NULL,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        ''');
+        // 中间态库真实结构：只有 bank 列（无 institution）。
+        // bank 有值 → 搬入新补的 institution 列
+        raw.execute(
+          "INSERT INTO assets (name, kind, category, value_cents, bank) "
+          "VALUES ('浦发银行信用卡', 1, '信用卡', 0, '浦发银行')",
+        );
+        raw.execute('PRAGMA user_version = 11');
+      },
+    );
+    final db = AppDatabase.forTesting(v11);
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get();
+
+    final version =
+        (await db.customSelect('PRAGMA user_version').get()).single;
+    expect(version.data['user_version'], 12);
+
+    // institution 列已补齐、bank 列已删、机构值已搬入
+    final cols = (await db.customSelect('PRAGMA table_info(assets)').get())
+        .map((r) => r.data['name'] as String)
+        .toList();
+    expect(cols, contains('institution'));
+    expect(cols, isNot(contains('bank')));
+    final rows = await db.select(db.assets).get();
+    expect(rows.single.name, '浦发银行信用卡');
+    expect(rows.single.institution, '浦发银行');
+  });
+
+  test('彻底删除资产：快照连删、账单保留但解除关联、他卡不受影响', () async {
+    Future<Asset> createAsset(String name) async {
+      await repo.insertAsset(
+        name: name,
+        kind: AssetKind.asset,
+        category: '银行卡',
+        valueCents: 10000,
+      );
+      return (await repo.watchActive().first).last;
+    }
+
+    Future<int> countOf(String sql, List<Variable> vars) async {
+      final row = await db.customSelect(sql, variables: vars).getSingle();
+      return row.data.values.first as int;
+    }
+
+    final target = await createAsset('待删卡');
+    final other = await createAsset('保留卡');
+    await insertAssetWithSnapshot(target.id, '2026-10-09', 10000);
+
+    // 三笔账单：普通支出挂待删卡、转账 待删卡→保留卡、支出挂保留卡
+    await db.into(db.bills).insert(
+          BillsCompanion.insert(
+            type: BillType.expense,
+            amountCents: 100,
+            date: DateTime(2026, 10, 10),
+            assetId: Value(target.id),
+          ),
+        );
+    await db.into(db.bills).insert(
+          BillsCompanion.insert(
+            type: BillType.transfer,
+            amountCents: 100,
+            date: DateTime(2026, 10, 10),
+            assetId: Value(target.id),
+            toAssetId: Value(other.id),
+          ),
+        );
+    await db.into(db.bills).insert(
+          BillsCompanion.insert(
+            type: BillType.expense,
+            amountCents: 100,
+            date: DateTime(2026, 10, 10),
+            assetId: Value(other.id),
+          ),
+        );
+    expect(await repo.relatedBillCount(target.id), 2);
+
+    // 删除仅对已归档资产暴露（UI 侧流程），数据层照常执行
+    await repo.setArchived(target, archived: true);
+    await repo.deleteAsset(target);
+
+    // 资产行与快照已清，账单一笔不少
+    expect(
+      await countOf('SELECT COUNT(*) AS c FROM assets WHERE id = ?',
+          [Variable(target.id)]),
+      0,
+    );
+    expect(
+      await countOf(
+        'SELECT COUNT(*) AS c FROM asset_snapshots WHERE asset_id = ?',
+        [Variable(target.id)],
+      ),
+      0,
+    );
+    expect(await countOf('SELECT COUNT(*) AS c FROM bills', const []), 3);
+    // 引用待删卡的列全部置空，保留卡的引用不动
+    expect(
+      await countOf(
+        'SELECT COUNT(*) AS c FROM bills WHERE asset_id = ? OR to_asset_id = ?',
+        [Variable(target.id), Variable(target.id)],
+      ),
+      0,
+    );
+    expect(
+      await countOf('SELECT COUNT(*) AS c FROM bills WHERE asset_id = ?',
+          [Variable(other.id)]),
+      1,
+    );
   });
 }
 

@@ -2793,6 +2793,17 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _institutionMeta = const VerificationMeta(
+    'institution',
+  );
+  @override
+  late final GeneratedColumn<String> institution = GeneratedColumn<String>(
+    'institution',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _valueCentsMeta = const VerificationMeta(
     'valueCents',
   );
@@ -2918,6 +2929,7 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     name,
     kind,
     category,
+    institution,
     valueCents,
     note,
     sortOrder,
@@ -2959,6 +2971,15 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
       );
     } else if (isInserting) {
       context.missing(_categoryMeta);
+    }
+    if (data.containsKey('institution')) {
+      context.handle(
+        _institutionMeta,
+        institution.isAcceptableOrUnknown(
+          data['institution']!,
+          _institutionMeta,
+        ),
+      );
     }
     if (data.containsKey('value_cents')) {
       context.handle(
@@ -3055,6 +3076,10 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         DriftSqlType.string,
         data['${effectivePrefix}category'],
       )!,
+      institution: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}institution'],
+      ),
       valueCents: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}value_cents'],
@@ -3119,6 +3144,11 @@ class Asset extends DataClass implements Insertable<Asset> {
   /// 分类名（预设固定集，见 AssetGroups），如"现金"、"信用卡"
   final String category;
 
+  /// 所属机构（见 institutions.dart）：银行卡/信用卡=所属银行，
+  /// 投资理财组=券商/平台等。与名称独立存储——账户可起名"工资卡"
+  /// 而机构仍是"招商银行"。null = 未填写；其余分类恒为 null
+  final String? institution;
+
   /// 当前市值，单位：分（恒为正数，负债由 kind 区分）
   final int valueCents;
 
@@ -3153,6 +3183,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.name,
     required this.kind,
     required this.category,
+    this.institution,
     required this.valueCents,
     this.note,
     required this.sortOrder,
@@ -3173,6 +3204,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       map['kind'] = Variable<int>($AssetsTable.$converterkind.toSql(kind));
     }
     map['category'] = Variable<String>(category);
+    if (!nullToAbsent || institution != null) {
+      map['institution'] = Variable<String>(institution);
+    }
     map['value_cents'] = Variable<int>(valueCents);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
@@ -3200,6 +3234,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       name: Value(name),
       kind: Value(kind),
       category: Value(category),
+      institution: institution == null && nullToAbsent
+          ? const Value.absent()
+          : Value(institution),
       valueCents: Value(valueCents),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       sortOrder: Value(sortOrder),
@@ -3231,6 +3268,7 @@ class Asset extends DataClass implements Insertable<Asset> {
         serializer.fromJson<int>(json['kind']),
       ),
       category: serializer.fromJson<String>(json['category']),
+      institution: serializer.fromJson<String?>(json['institution']),
       valueCents: serializer.fromJson<int>(json['valueCents']),
       note: serializer.fromJson<String?>(json['note']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
@@ -3251,6 +3289,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       'name': serializer.toJson<String>(name),
       'kind': serializer.toJson<int>($AssetsTable.$converterkind.toJson(kind)),
       'category': serializer.toJson<String>(category),
+      'institution': serializer.toJson<String?>(institution),
       'valueCents': serializer.toJson<int>(valueCents),
       'note': serializer.toJson<String?>(note),
       'sortOrder': serializer.toJson<int>(sortOrder),
@@ -3269,6 +3308,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     String? name,
     AssetKind? kind,
     String? category,
+    Value<String?> institution = const Value.absent(),
     int? valueCents,
     Value<String?> note = const Value.absent(),
     int? sortOrder,
@@ -3284,6 +3324,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     name: name ?? this.name,
     kind: kind ?? this.kind,
     category: category ?? this.category,
+    institution: institution.present ? institution.value : this.institution,
     valueCents: valueCents ?? this.valueCents,
     note: note.present ? note.value : this.note,
     sortOrder: sortOrder ?? this.sortOrder,
@@ -3303,6 +3344,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       name: data.name.present ? data.name.value : this.name,
       kind: data.kind.present ? data.kind.value : this.kind,
       category: data.category.present ? data.category.value : this.category,
+      institution: data.institution.present
+          ? data.institution.value
+          : this.institution,
       valueCents: data.valueCents.present
           ? data.valueCents.value
           : this.valueCents,
@@ -3329,6 +3373,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('name: $name, ')
           ..write('kind: $kind, ')
           ..write('category: $category, ')
+          ..write('institution: $institution, ')
           ..write('valueCents: $valueCents, ')
           ..write('note: $note, ')
           ..write('sortOrder: $sortOrder, ')
@@ -3349,6 +3394,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     name,
     kind,
     category,
+    institution,
     valueCents,
     note,
     sortOrder,
@@ -3368,6 +3414,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.name == this.name &&
           other.kind == this.kind &&
           other.category == this.category &&
+          other.institution == this.institution &&
           other.valueCents == this.valueCents &&
           other.note == this.note &&
           other.sortOrder == this.sortOrder &&
@@ -3385,6 +3432,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<String> name;
   final Value<AssetKind> kind;
   final Value<String> category;
+  final Value<String?> institution;
   final Value<int> valueCents;
   final Value<String?> note;
   final Value<int> sortOrder;
@@ -3400,6 +3448,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.name = const Value.absent(),
     this.kind = const Value.absent(),
     this.category = const Value.absent(),
+    this.institution = const Value.absent(),
     this.valueCents = const Value.absent(),
     this.note = const Value.absent(),
     this.sortOrder = const Value.absent(),
@@ -3416,6 +3465,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     required String name,
     required AssetKind kind,
     required String category,
+    this.institution = const Value.absent(),
     required int valueCents,
     this.note = const Value.absent(),
     this.sortOrder = const Value.absent(),
@@ -3435,6 +3485,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? name,
     Expression<int>? kind,
     Expression<String>? category,
+    Expression<String>? institution,
     Expression<int>? valueCents,
     Expression<String>? note,
     Expression<int>? sortOrder,
@@ -3451,6 +3502,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (name != null) 'name': name,
       if (kind != null) 'kind': kind,
       if (category != null) 'category': category,
+      if (institution != null) 'institution': institution,
       if (valueCents != null) 'value_cents': valueCents,
       if (note != null) 'note': note,
       if (sortOrder != null) 'sort_order': sortOrder,
@@ -3469,6 +3521,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<String>? name,
     Value<AssetKind>? kind,
     Value<String>? category,
+    Value<String?>? institution,
     Value<int>? valueCents,
     Value<String?>? note,
     Value<int>? sortOrder,
@@ -3485,6 +3538,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       name: name ?? this.name,
       kind: kind ?? this.kind,
       category: category ?? this.category,
+      institution: institution ?? this.institution,
       valueCents: valueCents ?? this.valueCents,
       note: note ?? this.note,
       sortOrder: sortOrder ?? this.sortOrder,
@@ -3514,6 +3568,9 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     }
     if (category.present) {
       map['category'] = Variable<String>(category.value);
+    }
+    if (institution.present) {
+      map['institution'] = Variable<String>(institution.value);
     }
     if (valueCents.present) {
       map['value_cents'] = Variable<int>(valueCents.value);
@@ -3555,6 +3612,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('name: $name, ')
           ..write('kind: $kind, ')
           ..write('category: $category, ')
+          ..write('institution: $institution, ')
           ..write('valueCents: $valueCents, ')
           ..write('note: $note, ')
           ..write('sortOrder: $sortOrder, ')
@@ -6527,6 +6585,7 @@ typedef $$AssetsTableCreateCompanionBuilder =
       required String name,
       required AssetKind kind,
       required String category,
+      Value<String?> institution,
       required int valueCents,
       Value<String?> note,
       Value<int> sortOrder,
@@ -6544,6 +6603,7 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<AssetKind> kind,
       Value<String> category,
+      Value<String?> institution,
       Value<int> valueCents,
       Value<String?> note,
       Value<int> sortOrder,
@@ -6583,6 +6643,11 @@ class $$AssetsTableFilterComposer
 
   ColumnFilters<String> get category => $composableBuilder(
     column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get institution => $composableBuilder(
+    column: $table.institution,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6666,6 +6731,11 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get institution => $composableBuilder(
+    column: $table.institution,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get valueCents => $composableBuilder(
     column: $table.valueCents,
     builder: (column) => ColumnOrderings(column),
@@ -6738,6 +6808,11 @@ class $$AssetsTableAnnotationComposer
   GeneratedColumn<String> get category =>
       $composableBuilder(column: $table.category, builder: (column) => column);
 
+  GeneratedColumn<String> get institution => $composableBuilder(
+    column: $table.institution,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get valueCents => $composableBuilder(
     column: $table.valueCents,
     builder: (column) => column,
@@ -6807,6 +6882,7 @@ class $$AssetsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<AssetKind> kind = const Value.absent(),
                 Value<String> category = const Value.absent(),
+                Value<String?> institution = const Value.absent(),
                 Value<int> valueCents = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
@@ -6822,6 +6898,7 @@ class $$AssetsTableTableManager
                 name: name,
                 kind: kind,
                 category: category,
+                institution: institution,
                 valueCents: valueCents,
                 note: note,
                 sortOrder: sortOrder,
@@ -6839,6 +6916,7 @@ class $$AssetsTableTableManager
                 required String name,
                 required AssetKind kind,
                 required String category,
+                Value<String?> institution = const Value.absent(),
                 required int valueCents,
                 Value<String?> note = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
@@ -6854,6 +6932,7 @@ class $$AssetsTableTableManager
                 name: name,
                 kind: kind,
                 category: category,
+                institution: institution,
                 valueCents: valueCents,
                 note: note,
                 sortOrder: sortOrder,

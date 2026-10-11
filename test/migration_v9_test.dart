@@ -86,10 +86,10 @@ void main() {
     // 惰性打开：任一查询触发建库/迁移
     await db.customSelect('SELECT 1').get();
 
-    // 版本已推进到 10
+    // 版本已推进到 11
     final version =
         (await db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 10);
+    expect(version.data['user_version'], 12);
 
     // 列结构：两个新列存在，category_id 变为可空
     final cols = await db.customSelect('PRAGMA table_info(bills)').get();

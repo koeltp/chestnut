@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../models/enums.dart';
+import '../models/institutions.dart';
 import 'tables/assets.dart';
 import 'tables/bill_images.dart';
 import 'tables/bills.dart';
@@ -25,7 +26,7 @@ part 'database.g.dart';
 ///
 /// 开发期历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 10;
+const int kSchemaVersion = 12;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -200,6 +201,50 @@ class AppDatabase extends _$AppDatabase {
           } else {
             // 极端情况兜底：库中缺 debt_notes（如测试最小骨架）按新定义补建
             await m.createTable(debtNotes);
+          }
+        }
+        // 所属机构独立成列：assets 加可空 institution（银行卡/信用卡=
+        // 所属银行，投资理财组=券商/平台，名单见 institutions.dart）。
+        // 旧数据中账户名恰好等于已知机构名（如"招商银行"、"华泰证券"）的，
+        // 精准回填；带后缀（"招商银行卡"）或对不上的一律留空不硬猜，
+        // 避免把用户自定义名称误判为机构
+        if (from < 11) {
+          await _ensureColumn(m, assets, assets.institution);
+          final placeholders = List.filled(kAllInstitutionNames.length, '?')
+              .join(',');
+          await customUpdate(
+            "UPDATE assets SET institution = name "
+            "WHERE category IN ('信用卡', '银行卡', '股票', '基金', '黄金', "
+            "'外汇', '期货', '债券', '固定收益', '加密货币', '其它理财') "
+            "AND name IN ($placeholders)",
+            variables: [
+              for (final n in kAllInstitutionNames) Variable(n),
+            ],
+          );
+        }
+        // 开发期 v11 中间版曾给 assets 加过 bank 列，之后列改名 institution，
+        // 而装过中间版的库版本号已是 11、不会再重跑 v11 段——institution
+        // 列缺失导致保存报 no such column。v12 幂等收尾：bank 列存在则
+        // 把值搬进 institution 并删掉 bank；正常 v10 直升的库无 bank 列，
+        // 整段跳过
+        if (from < 12) {
+          // 中间态库只有 bank 列、没有 institution 列，先补齐再搬运
+          await _ensureColumn(m, assets, assets.institution);
+          final bankCol = await customSelect(
+            "SELECT COUNT(*) AS c FROM pragma_table_info('assets') "
+            "WHERE name = 'bank'",
+          ).getSingle();
+          if ((bankCol.data['c'] as int) > 0) {
+            await customUpdate(
+              'UPDATE assets SET institution = bank '
+              'WHERE institution IS NULL AND bank IS NOT NULL',
+            );
+            try {
+              await customUpdate('ALTER TABLE assets DROP COLUMN bank');
+            } catch (_) {
+              // 旧 SQLite（<3.35）不支持 DROP COLUMN：bank 留作空列，
+              // drift 的读写不经过它，不影响功能
+            }
           }
         }
       }

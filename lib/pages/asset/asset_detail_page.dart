@@ -14,6 +14,7 @@ import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/debt_flow_row.dart';
 import '../../widgets/debt_note_detail_sheet.dart';
+import '../../widgets/institution_logo.dart';
 import '../../widgets/section_card.dart';
 import '../stats/stats_page.dart';
 import 'asset_edit_page.dart';
@@ -83,16 +84,26 @@ class _SummaryCard extends StatelessWidget {
           ].join(' · ')
         : asset.note;
     return SectionCard(
-      // 整卡可点：进编辑页（改资料与改市值唯一入口）
-      onTap: () => pushAssetEditPage(
-        context,
-        category: AssetGroups.categoryOf(asset.category) ??
-            AssetGroups.fund.categories.first,
-        existing: asset,
-      ),
+      // 整卡可点：进编辑页（改资料与改市值唯一入口）。
+      // 编辑页删除了资产时，本详情页随之退出，避免停留在
+      // 已删除资产的页面上
+      onTap: () async {
+        final deleted = await pushAssetEditPage(
+          context,
+          category: AssetGroups.categoryOf(asset.category) ??
+              AssetGroups.fund.categories.first,
+          existing: asset,
+        );
+        if (deleted == true && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
       child: Row(
         children: [
-          AssetCircleIcon(category: asset.category),
+          // 机构配了品牌 logo 则显示机构 logo，否则回落分类图标
+          institutionHasLogo(asset.institution)
+              ? InstitutionLogo(name: asset.institution!)
+              : AssetCircleIcon(category: asset.category),
           const SizedBox(width: AppDimens.gapMd),
           Expanded(
             child: Column(

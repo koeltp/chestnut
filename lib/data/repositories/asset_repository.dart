@@ -231,6 +231,7 @@ class AssetRepository {
     int? creditLimitCents,
     int? billDay,
     int? repayDay,
+    String? institution,
   }) async {
     return _db.transaction(() async {
       // 取同类型里 sortOrder 最大的记录：必须 limit(1) 收窄到一行，
@@ -253,6 +254,7 @@ class AssetRepository {
               creditLimitCents: Value(creditLimitCents),
               billDay: Value(billDay),
               repayDay: Value(repayDay),
+              institution: Value(institution),
               sortOrder: Value((maxOrder?.sortOrder ?? -1) + 1),
             ),
           );
@@ -260,7 +262,7 @@ class AssetRepository {
     });
   }
 
-  /// 更新资产信息（名称/分类/备注/开关/信用卡字段），不动市值与快照
+  /// 更新资产信息（名称/分类/机构/备注/开关/信用卡字段），不动市值与快照
   Future<void> updateInfo(
     Asset asset, {
     required String name,
@@ -270,6 +272,7 @@ class AssetRepository {
     int? creditLimitCents,
     int? billDay,
     int? repayDay,
+    String? institution,
   }) {
     return (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(
       AssetsCompanion(
@@ -280,6 +283,7 @@ class AssetRepository {
         creditLimitCents: Value(creditLimitCents),
         billDay: Value(billDay),
         repayDay: Value(repayDay),
+        institution: Value(institution),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -312,6 +316,44 @@ class AssetRepository {
         updatedAt: Value(DateTime.now()),
       ),
     );
+  }
+
+  /// 关联账单笔数（删除确认框提示用）
+  Future<int> relatedBillCount(int assetId) {
+    final count = countAll();
+    final query = _db.selectOnly(_db.bills)
+      ..addColumns([count])
+      ..where(
+        _db.bills.assetId.equals(assetId) |
+            _db.bills.toAssetId.equals(assetId),
+      );
+    return query.map((row) => row.read(count) ?? 0).getSingle();
+  }
+
+  /// 彻底删除资产（仅已归档资产可删，UI 侧保证入口）：
+  /// 快照随资产连删（外键引用资产，失去母体即无意义）；
+  /// 关联账单保留但解除关联（assetId/toAssetId 置空，退化为
+  /// 不关联账户的纯记账）——账单是账本主体，删账户绝不动账单
+  Future<void> deleteAsset(Asset asset) async {
+    await _db.transaction(() async {
+      // 先解除账单引用再删资产行，避免外键约束拒绝删除
+      await (_db.update(_db.bills)
+              ..where(
+                (b) =>
+                    b.assetId.equals(asset.id) |
+                    b.toAssetId.equals(asset.id),
+              ))
+          .write(
+            const BillsCompanion(
+              assetId: Value(null),
+              toAssetId: Value(null),
+            ),
+          );
+      await (_db.delete(_db.assetSnapshots)
+            ..where((s) => s.assetId.equals(asset.id)))
+          .go();
+      await (_db.delete(_db.assets)..where((a) => a.id.equals(asset.id))).go();
+    });
   }
 
   /// 落一条市值快照（今天）

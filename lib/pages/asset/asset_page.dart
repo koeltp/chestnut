@@ -7,16 +7,19 @@ import '../../data/database.dart';
 import '../../data/repositories/asset_repository.dart';
 import '../../models/asset_category.dart';
 import '../../models/enums.dart';
+import '../../models/institutions.dart';
 import '../../providers/asset_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/money_util.dart';
 import '../../widgets/asset_circle_icon.dart';
+import '../../widgets/institution_logo.dart';
 import '../../widgets/pie_chart_card.dart';
 import '../../widgets/section_card.dart';
 import 'asset_category_sheet.dart';
 import 'asset_detail_page.dart';
 import 'asset_edit_page.dart';
+import 'institution_picker_sheet.dart';
 import 'debt_note_list_page.dart';
 
 /// 资产管理页：钱迹式净资产盘点
@@ -47,11 +50,24 @@ class AssetPage extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'asset_add_fab',
-        // 钱迹式添加流程：先选分类，再进动态表单页（借出/借入进借条页）
+        // 钱迹式添加流程：先选分类，再进动态表单页（借出/借入进借条页）。
+        // 信用卡/银行卡与投资理财组选完立刻弹机构层（卡类只看银行组，
+        // 投资组隐藏银行组），选好的机构带进编辑页；
+        // 机构弹层取消也照常进入（机构为选填，编辑页内仍可再选）
         onPressed: () async {
           final def = await showAssetCategorySheet(context);
           if (def == null || !context.mounted) return;
-          await handleAssetCategoryPicked(context, def);
+          final isCard = def.name == '信用卡' || def.name == '银行卡';
+          final isInvest = AssetGroups.investCategories.contains(def.name);
+          String? institution;
+          if (isCard || isInvest) {
+            institution = await showInstitutionPickerSheet(
+              context,
+              sections: isCard ? kBankSectionFilter : kInvestSectionFilter,
+            );
+            if (!context.mounted) return;
+          }
+          await handleAssetCategoryPicked(context, def, institution: institution);
         },
         child: const Icon(Icons.add),
       ),
@@ -590,7 +606,10 @@ class _AssetRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            AssetCircleIcon(category: asset.category),
+            // 机构配了品牌 logo 则显示机构 logo，否则回落分类图标
+            institutionHasLogo(asset.institution)
+                ? InstitutionLogo(name: asset.institution!)
+                : AssetCircleIcon(category: asset.category),
             const SizedBox(width: AppDimens.gapMd),
             Expanded(
               child: Column(
@@ -929,11 +948,41 @@ class _ArchivedSection extends StatelessWidget {
   }
 }
 
-/// 归档行：只读展示 + 恢复按钮
+/// 归档行：只读展示 + 恢复 / 删除按钮（删除仅对已归档资产暴露）
 class _ArchivedRow extends StatelessWidget {
   const _ArchivedRow({required this.asset});
 
   final Asset asset;
+
+  Future<void> _delete(BuildContext context) async {
+    final provider = context.read<AssetProvider>();
+    final count = await provider.relatedBillCount(asset.id);
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除资产'),
+        content: Text(
+          '删除后「${asset.name}」及其历史快照将被清除，不可恢复。'
+          '${count > 0 ? '$count 笔关联账单会保留，但不再关联此账户。' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.expense),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await provider.deleteAsset(asset);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -964,6 +1013,11 @@ class _ArchivedRow extends StatelessWidget {
               archived: false,
             ),
             child: const Text('恢复'),
+          ),
+          TextButton(
+            onPressed: () => _delete(context),
+            style: TextButton.styleFrom(foregroundColor: AppColors.expense),
+            child: const Text('删除'),
           ),
         ],
       ),

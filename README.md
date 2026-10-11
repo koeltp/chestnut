@@ -113,7 +113,14 @@ adb-wifi-qr --connect
 手机端操作：**设置 → 系统管理 → 开发者选项 → 无线调试 → 使用二维码配对设备**，扫描终端中的二维码即可。
 
 前提：手机系统 Android 11+，且手机与电脑在同一 Wi-Fi 下。配对只需一次；无线调试的连接端口每次开启会变化，重新打开后重跑上述命令，或用 `adb mdns services` 查到连接端口后 `adb connect <IP:端口>`。扫码不成功时可把终端调大、换深色背景，或加 `--timeout 120` 延长等待时间。
+``` bash
+# 只有一台机器时，可直接运行
+flutter build apk --debug ; adb install -r build\app\outputs\flutter-apk\app-debug.apk ; adb shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
+# IP:PORT 连接指定IP设备
+adb -s 192.168.10.3:44749 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:44749 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 
+flutter build apk --debug ; adb -s 192.168.10.3:44749 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:44749 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
+``` 
 ## 发布构建
 
 只打 arm64 架构（近十年安卓手机均为该架构）：
