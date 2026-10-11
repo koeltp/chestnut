@@ -11,10 +11,12 @@ import '../../theme/app_dimens.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/asset_circle_icon.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/day_picker_dialog.dart';
 import '../../widgets/form_rows.dart';
 import '../../widgets/institution_logo.dart';
 import 'asset_category_sheet.dart';
+import 'asset_delete.dart';
 import 'institution_picker_sheet.dart';
 import 'debt_note_edit_page.dart';
 
@@ -351,24 +353,13 @@ class _AssetEditPageState extends State<_AssetEditPage> {
 
   Future<void> _archive() async {
     final existing = widget.existing!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('归档资产'),
-        content: Text('归档后「${existing.name}」不再计入净值，历史快照保留，可随时恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('归档'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '归档资产',
+      content: '归档后「${existing.name}」不再计入净值，历史快照保留，可随时恢复。',
+      confirmText: '归档',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (!mounted) return;
     await context.read<AssetProvider>().setArchived(existing, archived: true);
     if (!mounted) return;
@@ -384,40 +375,11 @@ class _AssetEditPageState extends State<_AssetEditPage> {
     Navigator.of(context).pop();
   }
 
-  /// 彻底删除（仅已归档资产在编辑页暴露）：确认后连快照删除，
-  /// 关联账单保留但解除关联
+  /// 彻底删除（仅已归档资产在编辑页暴露）：确认删除后 pop(true)
+  /// 通知详情页一并退出
   Future<void> _delete() async {
-    final existing = widget.existing!;
-    final provider = context.read<AssetProvider>();
-    final count = await provider.relatedBillCount(existing.id);
-    if (!mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除资产'),
-        content: Text(
-          '删除后「${existing.name}」及其历史快照将被清除，不可恢复。'
-          '${count > 0 ? '$count 笔关联账单会保留，但不再关联此账户。' : ''}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.expense),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    if (!mounted) return;
-    await provider.deleteAsset(existing);
-    if (!mounted) return;
-    // 返回 true 通知上层（详情页）一并退出
-    Navigator.of(context).pop(true);
+    final deleted = await confirmDeleteAsset(context, widget.existing!);
+    if (deleted && mounted) Navigator.of(context).pop(true);
   }
 
   @override

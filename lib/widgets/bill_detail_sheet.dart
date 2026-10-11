@@ -16,6 +16,7 @@ import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
 import '../utils/show_toast.dart';
 import 'category_avatar.dart';
+import 'confirm_dialog.dart';
 import 'detail_widgets.dart';
 import 'photo_viewer_page.dart';
 
@@ -209,24 +210,14 @@ class _DetailBodyState extends State<_DetailBody> {
 
   /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新
   Future<void> _confirmDelete(BuildContext sheetContext) async {
-    final confirmed = await showDialog<bool>(
-      context: sheetContext,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除账单'),
-        content: const Text('确定删除这条账单吗？删除后不可恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      sheetContext,
+      title: '删除账单',
+      content: '确定删除这条账单吗？删除后不可恢复。',
+      confirmText: '删除',
+      danger: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (!sheetContext.mounted) return;
     Navigator.of(sheetContext).pop();
     await widget.provider.deleteBill(widget.bill.id);

@@ -17,6 +17,7 @@ import '../../widgets/institution_logo.dart';
 import '../../widgets/pie_chart_card.dart';
 import '../../widgets/section_card.dart';
 import 'asset_category_sheet.dart';
+import 'asset_delete.dart';
 import 'asset_detail_page.dart';
 import 'asset_edit_page.dart';
 import 'institution_picker_sheet.dart';
@@ -954,35 +955,8 @@ class _ArchivedRow extends StatelessWidget {
 
   final Asset asset;
 
-  Future<void> _delete(BuildContext context) async {
-    final provider = context.read<AssetProvider>();
-    final count = await provider.relatedBillCount(asset.id);
-    if (!context.mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除资产'),
-        content: Text(
-          '删除后「${asset.name}」及其历史快照将被清除，不可恢复。'
-          '${count > 0 ? '$count 笔关联账单会保留，但不再关联此账户。' : ''}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.expense),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && context.mounted) {
-      await provider.deleteAsset(asset);
-    }
-  }
+  Future<void> _delete(BuildContext context) =>
+      confirmDeleteAsset(context, asset);
 
   @override
   Widget build(BuildContext context) {

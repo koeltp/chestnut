@@ -12,6 +12,7 @@ import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/app_segmented.dart';
 import '../../widgets/category_avatar.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
 
@@ -125,24 +126,14 @@ class _BudgetPageState extends State<BudgetPage> {
   /// 总预算与所有分类预算；预算模式同时置为未选——分段器两段都不
   /// 选中，之后进页面不再自动填充，直到用户重新点选某个模式
   Future<void> _clearAllBudgets() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清空预算'),
-        content: const Text('总预算和所有分类预算都会被清除，确定继续吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空', style: TextStyle(color: AppColors.expense)),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '清空预算',
+      content: '总预算和所有分类预算都会被清除，确定继续吗？',
+      confirmText: '清空',
+      danger: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final provider = context.read<BudgetProvider>();
     final settings = context.read<SettingsProvider>();
     // 只清已设置（正数）的分类预算，减少无效写入
