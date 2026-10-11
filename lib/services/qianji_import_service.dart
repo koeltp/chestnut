@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:excel/excel.dart';
@@ -155,6 +156,9 @@ abstract final class QianjiImportService {
   /// 列按表头名定位（时间/分类/二级分类/类型/金额/备注），不依赖列序；
   /// 非"支出/收入"类型的行计入 unsupportedByType；金额或时间解析失败
   /// 的行计入 badCount 并跳过。
+  ///
+  /// 解码与逐行解析是 CPU 密集操作（大账本数千行），放后台 isolate
+  /// 执行，避免导入期间 UI 掉帧；读文件与错误口径保持不变。
   static Future<QianjiParseResult> parseFile(String path) async {
     final List<int> bytes;
     try {
@@ -162,6 +166,20 @@ abstract final class QianjiImportService {
     } catch (_) {
       throw const QianjiImportException('无法读取该文件');
     }
+    try {
+      return await Isolate.run(() => _parseBytes(bytes));
+    } on QianjiImportException {
+      rethrow; // 业务校验错误：文案原样给 UI
+    } catch (_) {
+      // isolate 传输等意外异常：与解码失败同口径
+      throw const QianjiImportException(
+        '无法解析该文件，请确认是钱迹导出的 Excel 文件',
+      );
+    }
+  }
+
+  /// 同步解析字节流（[parseFile] 在后台 isolate 内调用）
+  static QianjiParseResult _parseBytes(List<int> bytes) {
     final Excel excel;
     try {
       excel = Excel.decodeBytes(bytes);

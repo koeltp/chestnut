@@ -24,25 +24,34 @@ class ArchivedSection extends StatelessWidget {
           padding: const EdgeInsets.only(top: AppDimens.gapSection),
           child: SectionCard(
             padding: EdgeInsets.zero,
-            child: Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                childrenPadding: const EdgeInsets.only(bottom: 4),
-                title: Text(
-                  '已归档 (${list.length})',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
+            // ExpansionTile 的 ListTile 需要直接落在 Material 上渲染
+            // 墨水涟漪；不包这层 Material，debug 下每次重建都会报
+            // "ink 不可见"断言（卡片背景夹在 ListTile 与 Scaffold 的
+            // Material 之间）
+            child: Material(
+              color: Colors.transparent,
+              child: Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                  childrenPadding: const EdgeInsets.only(bottom: 4),
+                  title: Text(
+                    '已归档 (${list.length})',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-                children: [
-                  for (var i = 0; i < list.length; i++) ...[
-                    if (i > 0) const Divider(indent: 16, endIndent: 16),
-                    _ArchivedRow(asset: list[i]),
+                  children: [
+                    for (var i = 0; i < list.length; i++) ...[
+                      if (i > 0) const Divider(indent: 16, endIndent: 16),
+                      _ArchivedRow(asset: list[i]),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
