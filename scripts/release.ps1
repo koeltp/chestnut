@@ -139,26 +139,33 @@ Write-Host "SHA-256：$hash"
 
 # 从 CHANGELOG 提取当前版本的条目作为 releaseNotes（与 CHANGELOG 同源）
 # 必须 -Encoding UTF8：PS 5.1 默认按 ANSI 读无 BOM 的 UTF-8，中文会变乱码
+# 清单的 releaseNotes 是字符串数组（App 端 UpdateService 按此解析）：
+# 只取"· "条目行；【分组头】不进清单；[内部] 前缀条目是纯内部重构，
+# 对用户零信息量——进 CHANGELOG 留档但不进应用内更新弹窗
 $notes = @()
 $inSection = $false
 foreach ($line in (Get-Content 'CHANGELOG.md' -Encoding UTF8)) {
   if ($line -match "^## \[$VersionName\]") { $inSection = $true; continue }
   if ($inSection -and $line -match '^## \[') { break }
-  if ($inSection) { $notes += ($line -replace '^### (.+)$', '【$1】' -replace '^- ', '· ') }
+  if ($inSection -and $line -match '^- \[内部\]') { continue }
+  if ($inSection -and $line -match '^- (.+)$') { $notes += $Matches[1] }
 }
-$releaseNotes = ($notes | Where-Object { $_.Trim() }) -join "`n"
+$releaseNotes = @($notes | Where-Object { $_.Trim() })
 
-# 应用内更新清单：versionCode 判断新旧，sha256 + fileSize 双校验
+# 应用内更新清单：与博客 latest.json 同构，收尾时直接覆盖上传即可。
+# versionCode 判断新旧（构建号+2000 实际值），sha256 小写，forceUpdate 默认 false
 $manifestCode = $newBuild + 2000
 if ($actualCode) { $manifestCode = $actualCode }   # aapt2 自检通过时以 APK 实际值为准
 $manifest = [ordered]@{
+  _comment     = '栗子记账最新版本清单。发版步骤：1) pubspec 版本号与构建号(+N)+1；2) flutter build apk --release --no-tree-shake-icons --split-per-abi 取 arm64 包，文件名带版本号放入 /downloads/；3) GitHub koeltp/chestnut 网页建 release（tag vx.y.z）上传 APK 存档（仅存档/对外展示，不指 apkUrl——GitHub Releases 国内下载速度为 0）；4) 更新本文件 versionCode/versionName/apkUrl/sha256/fileSize/releaseNotes；5) push。注意：--split-per-abi 会给 arm64 包的 versionCode 加 2000 偏移（构建号1→2001、2→2002），本文件 versionCode 必须填 APK 实际值，App 按它判断新旧'
   versionCode  = $manifestCode
   versionName  = $VersionName
   apkUrl       = "https://www.taipi.top/downloads/$apkName"
-  sha256       = $hash
+  sha256       = $hash.ToLower()
   fileSize     = $size
+  forceUpdate  = $false
   releaseNotes = $releaseNotes
-  publishedAt  = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+  publishedAt  = (Get-Date).ToString('yyyy-MM-dd')
 }
 $manifestPath = Join-Path $dist "manifest-$VersionName.json"
 # 不用 Out-File：它默认写带 BOM 的 UTF-8，App 侧 jsonDecode 不认 BOM
