@@ -85,6 +85,11 @@ const List<InstitutionSection> kInstitutionSections = [
     InstitutionDef('东莞证券', svg: 'assets/images/brands/dongguan_zhengquan.svg'),
     InstitutionDef('长城证券', svg: 'assets/images/brands/changcheng_zhengquan.svg'),
     InstitutionDef('长桥证券', svg: 'assets/images/brands/changqiao_zhengquan.svg'),
+    InstitutionDef('富途牛牛证券', svg: 'assets/images/brands/futu_zhengquan.svg'),
+    InstitutionDef('老虎证券'),
+    InstitutionDef('微牛'),
+    InstitutionDef('华盛证券'),
+    InstitutionDef('盈透证券'),
   ]),
   InstitutionSection('基金/理财平台', [
     InstitutionDef('天天基金'),
@@ -171,6 +176,11 @@ final Map<String, String> kInstitutionInitials = {
   '东莞证券': 'd',
   '长城证券': 'c',
   '长桥证券': 'c',
+  '富途牛牛证券': 'f',
+  '老虎证券': 'l',
+  '微牛': 'w',
+  '华盛证券': 'h',
+  '盈透证券': 'y',
   // 基金/理财平台
   '天天基金': 't',
   '蚂蚁财富': 'm',
