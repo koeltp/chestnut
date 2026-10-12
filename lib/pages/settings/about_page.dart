@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
 import '../privacy/privacy_policy_page.dart';
+import 'changelog_page.dart';
 import 'open_source_page.dart';
 
 /// 关于页：版本信息、隐私政策与开源说明入口、开源仓库与反馈渠道、版权与许可声明
@@ -151,6 +152,16 @@ class _AboutPageState extends State<AboutPage> {
             value: '开源意味着什么',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const OpenSourcePage()),
+            ),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _item(
+            icon: Icons.history,
+            color: AppColors.primaryDeep,
+            title: '更新记录',
+            value: '历次版本的更新内容',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ChangelogPage()),
             ),
           ),
           const Divider(indent: 16, endIndent: 16),

@@ -93,12 +93,10 @@ class UpdateService {
   /// "以后再说"记忆键：记录用户已忽略的版本构建号，同版本自动提示只弹一次
   static const _kIgnoredUpdateCode = 'ignored_update_code';
 
-  /// 检查更新：有新版返回 [UpdateInfo]，当前已是最新返回 null；
-  /// 网络或清单异常抛 [UpdateException]（自动检测与手动检查共用）
-  Future<UpdateInfo?> checkForUpdate() async {
-    final info = await PackageInfo.fromPlatform();
-    final currentCode = int.tryParse(info.buildNumber) ?? 0;
-
+  /// 拉取线上版本清单并解析（不与本地版本比较）。
+  /// 更新日志弹层用它展示最新一版的日志（已是最新时"最新版"即当前版）；
+  /// [checkForUpdate] 在此之上做版本比较
+  Future<UpdateInfo> fetchLatestManifest() async {
     final uri = Uri.parse(
       '$_manifestUrl?t=${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -117,11 +115,20 @@ class UpdateService {
       if (decoded is! Map<String, dynamic>) {
         throw const UpdateException('版本清单格式错误');
       }
-      final latest = UpdateInfo.fromJson(decoded);
-      return latest.versionCode > currentCode ? latest : null;
+      return UpdateInfo.fromJson(decoded);
     } on FormatException {
       throw const UpdateException('版本清单解析失败');
     }
+  }
+
+  /// 检查更新：有新版返回 [UpdateInfo]，当前已是最新返回 null；
+  /// 网络或清单异常抛 [UpdateException]（自动检测与手动检查共用）
+  Future<UpdateInfo?> checkForUpdate() async {
+    final info = await PackageInfo.fromPlatform();
+    final currentCode = int.tryParse(info.buildNumber) ?? 0;
+
+    final latest = await fetchLatestManifest();
+    return latest.versionCode > currentCode ? latest : null;
   }
 
   /// 下载 APK 到应用缓存目录，[onProgress] 回调 (已收字节, 总字节)；

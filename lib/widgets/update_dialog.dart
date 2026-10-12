@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../pages/settings/changelog_page.dart';
 import '../services/update_service.dart';
 import '../theme/app_colors.dart';
 
@@ -144,6 +145,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   ],
                 ),
               ),
+              // 只在展示态给入口：下载/重试中途跳走会打断更新流程
+              if (_phase == _Phase.idle) _buildFullLogLink(),
               if (_phase == _Phase.downloading) ...[
                 const SizedBox(height: 16),
                 _buildProgress(),
@@ -302,6 +305,29 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 查看全部更新记录：跳应用内更新记录页。
+  /// 先推页面再关弹窗：页面路由压在弹窗之上，弹窗随后关闭，
+  /// 顺序反了会用已销毁的弹窗 context 跳转
+  Widget _buildFullLogLink() {
+    return Center(
+      child: TextButton.icon(
+        onPressed: () {
+          final nav = Navigator.of(context);
+          nav.push(
+            MaterialPageRoute<void>(builder: (_) => const ChangelogPage()),
+          );
+          nav.pop();
+        },
+        icon: const Icon(Icons.history, size: 16),
+        label: const Text('查看全部更新记录', style: TextStyle(fontSize: 13)),
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.textSecondary,
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
     );
   }
 

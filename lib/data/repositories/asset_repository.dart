@@ -369,6 +369,53 @@ class AssetRepository {
         );
   }
 
+  // ---------- 历史市值记录（快照修正/删除） ----------
+
+  /// 监听某资产的历史快照：按日倒序，同日多条只保留当天最后一条——
+  /// 与净值聚合口径一致，展示/编辑/删除的都是"该日水位"
+  Stream<List<AssetSnapshot>> watchSnapshots(int assetId) {
+    return (_db.select(_db.assetSnapshots)
+          ..where((s) => s.assetId.equals(assetId))
+          ..orderBy([
+            (s) => OrderingTerm.desc(s.day),
+            (s) => OrderingTerm.desc(s.createdAt),
+            (s) => OrderingTerm.desc(s.id),
+          ]))
+        .watch()
+        .map((rows) {
+      // 倒序遍历首见即该日最后一条；map 保插入序，天然保持日期倒序
+      final byDay = <String, AssetSnapshot>{};
+      for (final s in rows) {
+        byDay[s.day] ??= s;
+      }
+      return byDay.values.toList();
+    });
+  }
+
+  /// 修正某日市值：删该日全部旧快照 + 落一条新值（成为该日代表）。
+  /// 误输市值（如多打一个 0）后的修正入口
+  Future<void> updateSnapshotValue(int assetId, String day, int valueCents) {
+    return _db.transaction(() async {
+      await (_db.delete(_db.assetSnapshots)
+            ..where((s) => s.assetId.equals(assetId) & s.day.equals(day)))
+          .go();
+      await _db.into(_db.assetSnapshots).insert(
+            AssetSnapshotsCompanion.insert(
+              assetId: assetId,
+              day: day,
+              valueCents: valueCents,
+            ),
+          );
+    });
+  }
+
+  /// 删除某日快照（该日全部行）：净值曲线该日不再计入该资产
+  Future<void> deleteSnapshotDay(int assetId, String day) {
+    return (_db.delete(_db.assetSnapshots)
+          ..where((s) => s.assetId.equals(assetId) & s.day.equals(day)))
+        .go();
+  }
+
   // ---------- 记账联动账户（余额直改模型） ----------
 
   /// 对单账户应用一笔资金流影响，并落余额快照（净值曲线保持连续）。

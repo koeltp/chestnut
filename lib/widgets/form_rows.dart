@@ -63,7 +63,15 @@ class FormRow extends StatelessWidget {
       ),
     );
     if (onTap == null) return padded;
-    return InkWell(onTap: onTap, child: padded);
+    // 点行先收起系统键盘：只读行不抢焦点，若键盘因其他输入框开着，
+    // 弹层会被 IME insets 顶到键盘上方（贴顶）——先 unfocus 再执行行动作
+    return InkWell(
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus();
+        onTap!();
+      },
+      child: padded,
+    );
   }
 }
 
@@ -79,6 +87,7 @@ class FormInputRow extends StatelessWidget {
     this.inputFormatters,
     this.textInputAction,
     this.textAlign = TextAlign.right,
+    this.suffix,
   });
 
   final String label;
@@ -90,24 +99,44 @@ class FormInputRow extends StatelessWidget {
   final TextInputAction? textInputAction;
   final TextAlign textAlign;
 
+  /// 输入框右侧固定后缀（如金额行的 CNY 币种标识）
+  final String? suffix;
+
   @override
   Widget build(BuildContext context) {
     return FormRow(
       label: label,
       child: Center(
-        child: TextField(
-          controller: controller,
-          textAlign: textAlign,
-          keyboardType: keyboardType,
-          maxLength: maxLength,
-          inputFormatters: inputFormatters,
-          textInputAction: textInputAction,
-          decoration: InputDecoration(
-            hintText: hint,
-            counterText: '',
-            isDense: true,
-            border: InputBorder.none,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: TextField(
+                controller: controller,
+                textAlign: textAlign,
+                keyboardType: keyboardType,
+                maxLength: maxLength,
+                inputFormatters: inputFormatters,
+                textInputAction: textInputAction,
+                decoration: InputDecoration(
+                  hintText: hint,
+                  counterText: '',
+                  isDense: true,
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            if (suffix != null) ...[
+              const SizedBox(width: 6),
+              Text(
+                suffix!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

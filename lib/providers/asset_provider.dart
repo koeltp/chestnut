@@ -111,6 +111,18 @@ class AssetProvider extends ChangeNotifier {
   Future<void> updateValue(Asset asset, int valueCents) =>
       _repo.updateValue(asset, valueCents);
 
+  /// 历史市值记录：按日列出某资产的快照（同日只留最后一条）
+  Stream<List<AssetSnapshot>> snapshotStream(int assetId) =>
+      _repo.watchSnapshots(assetId);
+
+  /// 修正某日市值（误输市值的清理入口）
+  Future<void> updateSnapshotValue(int assetId, String day, int valueCents) =>
+      _repo.updateSnapshotValue(assetId, day, valueCents);
+
+  /// 删除某日市值记录
+  Future<void> deleteSnapshotDay(int assetId, String day) =>
+      _repo.deleteSnapshotDay(assetId, day);
+
   /// 归档 / 取消归档
   Future<void> setArchived(Asset asset, {required bool archived}) =>
       _repo.setArchived(asset, archived: archived);

@@ -18,6 +18,7 @@ import '../../widgets/institution_logo.dart';
 import '../../widgets/section_card.dart';
 import '../stats/stats_page.dart';
 import 'asset_edit_page.dart';
+import 'asset_snapshot_history_page.dart';
 
 /// 账户流水页：顶部总资产卡 + 关联流水列表
 ///
@@ -40,7 +41,22 @@ class AssetDetailPage extends StatelessWidget {
         final view = snapshot.data;
         final asset = view?.asset;
         return Scaffold(
-          appBar: AppBar(title: Text(asset?.name ?? '账户')),
+          appBar: AppBar(
+            title: Text(asset?.name ?? '账户'),
+            // 历史市值记录入口：按日修正/删除快照，清理误输市值造成的曲线尖刺
+            actions: [
+              if (asset != null)
+                IconButton(
+                  tooltip: '历史市值记录',
+                  icon: const Icon(Icons.history),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AssetSnapshotHistoryPage(asset: asset),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(
               AppDimens.pagePadding,

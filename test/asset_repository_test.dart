@@ -174,6 +174,69 @@ void main() {
     expect(summary.snapshotNetCents, 5000);
   });
 
+  test('历史市值记录：同日多条只留最后一条，按日倒序', () async {
+    await repo.insertAsset(
+      name: '现金',
+      kind: AssetKind.asset,
+      category: '现金',
+      valueCents: 10000,
+    );
+    final a = (await repo.watchActive().first).single;
+    await insertAssetWithSnapshot(a.id, '2026-10-09', 100000);
+    await insertAssetWithSnapshot(a.id, '2026-10-10', 200000);
+    // 同日两条：10-11 后写的 300000 是该日水位
+    await insertAssetWithSnapshot(a.id, '2026-10-11', 250000);
+    await insertAssetWithSnapshot(a.id, '2026-10-11', 300000);
+
+    final snaps = (await repo.watchSnapshots(a.id).first)
+        // 建资产时落了今天的初始快照，不在本次断言范围
+        .where((s) => s.day != DateTime.now().toIso8601String().substring(0, 10))
+        .toList();
+    expect(snaps.map((s) => s.day), ['2026-10-11', '2026-10-10', '2026-10-09']);
+    expect(snaps.first.valueCents, 300000);
+  });
+
+  test('修正某日快照：整日落新值，净值曲线随之更新', () async {
+    await repo.insertAsset(
+      name: '现金',
+      kind: AssetKind.asset,
+      category: '现金',
+      valueCents: 10000,
+    );
+    final a = (await repo.watchActive().first).single;
+    // 误输：100 万（应 1 万）
+    await insertAssetWithSnapshot(a.id, '2026-10-09', 100000000);
+    await insertAssetWithSnapshot(a.id, '2026-10-09', 99900000); // 同日再落
+
+    await repo.updateSnapshotValue(a.id, '2026-10-09', 10000);
+    // 该日全部旧行被清除、只余修正后的新值（今天的初始快照不在断言范围）
+    final snaps = (await repo.watchSnapshots(a.id).first)
+        .where((s) => s.day == '2026-10-09')
+        .toList();
+    expect(snaps, hasLength(1));
+    expect(snaps.single.valueCents, 10000);
+    final history = await repo.watchNetHistory().first;
+    expect(history.single.$2, 10000);
+  });
+
+  test('删除某日快照：该日不再参与净值聚合', () async {
+    await repo.insertAsset(
+      name: '现金',
+      kind: AssetKind.asset,
+      category: '现金',
+      valueCents: 10000,
+    );
+    final a = (await repo.watchActive().first).single;
+    await insertAssetWithSnapshot(a.id, '2026-10-09', 99900000);
+    await insertAssetWithSnapshot(a.id, '2026-10-10', 10000);
+
+    await repo.deleteSnapshotDay(a.id, '2026-10-09');
+    final history = await repo.watchNetHistory().first;
+    expect(history, hasLength(1));
+    expect(history.single.$1, '2026-10-10');
+    expect(history.single.$2, 10000);
+  });
+
   test('归档资产：退出汇总统计，历史快照保留参与曲线聚合', () async {
     await repo.insertAsset(
       name: '旧车',

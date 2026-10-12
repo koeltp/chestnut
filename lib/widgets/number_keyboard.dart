@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimens.dart';
 
-/// 自绘数字键盘（4×4 网格，参考钱迹布局）
-///
+/// 自绘数字键盘（4×4 网格，参考钱迹布局），记账页专用：
 /// 行 1：1 2 3 退格 ｜ 行 2：4 5 6 清空
 /// 行 3：7 8 9 再记 ｜ 行 4：今 0 . 保存
 /// "再记"保存后不退出页面，便于连续记账；"今"把日期快捷设为今天。
@@ -24,6 +23,8 @@ class NumberKeyboard extends StatelessWidget {
   final ValueChanged<String> onKey;
   final VoidCallback onDelete;
   final VoidCallback onClear;
+
+  /// 今天快捷键 / 再记（保存后不退出）/ 保存
   final VoidCallback onToday;
   final VoidCallback onAgain;
   final VoidCallback onDone;
@@ -122,7 +123,7 @@ class NumberKeyboard extends StatelessWidget {
         child: InkWell(
           onTap: onDone,
           borderRadius: BorderRadius.circular(AppDimens.radiusControl),
-          child: const SizedBox(
+          child: SizedBox(
             height: 40,
             child: Center(
               child: Text(

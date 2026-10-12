@@ -101,9 +101,12 @@ class _AssetEditPageState extends State<_AssetEditPage> {
       : widget.category;
 
   /// 名称默认值 = 分类名（卡类选完银行后为银行名）。
+  /// 新增时直接预填分类名（钱迹式，用户可改）；
   /// 切换分类时：名称为空或等于旧默认值则跟随新默认，用户改过则保留
   late final TextEditingController _name = TextEditingController(
-    text: widget.existing?.name ?? widget.initialInstitution ?? '',
+    text: widget.existing?.name ??
+        widget.initialInstitution ??
+        widget.category.name,
   );
   late final TextEditingController _value = TextEditingController(
     text: widget.existing == null
@@ -157,15 +160,17 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         (_institution != null && text == _institution);
   }
 
-  /// 金额输入行标签：负债叫欠款、其余叫余额
+  /// 金额输入行标签：负债叫欠款、其余叫余额；
+  /// 单位不再写进 label，由行尾 CNY 后缀表达币种
   String get _valueLabel => switch (_group.kind) {
-    AssetKind.liability => '欠款（元）',
-    _ => '余额（元）',
+    AssetKind.liability => '欠款',
+    _ => '余额',
   };
 
   /// 切换分类：编辑态只允许同 kind 的组（见类注释）；
-  /// 选中"信用卡"/"银行卡"或投资理财组分类时联动弹机构层（卡类只看
-  /// 银行组，投资组隐藏银行组），名称默认跟随；
+  /// 名称无条件跟随新分类（用户要求切换即改名），选中"信用卡"/
+  /// "银行卡"或投资理财组分类时联动弹机构层（卡类只看银行组，
+  /// 投资组隐藏银行组），机构名随后覆盖分类名；
   /// 切到不显示机构行的分类时清掉机构（落库 institution 恒为 null）
   Future<void> _pickCategory() async {
     final groups = _editing
@@ -177,7 +182,7 @@ class _AssetEditPageState extends State<_AssetEditPage> {
     final isInvest = AssetGroups.investCategories.contains(def.name);
     setState(() {
       _category = def;
-      if (_nameIsDefault()) _name.text = def.name;
+      _name.text = def.name;
       if (!isCard && !isInvest) {
         _institution = null;
       }
@@ -245,10 +250,9 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         : null;
     // 非机构类分类恒不落机构（切分类残留值在这里收口）
     final institution = _showInstitutionPicker ? _institution : null;
-    if (_isCreditGroup &&
-        _creditLimit.text.trim().isNotEmpty &&
-        creditLimit == null) {
-      showAppToast(context, '请输入正确的总额度');
+    // 总额度必填：额度是信用卡额度使用率/负债统计的基数，缺了没法算
+    if (_isCreditGroup && creditLimit == null) {
+      showAppToast(context, '请填写总额度');
       return;
     }
     setState(() => _saving = true);
@@ -396,27 +400,31 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         children: [
           // 基本信息：账户类型 / 名称 / 金额（信用卡组追加动态字段）
           FormRowsCard(rows: [
-            // 账户类型行：点击换分类（编辑态限定同 kind 组）
+            // 账户类型行（钱迹式）：所属机构并进本行展示——选了机构的
+            // 分类显示机构名 + logo（如"招商银行"），机构吸收分类身份；
+            // 无机构分类显示分类名 + 分类图标。点击换分类，选中带机构的
+            // 分类后联动弹机构选择层
             FormRow(
               label: '账户类型',
               onTap: _pickCategory,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  _showInstitutionPicker && institutionHasLogo(_institution)
+                      ? InstitutionLogo(name: _institution!, size: 32)
+                      : AssetCircleIcon(category: _category.name, size: 32),
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(
-                      '${_group.name} · ${_category.name}',
+                      _showInstitutionPicker && _institution != null
+                          ? _institution!
+                          : _category.name,
                       style: const TextStyle(
                         fontSize: 15,
                         color: AppColors.textPrimary,
                       ),
                     ),
                   ),
-                  const SizedBox(width: AppDimens.gapSm),
-                  // 选了有品牌 logo 的机构则显示机构 logo，否则分类图标
-                  institutionHasLogo(_institution)
-                      ? InstitutionLogo(name: _institution!)
-                      : AssetCircleIcon(category: _category.name),
                   const Icon(
                     Icons.chevron_right,
                     size: 22,
@@ -437,27 +445,21 @@ class _AssetEditPageState extends State<_AssetEditPage> {
               controller: _value,
               hint: '0.00',
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              // 最多两位小数：金额按分入库，防输入超精度小数
               inputFormatters: MoneyUtil.amountInputFormatters,
               textInputAction: TextInputAction.next,
+              suffix: 'CNY',
             ),
-            // 机构选择行：卡类=所属银行，投资理财组=券商/平台
-            if (_showInstitutionPicker)
-              AssetInstitutionRow(
-                label: assetInstitutionLabel(_category.name),
-                value: _institution,
-                onPick: _pickInstitution,
-                onClear: () => setState(() => _institution = null),
-              ),
             if (_isCreditGroup) ...[
               FormInputRow(
-                label: '总额度（元）',
+                label: '总额度',
                 controller: _creditLimit,
-                hint: '选填，如 50000',
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                hint: '如 50000',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: MoneyUtil.amountInputFormatters,
                 textInputAction: TextInputAction.next,
+                suffix: 'CNY',
               ),
               AssetDayRow(
                 label: '出账日',

@@ -35,14 +35,23 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  /// 当前应用版本名（启动后异步获取，头部与关于框共用，不再硬编码）
+  /// 当前应用版本标签（版本名 + 换算后的构建号，启动后异步获取，不再硬编码）
   String _versionName = '';
 
   @override
   void initState() {
     super.initState();
     PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _versionName = info.version);
+      // App 内 buildNumber 是清单偏移后的值（真实构建号 + 2000，见
+      // RELEASING.md），展示时换算回去，方便用户报问题时报出真实构建
+      final code = int.tryParse(info.buildNumber);
+      final build = (code != null && code >= 2000) ? code - 2000 : null;
+      if (mounted) {
+        setState(
+          () => _versionName =
+              build == null ? info.version : '${info.version} ($build)',
+        );
+      }
     });
   }
 
@@ -447,6 +456,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 手动检查更新：转圈 → 有新版直接弹更新卡片；已是最新/失败给轻提示。
   /// 与启动自动检查的区别：不受"以后再说"忽略记录限制，且失败要明示。
   /// Dev 包直接提示：更新装的是生产包，在 Dev 包里走只会多装一个包
+  /// （历次版本的更新内容在"关于"页的"更新记录"查看）
   Future<void> _checkUpdateManually(BuildContext context) async {
     if (kDebugMode) {
       showAppToast(context, '开发版不支持应用内更新');
