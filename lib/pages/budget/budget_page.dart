@@ -14,6 +14,7 @@ import '../../widgets/app_segmented.dart';
 import '../../widgets/category_avatar.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/month_switcher.dart';
+import '../stats/stats_page.dart';
 import '../../widgets/section_card.dart';
 
 /// 预算页：月度总预算与分类预算的查看、设置
@@ -303,8 +304,7 @@ class _BudgetPageState extends State<BudgetPage> {
                 TextSpan(
                   text: switch (mode) {
                     BudgetMode.carryLastMonth => '未设的总预算和分类预算自动沿用上月',
-                    BudgetMode.lastMonthSpend =>
-                      '未设分类预算取上月实际消费，总预算取各分类之和',
+                    BudgetMode.lastMonthSpend => '未设分类预算取上月实际消费，总预算取各分类之和',
                     null => '选择模式后立即按其规则填充本月预算',
                   },
                   style: const TextStyle(
@@ -588,6 +588,19 @@ class _BudgetPageState extends State<BudgetPage> {
         initialText: current == null
             ? ''
             : MoneyUtil.centsToYuanTrimmed(current),
+        // 标题右侧历史图标：关弹层并跳统计页该分类视图（设置月=当前查看
+        // 月，历史看它的上个月——设 9 月预算参考 8 月的完整消费）
+        onViewRecords: () {
+          Navigator.of(ctx).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => StatsPage(
+                initialCategory: c,
+                initialMonth: DateTime(_month.year, _month.month - 1),
+              ),
+            ),
+          );
+        },
       ),
     );
     if (result == null || !mounted) return;
@@ -895,10 +908,7 @@ class _BudgetHeader extends StatelessWidget {
                     padding: EdgeInsets.all(4),
                     child: Text(
                       '清空',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.expense,
-                      ),
+                      style: TextStyle(fontSize: 13, color: AppColors.expense),
                     ),
                   ),
                 ),
@@ -984,10 +994,14 @@ class _BudgetSheet extends StatefulWidget {
   const _BudgetSheet({
     required this.title,
     required this.initialText,
+    this.onViewRecords,
   });
 
   final String title;
   final String initialText;
+
+  /// 非空时标题右侧显示历史图标（分类预算弹层：跳统计页查看该分类记录）
+  final VoidCallback? onViewRecords;
 
   @override
   State<_BudgetSheet> createState() => _BudgetSheetState();
@@ -1019,13 +1033,29 @@ class _BudgetSheetState extends State<_BudgetSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (widget.onViewRecords != null)
+                IconButton(
+                  tooltip: '查看该分类记录',
+                  onPressed: widget.onViewRecords,
+                  icon: const Icon(
+                    Icons.history,
+                    size: 22,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: AppDimens.gapLg),
           Row(

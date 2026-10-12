@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/show_toast.dart';
 import 'add_bill/add_bill_page.dart';
 import 'budget/budget_page.dart';
 import 'home/home_page.dart';
@@ -20,6 +22,9 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   int _index = 0;
 
+  /// 上次按返回的时间：2 秒内连按两次才真正退出（防误触）
+  DateTime? _lastPopAt;
+
   static const _pages = <Widget>[
     HomePage(),
     StatsPage(),
@@ -29,50 +34,65 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      // 记账按钮：主题统一栗子棕圆形，突出核心动作
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddBill,
-        child: const Icon(Icons.add, size: 28),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        color: AppColors.card,
-        elevation: 8,
-        child: SizedBox(
-          height: 56,
-          child: Row(
-            children: [
-              _buildTab(
-                icon: Icons.receipt_long_outlined,
-                activeIcon: Icons.receipt_long,
-                label: '明细',
-                tabIndex: 0,
-              ),
-              _buildTab(
-                icon: Icons.pie_chart_outline,
-                activeIcon: Icons.pie_chart,
-                label: '统计',
-                tabIndex: 1,
-              ),
-              // 中央为记账按钮预留缺口
-              const SizedBox(width: 64),
-              _buildTab(
-                icon: Icons.savings_outlined,
-                activeIcon: Icons.savings,
-                label: '预算',
-                tabIndex: 2,
-              ),
-              _buildTab(
-                icon: Icons.person_outline,
-                activeIcon: Icons.person,
-                label: '我的',
-                tabIndex: 3,
-              ),
-            ],
+    // 根页面拦截返回：2 秒内连按两次才退出，第一次弹 toast 提示
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final now = DateTime.now();
+        final last = _lastPopAt;
+        if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+          SystemNavigator.pop();
+          return;
+        }
+        _lastPopAt = now;
+        showAppToast(context, '再按一次退出');
+      },
+      child: Scaffold(
+        body: IndexedStack(index: _index, children: _pages),
+        // 记账按钮：主题统一栗子棕圆形，突出核心动作
+        floatingActionButton: FloatingActionButton(
+          onPressed: _openAddBill,
+          child: const Icon(Icons.add, size: 28),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        bottomNavigationBar: BottomAppBar(
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8,
+          color: AppColors.card,
+          elevation: 8,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              children: [
+                _buildTab(
+                  icon: Icons.receipt_long_outlined,
+                  activeIcon: Icons.receipt_long,
+                  label: '明细',
+                  tabIndex: 0,
+                ),
+                _buildTab(
+                  icon: Icons.pie_chart_outline,
+                  activeIcon: Icons.pie_chart,
+                  label: '统计',
+                  tabIndex: 1,
+                ),
+                // 中央为记账按钮预留缺口
+                const SizedBox(width: 64),
+                _buildTab(
+                  icon: Icons.savings_outlined,
+                  activeIcon: Icons.savings,
+                  label: '预算',
+                  tabIndex: 2,
+                ),
+                _buildTab(
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person,
+                  label: '我的',
+                  tabIndex: 3,
+                ),
+              ],
+            ),
           ),
         ),
       ),
