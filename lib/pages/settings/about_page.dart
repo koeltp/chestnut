@@ -30,6 +30,9 @@ class _AboutPageState extends State<AboutPage> {
     query: 'subject=${Uri.encodeComponent('栗子记账反馈')}',
   );
 
+  /// 工信部备案管理系统（备案号点击跳转，供查验真伪）
+  static final Uri _beianUrl = Uri.parse('https://beian.miit.gov.cn/');
+
   @override
   void initState() {
     super.initState();
@@ -177,18 +180,30 @@ class _AboutPageState extends State<AboutPage> {
     );
   }
 
-  /// 底部版权与许可
+  /// 底部版权与许可（备案号为工信部要求的应用内显著展示项）
   Widget _buildCopyright() {
-    return const Column(
+    return Column(
       children: [
-        Text(
+        const Text(
           'Copyright © 2026 taipi.top',
           style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
-        SizedBox(height: 6),
-        Text(
+        const SizedBox(height: 6),
+        const Text(
           '基于 MIT License 开源 · 官网 taipi.top',
           style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        InkWell(
+          onTap: () => _open(_beianUrl, '无法打开浏览器'),
+          child: const Text(
+            'ICP备案号：粤ICP备2025481083号-2A',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              decoration: TextDecoration.none,
+            ),
+          ),
         ),
       ],
     );
