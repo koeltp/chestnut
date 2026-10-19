@@ -61,7 +61,11 @@ class StatsRangeBarChart extends StatelessWidget {
           bars[b.date.day - 1] += b.amountCents;
         }
       }
-      prevBars = List<int>.filled(days, 0);
+      // 去年同月天数独立计算：2 月平年 28 天、闰年 29 天，若按当前月
+      // 天数分配数组，"看平年 2 月、去年同期为闰年"时 2/29 的账单
+      // 会写越界（RangeError 0..27: 28）
+      final prevDays = DateTime(anchor.year - 1, anchor.month + 1, 0).day;
+      prevBars = List<int>.filled(prevDays, 0);
       for (final b in prevBills) {
         if (b.date.year == anchor.year - 1 && b.date.month == anchor.month) {
           prevBars[b.date.day - 1] += b.amountCents;
@@ -140,7 +144,10 @@ class StatsBarChartPainter extends CustomPainter {
     const chartTop = 54.0;
     const labelHeight = 18.0; // 底部标签高度
     final chartHeight = size.height - chartTop - labelHeight;
-    final slot = size.width / bars.length;
+    // 槽位数取两年中较大者：闰年 2 月（29 天）对比平年（28 天）时
+    // 两数组长度不同，多出的一天也要有槽位可画
+    final slotCount = math.max(bars.length, prevBars?.length ?? 0);
+    final slot = size.width / slotCount;
     final barWidth = slot * 0.5;
     final paint = Paint()..color = color;
     // 去年同期灰：25% 透明度浅灰，与彩柱同宽同位叠画
@@ -161,8 +168,12 @@ class StatsBarChartPainter extends CustomPainter {
     if (period == HomePeriod.month) {
       final threshold = maxCents * 0.35;
       // 该槽位今年/去年两段中的较大值，作为显著性与冲突取舍依据
-      int valueOf(int i) => math.max(bars[i], hasPrev ? prevBars![i] : 0);
-      for (var i = 0; i < bars.length; i++) {
+      // （两数组可能不等长，索引各自判界）
+      int valueOf(int i) => math.max(
+        i < bars.length ? bars[i] : 0,
+        hasPrev && i < prevBars!.length ? prevBars![i] : 0,
+      );
+      for (var i = 0; i < slotCount; i++) {
         final v = valueOf(i);
         if (v <= 0 || v < threshold) continue;
         // 与已入选柱距离过近时，矮的让给高的
@@ -179,9 +190,9 @@ class StatsBarChartPainter extends CustomPainter {
       }
     }
 
-    for (var i = 0; i < bars.length; i++) {
-      final cents = bars[i];
-      final prevCents = hasPrev ? prevBars![i] : 0;
+    for (var i = 0; i < slotCount; i++) {
+      final cents = i < bars.length ? bars[i] : 0;
+      final prevCents = hasPrev && i < prevBars!.length ? prevBars![i] : 0;
       final cx = slot * i + slot / 2;
       final h = maxCents == 0 || cents == 0
           ? 0.0
@@ -259,8 +270,9 @@ class StatsBarChartPainter extends CustomPainter {
       }
 
       // 底部标签（空串跳过）：中心落在 labelHeight 区中央，
-      // 避免文字上半截侵入柱体区域造成遮挡
-      if (labels[i].isNotEmpty) {
+      // 避免文字上半截侵入柱体区域造成遮挡；labels 按今年天数生成，
+      // 闰年多出的槽位无标签，判界跳过
+      if (i < labels.length && labels[i].isNotEmpty) {
         _text(
           canvas,
           labels[i],

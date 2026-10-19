@@ -741,6 +741,24 @@ class _StatsPageState extends State<StatsPage> {
               ),
             ),
           ),
+        // 子分类排行（分类视图仅一级分类）：与全部视图的分类排行同构，
+        // 点条目钻取到二级分类视图
+        if (viewCat != null && viewCat.parentId == null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppDimens.pagePadding,
+                AppDimens.gapSm,
+                AppDimens.pagePadding,
+                0,
+              ),
+              child: StatsRankingCard(
+                entries: subEntries,
+                total: total,
+                onTap: _jumpToCategory,
+              ),
+            ),
+          ),
         if (typeBills.isEmpty)
           SliverFillRemaining(
             child: Center(
