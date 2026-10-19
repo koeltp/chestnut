@@ -455,12 +455,18 @@ class StatsRankingCard extends StatelessWidget {
     required this.entries,
     required this.total,
     required this.onTap,
+    this.onUncategorizedTap,
   });
 
-  /// (分类, 名称, 金额分)，已按金额降序；分类为 null = 已删除，不可钻取
+  /// (分类, 名称, 金额分)，已按金额降序；分类为 null = 已删除/未细分，
+  /// 点击走 [onUncategorizedTap]
   final List<({Category? category, String name, int cents})> entries;
   final int total;
   final void Function(Category category) onTap;
+
+  /// null 桶（未细分/未知分类）条目的点击回调：宿主据此列出对应账单；
+  /// 为 null 时该条目不可点（保持旧行为）
+  final VoidCallback? onUncategorizedTap;
 
   @override
   Widget build(BuildContext context) {
@@ -499,7 +505,10 @@ class StatsRankingCard extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppDimens.gapSm),
                 child: InkWell(
-                  onTap: e.category == null ? null : () => onTap(e.category!),
+                  // 正常分类钻取；null 桶走 onUncategorizedTap（未传则不可点）
+                  onTap: e.category != null
+                      ? () => onTap(e.category!)
+                      : onUncategorizedTap,
                   borderRadius: BorderRadius.circular(AppDimens.radiusControl),
                   child: Row(
                     children: [

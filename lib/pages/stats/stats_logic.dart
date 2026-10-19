@@ -5,8 +5,18 @@ import '../../data/database.dart';
 /// 与 UI 解耦便于单元测试（原为 stats_page 私有方法，拆分时外提），
 /// 主页面在 _buildBody 中调用。
 
-/// 环图/排行条目：category 为 null = 分类已删除或未细分（不可钻取）
+/// 环图/排行条目：category 为 null = 分类已删除或未细分
+/// （点击行为由宿主决定，如列出这批账单）
 typedef CategoryEntry = ({Category? category, String name, int cents});
+
+/// 账单归属的一级分类：二级上浮一级；分类已删除或未挂分类返回 null。
+/// 聚合的"未知分类"桶与全部视图"未知分类"过滤共用此口径，保证
+/// 桶里统计的账单与点进去列出的账单完全一致
+Category? rootCategoryOf(Bill b, Map<int, Category> categories) {
+  final c = categories[b.categoryId];
+  if (c == null) return null;
+  return c.parentId == null ? c : categories[c.parentId];
+}
 
 /// 关键词过滤：定位完整信息/备注/分类名任一包含（英文统一转小写
 /// 比较，中文不受影响）
@@ -36,12 +46,9 @@ List<CategoryEntry> aggregateByCategory(
   final sums = <int, int>{};
   var unknown = 0;
   for (final b in bills) {
-    final c = categories[b.categoryId];
     // 二级上浮一级：parentId 指向的一级理论上必存在（外键约束），
     // 查不到按"未知分类"兜底
-    final root = (c != null && c.parentId != null)
-        ? categories[c.parentId]
-        : c;
+    final root = rootCategoryOf(b, categories);
     if (root == null) {
       unknown += b.amountCents;
       continue;

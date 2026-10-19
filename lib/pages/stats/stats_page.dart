@@ -24,7 +24,9 @@ import 'stats_widgets.dart';
 /// 页面只有一份查询参数 [StatsQuery]，渲染、筛选面板回显、返回还原
 /// 全部只看这一份数据：
 /// - 外部跳入（分类管理/详情）= 带初始参数 push，系统返回退出
-/// - 点排行项/环图扇区/明细分类 = 当前参数快照压栈 + 换参数出结果
+/// - 点排行项/环图扇区/明细分类 = 当前参数快照压栈 + 换参数出结果；
+///   点"未细分/未知分类"桶 = 快照压栈 + 仅打 directOnly 标记列出
+///   这批账单（不切换分类视图）
 /// - 漏斗面板搜索 = **只替换当前参数不压栈**（同层数据换看法，
 ///   不算导航；连续改条件后 ← 直接退出本页/视图）
 /// - 顶栏 ← 与系统返回键一致：弹栈还原快照；栈空退出页面
@@ -101,7 +103,25 @@ class _StatsPageState extends State<StatsPage> {
       _history.add(_query);
       _query = _query.copyWith(
         categoryId: category.id,
-        // 视图身份即过滤口径，进入分类视图清掉多选条件
+        // 视图身份即过滤口径，进入分类视图清掉多选条件；
+        // 同时离开未细分/未知视图（标记不跨视图身份保留）
+        filterCategoryIds: const {},
+        directOnly: false,
+      );
+    });
+  }
+
+  /// 点击"未细分/未知分类"桶：快照压栈后仅打上 directOnly 标记，
+  /// 当前视图内改为只列出该桶对应的账单（分类视图 = 直挂一级的账单，
+  /// 全部视图 = 分类已不存在的账单），不切换视图身份。
+  /// 已在该视图内再点同一桶为空操作
+  void _jumpToUncategorized() {
+    if (_query.directOnly) return;
+    setState(() {
+      _history.add(_query);
+      _query = _query.copyWith(
+        directOnly: true,
+        // 与进入分类视图同口径：视图身份即过滤口径，清掉多选条件
         filterCategoryIds: const {},
       );
     });
@@ -217,6 +237,8 @@ class _StatsPageState extends State<StatsPage> {
         filterCategoryIds: viewCatId == null
             ? Set<int>.from(categoryIds)
             : const {},
+        // 漏斗应用是整组替换搜索条件，未细分标记不保留
+        directOnly: false,
       );
     });
   }
@@ -485,13 +507,18 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   /// 标题：全部视图 = "统计"；分类 = "分类统计-一级名-二级名"
-  ///（父名从字典实时查，无需单独同步状态）
+  ///（父名从字典实时查，无需单独同步状态）；
+  /// 未细分/未知视图带后缀标识当前列出的是哪批账单
   String _title(Map<int, Category> categories, Category? viewCat) {
-    if (viewCat == null) return '统计';
+    if (viewCat == null) {
+      return _query.directOnly ? '统计-未知分类' : '统计';
+    }
     final parent = viewCat.parentId == null
         ? null
         : categories[viewCat.parentId];
-    return '分类统计-${parent == null ? viewCat.name : '${parent.name}-${viewCat.name}'}';
+    final base =
+        '分类统计-${parent == null ? viewCat.name : '${parent.name}-${viewCat.name}'}';
+    return _query.directOnly ? '$base-未细分' : base;
   }
 
   /// 顶栏副标题：当前查看范围（自定义时显示起止日期，跨年显示"某年-某年"）
@@ -537,16 +564,26 @@ class _StatsPageState extends State<StatsPage> {
     filtered = applyKeyword(filtered, categories, _query.keyword);
 
     // 分类过滤：只认账单自身的 categoryId，不做"一级 id 自动展开全部
-    // 二级"。分类视图按 视图分类+其全部子分类 命中；全部视图按面板
-    // 多选条件精确命中（整组语义由"点一级全选"生成的集合表达）
+    // 二级"。分类视图按 视图分类+其全部子分类 命中（directOnly 时只认
+    // 直挂一级的账单，与环图"未细分"桶口径一致）；全部视图 directOnly
+    // 时与 aggregateByCategory"未知分类"桶同口径（分类已不存在）；
+    // 否则按面板多选条件精确命中（整组语义由"点一级全选"生成的集合表达）
     final cid = viewCat?.id;
     if (cid != null) {
-      final ids = {
-        cid,
-        for (final c in categories.values)
-          if (c.parentId == cid) c.id,
-      };
-      filtered = filtered.where((b) => ids.contains(b.categoryId)).toList();
+      if (_query.directOnly) {
+        filtered = filtered.where((b) => b.categoryId == cid).toList();
+      } else {
+        final ids = {
+          cid,
+          for (final c in categories.values)
+            if (c.parentId == cid) c.id,
+        };
+        filtered = filtered.where((b) => ids.contains(b.categoryId)).toList();
+      }
+    } else if (_query.directOnly) {
+      filtered = filtered
+          .where((b) => rootCategoryOf(b, categories) == null)
+          .toList();
     } else if (_query.filterCategoryIds.isNotEmpty) {
       filtered = filtered
           .where((b) => _query.filterCategoryIds.contains(b.categoryId))
@@ -695,7 +732,13 @@ class _StatsPageState extends State<StatsPage> {
                 emptyText: emptyText,
                 onSliceTap: (i) {
                   final target = catEntries[i].category;
-                  if (target != null) _jumpToCategory(target);
+                  // 未知分类（分类已删除/未挂分类）无法钻取，
+                  // 改为列出这批账单
+                  if (target != null) {
+                    _jumpToCategory(target);
+                  } else {
+                    _jumpToUncategorized();
+                  }
                 },
               ),
             ),
@@ -714,6 +757,7 @@ class _StatsPageState extends State<StatsPage> {
                 entries: catEntries,
                 total: total,
                 onTap: _jumpToCategory,
+                onUncategorizedTap: _jumpToUncategorized,
               ),
             ),
           ),
@@ -736,7 +780,13 @@ class _StatsPageState extends State<StatsPage> {
                 emptyText: emptyText,
                 onSliceTap: (i) {
                   final target = subEntries[i].category;
-                  if (target != null) _jumpToCategory(target);
+                  // 未细分（直挂一级/分类已删）无法钻取子分类，
+                  // 改为列出这批账单
+                  if (target != null) {
+                    _jumpToCategory(target);
+                  } else {
+                    _jumpToUncategorized();
+                  }
                 },
               ),
             ),
@@ -756,6 +806,7 @@ class _StatsPageState extends State<StatsPage> {
                 entries: subEntries,
                 total: total,
                 onTap: _jumpToCategory,
+                onUncategorizedTap: _jumpToUncategorized,
               ),
             ),
           ),
@@ -833,6 +884,7 @@ class StatsQuery {
     this.type = BillType.expense,
     this.categoryId,
     this.filterCategoryIds = const {},
+    this.directOnly = false,
     this.keyword = '',
     this.tagIds = const {},
   }) : assert(month != null || custom != null || true),
@@ -857,6 +909,11 @@ class StatsQuery {
 
   /// 面板多选分类过滤条件（仅全部视图生效）；分类视图恒为空
   final Set<int> filterCategoryIds;
+
+  /// 未细分/未知视图标记：由点击"未细分/未知分类"桶产生。分类视图下
+  /// 仅列出直挂一级的账单，全部视图下仅列出分类已不存在的账单；
+  /// 钻取别的分类或漏斗应用时清除（返回键经快照栈自然还原）
+  final bool directOnly;
 
   /// 已应用的搜索关键词（空 = 未筛选）：过滤备注/定位完整信息/分类名
   final String keyword;
@@ -920,6 +977,7 @@ class StatsQuery {
     BillType? type,
     Object? categoryId = _unset,
     Set<int>? filterCategoryIds,
+    bool? directOnly,
     String? keyword,
     Set<int>? tagIds,
   }) {
@@ -932,6 +990,7 @@ class StatsQuery {
       type: type ?? this.type,
       categoryId: categoryId == _unset ? this.categoryId : categoryId as int?,
       filterCategoryIds: filterCategoryIds ?? this.filterCategoryIds,
+      directOnly: directOnly ?? this.directOnly,
       keyword: keyword ?? this.keyword,
       tagIds: tagIds ?? this.tagIds,
     );
