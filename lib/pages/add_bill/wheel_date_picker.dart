@@ -4,6 +4,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../utils/app_date.dart';
+import '../../widgets/date_grid_dialog.dart';
 
 /// 滚轮式日期选择弹窗（钱迹式连续滚动）
 ///
@@ -14,6 +16,10 @@ import '../../theme/app_theme.dart';
 ///
 /// 快捷行提供 今/昨/前 快捷键与时间入口（"时间 HH:mm"胶囊，点击弹
 /// 时/分滚轮）。
+///
+/// 滚轮上方有标题行「xxxx年 xx月 xx日」，点击对应段弹出网格选择
+/// （年/月网格、周日起头的日历式日期网格，见 DateGridDialog），
+/// 选完回填滚轮位置。
 ///
 /// 弹出方式：
 /// ```dart
@@ -45,8 +51,9 @@ class WheelDatePicker extends StatefulWidget {
 }
 
 class _WheelDatePickerState extends State<WheelDatePicker> {
-  static const int _firstYear = 2010;
-  static const int _yearCount = 2100 - 2010 + 1;
+  /// 年份范围全应用统一（1900 ~ 设备当前年），见 AppDate
+  static const int _firstYear = AppDate.minYear;
+  static final int _yearCount = AppDate.maxYear - _firstYear + 1;
   static const int _monthCount = 12;
   // 日列固定 31 格：可见窗口内数字由锚点推算，跨月天然连续
   static const int _dayCount = 31;
@@ -217,6 +224,45 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
     _jump(_dayCtrl, (_realDay + dDiff) % _dayCount);
   }
 
+  // ---------- 标题行：点击弹出年/月/日网格 ----------
+
+  Future<void> _pickYear() async {
+    final y = await showYearGridDialog(context, selected: _year);
+    if (y == null || y == _year || !mounted) return;
+    setState(() {
+      _year = y;
+      _clampDay();
+    });
+    _jump(_yearCtrl, y - _firstYear);
+  }
+
+  Future<void> _pickMonth() async {
+    final m = await showMonthGridDialog(context, selected: _month);
+    if (m == null || m == _month || !mounted) return;
+    setState(() {
+      _month = m;
+      _clampDay();
+    });
+    _jump(_monthCtrl, m - 1);
+  }
+
+  Future<void> _pickDay() async {
+    final d = await showDayGridDialog(
+      context,
+      year: _year,
+      month: _month,
+      selected: _day,
+    );
+    if (d == null || d == _day || !mounted) return;
+    setState(() => _day = d);
+    _jump(_dayCtrl, d - 1);
+  }
+
+  /// 年/月变化后，日号超出当月天数时收敛（如 1月31 → 2月28）
+  void _clampDay() {
+    if (_day > _daysInMonth) _day = _daysInMonth;
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -231,6 +277,27 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 标题行：当前年/月/日，点击对应段弹出网格选择
+            Row(
+              children: [
+                _titleSeg(
+                  key: const ValueKey('title_year'),
+                  label: '$_year年',
+                  onTap: _pickYear,
+                ),
+                _titleSeg(
+                  key: const ValueKey('title_month'),
+                  label: '$_month月',
+                  onTap: _pickMonth,
+                ),
+                _titleSeg(
+                  key: const ValueKey('title_day'),
+                  label: '$_day日',
+                  onTap: _pickDay,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppDimens.gapSm),
             // 三列滚轮：年 / 月 / 日（可见 3 行，中间为选中项）
             SizedBox(
               height: _pickerHeight,
@@ -461,6 +528,35 @@ class _WheelDatePickerState extends State<WheelDatePicker> {
             child: Container(height: 1, color: AppColors.divider),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 标题行单段：主色加粗（对应图1样式），点击弹出对应网格选择弹窗
+  Widget _titleSeg({
+    required String label,
+    required VoidCallback onTap,
+    Key? key,
+  }) {
+    return Expanded(
+      key: key,
+      child: Center(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppDimens.radiusControl),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

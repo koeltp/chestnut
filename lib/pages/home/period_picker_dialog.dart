@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/enums.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/app_date.dart';
 
 /// 显示方式选择弹窗（钱迹式，首页顶部年月点击弹出）
 ///
@@ -45,9 +46,10 @@ class PeriodPickerDialog extends StatefulWidget {
 }
 
 class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
-  /// 年份可选范围：2012 ~ 当前年 +3（与钱迹一致）
-  late final int _minYear = 2012;
-  late final int _maxYear = DateTime.now().year + 3;
+  /// 年份可选范围：1900（全应用统一下限，见 AppDate）~ 当前年 +3。
+  /// +3 保留未来年份供提前规划查看（对齐钱迹），仅此弹窗放开。
+  int get _minYear => AppDate.minYear;
+  int get _maxYear => DateTime.now().year + 3;
 
   /// 列表行高：大行距（钱迹式疏朗布局）
   static const double _rowExtent = 57;
@@ -73,6 +75,7 @@ class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
   @override
   void dispose() {
     _yearController.dispose();
+    _yearGridCtrl?.dispose();
     super.dispose();
   }
 
@@ -287,58 +290,80 @@ class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
 
   // ---------- 按年模式（图2）：3 列年份网格 ----------
 
+  /// 年份网格滚动定位（打开时滚到选中年所在行）
+  ScrollController? _yearGridCtrl;
+
   Widget _buildYearBody() {
-    // 大行距（64）× 6.5 行：底部露出半行，提示可滚动（与钱迹一致）
-    const rowHeight = 64.0;
-    return SizedBox(
-      height: rowHeight * 6.5,
-      child: GridView.builder(
-        padding: EdgeInsets.zero,
-        itemCount: _yearCount,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: ClampingScrollPhysics(),
-        ),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          // 格高 = 行高 64（大行距疏朗布局，钱迹式）
-          childAspectRatio: 104 / 64,
-        ),
-        itemBuilder: (context, i) {
-          // 倒序展示（最新年份在前，与钱迹一致）
-          final year = _maxYear - i;
-          final selected = year == widget.initialMonth.year;
-          return Center(
-            child: InkWell(
-              onTap: () => _finish(
-                HomePeriod.year,
-                DateTime(year, widget.initialMonth.month),
-              ),
-              borderRadius: BorderRadius.circular(26),
-              child: Container(
-                // 大号蓝色胶囊（选中年）
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.primary : Colors.transparent,
+    // 大行距疏朗布局，底部露出半行提示可滚动（与钱迹一致）
+    const rowRatio = 64 / 104; // 格高 = 格宽 × 比例
+    return LayoutBuilder(
+      builder: (context, cons) {
+        // 实际格高由弹窗宽度与宽高比推出，用于定位选中年所在行
+        final cellH = cons.maxWidth / 3 * rowRatio;
+        _yearGridCtrl ??= ScrollController(
+          initialScrollOffset:
+              ((_maxYear - widget.initialMonth.year) ~/ 3) * cellH,
+        );
+        // 选中年距列表顶部过远时，首帧后把越界偏移收敛到底部
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final c = _yearGridCtrl;
+          if (c != null && c.hasClients) {
+            final clamped = c.offset.clamp(0.0, c.position.maxScrollExtent);
+            if (clamped != c.offset) c.jumpTo(clamped);
+          }
+        });
+        return SizedBox(
+          height: cellH * 6.5,
+          child: GridView.builder(
+            controller: _yearGridCtrl,
+            padding: EdgeInsets.zero,
+            itemCount: _yearCount,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              // 格高与格宽比 104:64（大行距疏朗布局，钱迹式）
+              childAspectRatio: 104 / 64,
+            ),
+            itemBuilder: (context, i) {
+              // 倒序展示（最新年份在前，与钱迹一致）
+              final year = _maxYear - i;
+              final selected = year == widget.initialMonth.year;
+              return Center(
+                child: InkWell(
+                  onTap: () => _finish(
+                    HomePeriod.year,
+                    DateTime(year, widget.initialMonth.month),
+                  ),
                   borderRadius: BorderRadius.circular(26),
-                ),
-                child: Text(
-                  '$year年',
-                  maxLines: 1,
-                  softWrap: false,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-                    color: selected ? Colors.white : AppColors.textPrimary,
+                  child: Container(
+                    // 大号蓝色胶囊（选中年）
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Text(
+                      '$year年',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+                        color: selected ? Colors.white : AppColors.textPrimary,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          );
-        },
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 

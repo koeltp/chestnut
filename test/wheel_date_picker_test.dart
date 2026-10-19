@@ -229,4 +229,55 @@ void main() {
     expect(picked?.$1, DateTime(2026, 9, 30));
     expect(picked?.$2, 17 * 60 + 53);
   });
+
+  // ---------- 标题行：年/月/日网格选择 ----------
+
+  /// 网格弹窗内的查找（滚轮列里也有同文案格子，须限定在 Dialog 内）
+  Finder inDialog(Finder finder) =>
+      find.descendant(of: find.byType(Dialog), matching: finder);
+
+  testWidgets('点标题年段 → 年份网格自动定位到选中年 → 选 2015 回填', (tester) async {
+    await pumpDatePicker(tester, DateTime(2015, 9, 1));
+    await tester.tap(find.byKey(const ValueKey('title_year')));
+    await tester.pumpAndSettle();
+    // 弹窗标题 + 倒序网格（顶部今年，往下滑到 1900）
+    expect(find.text('选择年份'), findsOneWidget);
+    // 打开时自动滚到选中年所在行：2015 应在首屏可见
+    await tester.tap(inDialog(find.text('2015年')));
+    await tester.pumpAndSettle();
+    expect(datePillText(tester), '2015年9月1日');
+    // 弹窗已关，标题行显示选中年
+    expect(find.text('2015年'), findsOneWidget);
+  });
+
+  testWidgets('点标题月段 → 选 2月 → 1月31 收敛为 2月28日', (tester) async {
+    await pumpDatePicker(tester, DateTime(2026, 1, 31));
+    await tester.tap(find.byKey(const ValueKey('title_month')));
+    await tester.pumpAndSettle();
+    // 标题带当前年份主色强调（2026年）
+    expect(inDialog(find.text('2026年', findRichText: true)), findsOneWidget);
+    await tester.tap(inDialog(find.text('2月')));
+    await tester.pumpAndSettle();
+    expect(datePillText(tester), '2026年2月28日');
+  });
+
+  testWidgets('点标题日段 → 平年 2 月网格到 28 为止，选 15 回填', (tester) async {
+    await pumpDatePicker(tester, DateTime(2026, 2, 10));
+    await tester.tap(find.byKey(const ValueKey('title_day')));
+    await tester.pumpAndSettle();
+    // 弹窗标题带年月上下文；平年 2 月无 29 日
+    expect(inDialog(find.text('2026年2月')), findsOneWidget);
+    expect(inDialog(find.text('28')), findsOneWidget);
+    expect(inDialog(find.text('29')), findsNothing);
+    await tester.tap(inDialog(find.text('15')));
+    await tester.pumpAndSettle();
+    expect(datePillText(tester), '2026年2月15日');
+  });
+
+  testWidgets('点标题日段 → 闰年 2 月网格含 29 日', (tester) async {
+    await pumpDatePicker(tester, DateTime(2024, 2, 10));
+    await tester.tap(find.byKey(const ValueKey('title_day')));
+    await tester.pumpAndSettle();
+    expect(inDialog(find.text('29')), findsOneWidget);
+  });
 }
