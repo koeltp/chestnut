@@ -1,0 +1,138 @@
+# 发版流水线：推 v* tag 自动出签名包并发布到博客（GitHub Pages）
+#
+# 流程：tag → 版本一致性校验 → 还原密钥 → 构建 → 指纹校验 →
+#       生成 latest.json（含 sha256/fileSize）→ 推博客仓库 chestnut/ 目录
+#
+# 前置 Secrets（仓库 Settings → Secrets and variables → Actions）：
+#   KEYSTORE_BASE64    jks 文件的纯 base64，本地 PowerShell 生成：
+#                      [Convert]::ToBase64String([IO.File]::ReadAllBytes("android\chestnut-release.jks")) | Set-Clipboard
+#                      （勿用 certutil -encode：输出带 BEGIN/END 头尾，会解码出坏文件）
+#   KEYSTORE_PASSWORD  keystore 密码
+#   KEY_ALIAS          别名（chestnut）
+#   KEY_PASSWORD       key 密码
+#   DEPLOY_REPO        博客仓库（owner/name，Pages 源仓库）
+#   DEPLOY_TOKEN       PAT（对博客仓库有 contents:write 权限）
+#
+# 发版动作：改 pubspec version → commit → git tag -a v1.2.1 -m "更新说明…"
+#           → git push origin v1.2.1；tag message 逐行成为应用内更新日志
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: tag 与 pubspec 版本一致性校验
+        run: |
+          PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          VERSION_NAME=${PUBSPEC_VERSION%%+*}
+          VERSION_CODE=${PUBSPEC_VERSION##*+}
+          TAG_NAME=${GITHUB_REF_NAME#v}
+          if [ "$TAG_NAME" != "$VERSION_NAME" ]; then
+            echo "::error::tag v$TAG_NAME 与 pubspec version $PUBSPEC_VERSION 不一致，请修正后重打 tag"
+            exit 1
+          fi
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
+      - name: 取 tag message 作为应用内更新日志（非 annotated tag 则留空）
+        run: |
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > tag_message.txt
+          else
+            : > tag_message.txt
+          fi
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      - name: 还原签名密钥（job 结束随 runner 销毁，不落盘不入库）
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/chestnut-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          storeFile=../chestnut-release.jks
+          EOF
+
+      - name: 构建 release APK
+        run: flutter build apk --release
+
+      - name: 签名指纹校验（确认 CI 用的是发布 keystore 而非误录的其他文件）
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          keytool -list -v -keystore android/chestnut-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            | grep -c "6D:8E:ED:05:1A:FD:97:86:EF:9C:8C:23:0F:D1:29:AE:2B:A5:F5:80"
+
+      - name: 生成 latest.json（字段与 UpdateInfo.fromJson 对齐）
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          SHA256=$(sha256sum "$APK" | awk '{print $1}')
+          FILE_SIZE=$(stat -c%s "$APK")
+          python3 - "$SHA256" "$FILE_SIZE" <<'EOF'
+          import json, sys, datetime
+          sha256, file_size = sys.argv[1], int(sys.argv[2])
+          with open('tag_message.txt', encoding='utf-8') as f:
+              notes = [line.strip() for line in f if line.strip()]
+          manifest = {
+              'versionCode': int('${{ env.VERSION_CODE }}'),
+              'versionName': '${{ env.VERSION_NAME }}',
+              'apkUrl': 'https://www.taipi.top/chestnut/chestnut-${{ env.VERSION_NAME }}.apk',
+              'sha256': sha256,
+              'fileSize': file_size,
+              'releaseNotes': notes,
+              'publishedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+          }
+          with open('latest.json', 'w', encoding='utf-8') as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          EOF
+
+      - name: 发布到博客仓库 chestnut/ 目录
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.DEPLOY_REPO }}
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          path: pages
+
+      - name: 拷贝产物并提交
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          cp "$APK" "pages/chestnut/chestnut-${{ env.VERSION_NAME }}.apk"
+          cp latest.json pages/chestnut/latest.json
+          # Pages 仓库有 1GB 软限制，历史 APK 无消费方（应用内更新只认
+          # latest.json 直链），只保留当前版本，防止仓库无限膨胀
+          find pages/chestnut -name '*.apk' \
+            ! -name "chestnut-${{ env.VERSION_NAME }}.apk" -delete
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chestnut
+          git commit -m "chestnut ${{ env.VERSION_NAME }}+${{ env.VERSION_CODE }}"
+          git push
