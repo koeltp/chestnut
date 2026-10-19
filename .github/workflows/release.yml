@@ -79,6 +79,11 @@ jobs:
           storeFile=../chestnut-release.jks
           EOF
 
+      - name: Gradle 发行版切回官方源（本地用腾讯镜像加速，但对海外 runner 拒连）
+        run: |
+          sed -i 's#mirrors.cloud.tencent.com/gradle#services.gradle.org/distribution#' \
+            android/gradle/wrapper/gradle-wrapper.properties
+
       - name: 构建 release APK
         run: flutter build apk --release
 
