@@ -27,4 +27,9 @@ class Categories extends Table {
 
   /// 排序权重，越小越靠前
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  /// 兜底分类标记：仅收支各一条「其他」为 true。分类删除的迁移承接
+  /// 与钱迹导入的陌生分类落位都按此识别（改名后依然有效）；
+  /// 该分类禁删——否则两条兜底路径同时失效
+  BoolColumn get isFallback => boolean().withDefault(const Constant(false))();
 }

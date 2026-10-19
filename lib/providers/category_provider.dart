@@ -46,13 +46,26 @@ class CategoryProvider extends ChangeNotifier {
   Future<int> updateCategoryCounted(Category category) =>
       _repo.updateCategory(category);
 
-  /// 删除分类（其下账单一并删除，UI 层负责确认）
-  Future<void> deleteCategoryWithBills(int categoryId) =>
-      _repo.deleteCategoryWithBills(categoryId);
+  /// 删除分类（含子分类级联，UI 层保证其下无账单/预算）
+  Future<void> deleteCategory(int categoryId) =>
+      _repo.deleteCategory(categoryId);
+
+  /// 迁移删除分类：账单与预算改挂到承接分类后删除（承接候选恒非空：
+  /// 兜底「其他」禁删；UI 层负责确认与承接选择）
+  Future<void> migrateAndDeleteCategory(int categoryId, int targetId) =>
+      _repo.migrateAndDeleteCategory(categoryId, targetId);
+
+  /// 当前类型的兜底分类「其他」（删除迁移的默认承接；理论恒非空）
+  Future<Category?> findFallbackCategory(BillType type) =>
+      _repo.findFallbackCategory(type);
 
   /// 统计一组分类 id（自身+子分类）下的账单总数（删除确认弹窗用）
   Future<int> countBillsInCategories(List<int> categoryIds) =>
       _repo.countBillsInCategories(categoryIds);
+
+  /// 统计一组分类 id 下的预算条数（删除确认弹窗用）
+  Future<int> countBudgetsInCategories(List<int> categoryIds) =>
+      _repo.countBudgetsInCategories(categoryIds);
 
   /// 拖动排序：按同层新顺序批量写入
   Future<void> reorderCategories(List<int> orderedIds) =>

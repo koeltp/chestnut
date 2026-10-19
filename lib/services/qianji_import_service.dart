@@ -502,7 +502,10 @@ abstract final class QianjiImportService {
     return row;
   }
 
-  /// 确保该收支类型下存在"其他"一级分类（幂等；支出侧预置没有则创建）
+  /// 确保该收支类型下存在兜底「其他」一级分类（幂等）
+  ///
+  /// 优先按 isFallback 标记识别（用户改名后依然有效）；无标记时按
+  /// 名字兜底识别并补标（老库）；都没有才创建（标记 isFallback）
   static Future<Category> _ensureOtherCategory(
     AppDatabase db,
     BillType type,
@@ -514,7 +517,19 @@ abstract final class QianjiImportService {
               ..where((c) => c.parentId.isNull()))
             .get();
     for (final c in roots) {
-      if (c.name.trim() == _fallbackName) return c;
+      if (c.isFallback) return c;
+    }
+    Category? byName;
+    for (final c in roots) {
+      if (c.name.trim() == _fallbackName) byName = c;
+    }
+    if (byName != null) {
+      // 老库未打标：补标后返回，后续识别不再依赖名字
+      //（闭包内无法使用提升后的 byName，先落局部非空变量）
+      final target = byName;
+      await (db.update(db.categories)..where((c) => c.id.equals(target.id)))
+          .write(const CategoriesCompanion(isFallback: Value(true)));
+      return target;
     }
     final id = await db.into(db.categories).insert(
           CategoriesCompanion.insert(
@@ -522,6 +537,7 @@ abstract final class QianjiImportService {
             iconCode: Icons.more_horiz.codePoint,
             colorValue: _fallbackColor,
             type: type,
+            isFallback: const Value(true),
           ),
         );
     return Category(
@@ -532,6 +548,7 @@ abstract final class QianjiImportService {
       type: type,
       parentId: null,
       sortOrder: 0,
+      isFallback: true,
     );
   }
 

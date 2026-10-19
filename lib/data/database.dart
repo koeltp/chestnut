@@ -26,7 +26,7 @@ part 'database.g.dart';
 ///
 /// 开发期历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 12;
+const int kSchemaVersion = 13;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -247,6 +247,14 @@ class AppDatabase extends _$AppDatabase {
             }
           }
         }
+        // 兜底分类标记：categories 加 isFallback 列（默认 false），
+        // 并为老库补齐/打标收支「其他」——分类删除迁移与钱迹导入的
+        // 共同承接分类，按标记识别（用户改名不失效）。幂等加列，
+        // 已标记的分类跳过
+        if (from < 13) {
+          await _ensureColumn(m, categories, categories.isFallback);
+          await _seedFallbackCategories();
+        }
       }
     },
   );
@@ -260,6 +268,7 @@ class AppDatabase extends _$AppDatabase {
           iconCode: seed.icon.codePoint,
           colorValue: seed.color,
           type: seed.type,
+          isFallback: Value(seed.isFallback),
           sortOrder: Value(seed.sortOrder),
         ),
       );
@@ -282,6 +291,44 @@ class AppDatabase extends _$AppDatabase {
         // drift 无单条 insertAll，批量插入统一走 batch
         await batch((b) => b.insertAll(categories, childRows));
       }
+    }
+  }
+
+  /// v13 迁移：为老库补齐收支「其他」兜底分类（新库建库时已随预置写入）
+  ///
+  /// 按名字识别旧「其他」打标（用户可能建过同名分类，一并标记保持
+  /// 兜底语义）；没有则新插入（图标/颜色与预置一致、排到同类型末位）。
+  /// 幂等：已标记的分类跳过，半迁移中断后重跑不重复插入
+  Future<void> _seedFallbackCategories() async {
+    for (final type in BillType.values) {
+      final roots = await (select(categories)
+            ..where((c) => c.type.equalsValue(type))
+            ..where((c) => c.parentId.isNull()))
+          .get();
+      final byName = roots.where((c) => c.name.trim() == '其他').toList();
+      if (byName.isNotEmpty) {
+        for (final c in byName.where((c) => !c.isFallback)) {
+          await (update(categories)..where((x) => x.id.equals(c.id))).write(
+            const CategoriesCompanion(isFallback: Value(true)),
+          );
+        }
+        continue;
+      }
+      // 同类型无「其他」：排到末位（取现有最大 sortOrder + 1）
+      var nextSort = 0;
+      for (final c in roots) {
+        if (c.sortOrder >= nextSort) nextSort = c.sortOrder + 1;
+      }
+      await into(categories).insert(
+        CategoriesCompanion.insert(
+          name: '其他',
+          iconCode: Icons.more_horiz.codePoint,
+          colorValue: 0xFFA8A8A8,
+          type: type,
+          isFallback: const Value(true),
+          sortOrder: Value(nextSort),
+        ),
+      );
     }
   }
 
@@ -426,6 +473,7 @@ class _CategorySeed {
     this.type,
     this.sortOrder, {
     this.children = const [],
+    this.isFallback = false,
   });
 
   final String name;
@@ -436,6 +484,9 @@ class _CategorySeed {
 
   /// 子分类定义（颜色跟随父分类，仅在预置时使用）
   final List<_CategorySeed> children;
+
+  /// 兜底标记：仅「其他」为 true（分类删除迁移与钱迹导入的承接分类）
+  final bool isFallback;
 }
 
 const _defaultCategories = <_CategorySeed>[
@@ -689,12 +740,15 @@ const _defaultCategories = <_CategorySeed>[
       _CategorySeed('网课', Icons.language, 0xFFFDCB6E, BillType.expense, 4),
     ],
   ),
-  // 兜底组：归不进前述分类的支出放这里，常驻末位（无子分类）
-  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 9),
+  // 兜底组：归不进前述分类的支出放这里，常驻末位（无子分类）；
+  // 分类删除迁移与钱迹导入的承接分类，禁删
+  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 9,
+      isFallback: true),
   // 收入分类
   _CategorySeed('工资', Icons.work, 0xFF4E9E5F, BillType.income, 0),
   _CategorySeed('奖金', Icons.emoji_events, 0xFFF39C12, BillType.income, 1),
   _CategorySeed('理财', Icons.trending_up, 0xFF27AE60, BillType.income, 2),
   _CategorySeed('红包', Icons.currency_yen, 0xFFE74C3C, BillType.income, 3),
-  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.income, 4),
+  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.income, 4,
+      isFallback: true),
 ];

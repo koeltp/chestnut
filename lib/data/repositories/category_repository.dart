@@ -100,19 +100,112 @@ class CategoryRepository {
     return query.map((r) => r.read(count) ?? 0).getSingle();
   }
 
-  /// 删除分类
-  ///
-  /// 该分类及其全部子分类下的账单一并删除（调用方须在 UI 层向用户确认），
-  /// 否则会留下"孤儿账单"导致统计异常。
-  Future<void> deleteCategoryWithBills(int categoryId) {
+  /// 删除分类（含全部子分类，级联）。仅当其下无账单/预算时调用；
+  /// 有关联数据走 [migrateAndDeleteCategory] 迁移
+  Future<void> deleteCategory(int categoryId) {
     return _db.transaction(() async {
-      // 先取子分类 id，构成"自身 + 子分类"的待删除集合
       final subs = await (_db.select(
         _db.categories,
       )..where((c) => c.parentId.equals(categoryId))).get();
-      final ids = [categoryId, for (final s in subs) s.id];
-      await (_db.delete(_db.bills)..where((b) => b.categoryId.isIn(ids))).go();
+      await (_db.delete(
+        _db.categories,
+      )..where((c) => c.id.isIn([categoryId, ...subs.map((s) => s.id)]))).go();
+    });
+  }
+
+  /// 迁移删除分类：把 [categoryId] 及其全部子分类下的账单与预算改挂到
+  /// [targetCategoryId] 后删除分类记录，整体在一个事务内完成。
+  /// [targetCategoryId] 须与被删分类同类型、且不在删除集合内（UI 层
+  /// 保证；兜底「其他」不可删，候选恒非空）。
+  ///
+  /// 账单备注追加"原分类:xx"（挂二级写"父/子"，与钱迹导入口径一致），
+  /// 便于迁移后追溯原归属。预算按月迁移，目标同月已有预算时金额并入
+  /// 目标行（(month, categoryId) 唯一约束，直接改挂会撞 UNIQUE 异常）
+  Future<void> migrateAndDeleteCategory(
+    int categoryId,
+    int targetCategoryId,
+  ) {
+    return _db.transaction(() async {
+      final subs = await (_db.select(
+        _db.categories,
+      )..where((c) => c.parentId.equals(categoryId))).get();
+      final ids = [categoryId, ...subs.map((s) => s.id)];
+
+      // 原分类名映射（含父名，供备注追溯）：先记名再删除
+      final all = await _db.select(_db.categories).get();
+      final byId = {for (final c in all) c.id: c};
+      for (final id in ids) {
+        final c = byId[id];
+        if (c == null) continue;
+        final label = c.parentId == null
+            ? c.name
+            : '${byId[c.parentId]?.name ?? ''}/${c.name}';
+        // 原备注按"｜"段拼接：空则直接写，非空追加（与导入 _buildNote 同格式）
+        await _db.customUpdate(
+          'UPDATE bills SET note = CASE '
+          'WHEN note IS NULL OR note = \'\' THEN ? '
+          'ELSE note || \'｜\' || ? END '
+          'WHERE category_id = ?',
+          variables: [
+            Variable('原分类:$label'),
+            Variable('原分类:$label'),
+            Variable(id),
+          ],
+        );
+      }
+
+      // 账单整体改挂目标分类（删一级时其二级账单变为目标下的直挂）
+      await (_db.update(_db.bills)..where((b) => b.categoryId.isIn(ids)))
+          .write(BillsCompanion(categoryId: Value(targetCategoryId)));
+
+      // 预算按月迁移：同月已有目标预算则金额并入目标行并删源行，
+      // 规避 (month, categoryId) 唯一约束
+      final movedBudgets = await (_db.select(
+        _db.budgets,
+      )..where((b) => b.categoryId.isIn(ids))).get();
+      final targetBudgets = await (_db.select(_db.budgets)
+            ..where((b) => b.categoryId.equals(targetCategoryId)))
+          .get();
+      final targetByMonth = {for (final b in targetBudgets) b.month: b};
+      for (final budget in movedBudgets) {
+        final existing = targetByMonth[budget.month];
+        if (existing == null) {
+          await (_db.update(_db.budgets)..where((b) => b.id.equals(budget.id)))
+              .write(BudgetsCompanion(categoryId: Value(targetCategoryId)));
+        } else {
+          await (_db.update(_db.budgets)..where((b) => b.id.equals(existing.id)))
+              .write(
+                BudgetsCompanion(
+                  amountCents: Value(existing.amountCents + budget.amountCents),
+                ),
+              );
+          await (_db.delete(_db.budgets)..where((b) => b.id.equals(budget.id)))
+              .go();
+        }
+      }
+
       await (_db.delete(_db.categories)..where((c) => c.id.isIn(ids))).go();
     });
+  }
+
+  /// 当前类型的兜底分类（收支各一条「其他」，isFallback 标记识别，
+  /// 用户改名不失效）；理论恒非空——该分类禁删且 v13 迁移已补种
+  Future<Category?> findFallbackCategory(BillType type) {
+    return (_db.select(_db.categories)
+          ..where((c) => c.type.equalsValue(type))
+          ..where((c) => c.isFallback.equals(true))
+          ..where((c) => c.parentId.isNull()))
+        .getSingleOrNull();
+  }
+
+  /// 统计一组分类 id（自身+子分类集合）下的预算条数，
+  /// 供删除分类的确认弹窗提示影响范围
+  Future<int> countBudgetsInCategories(List<int> categoryIds) async {
+    if (categoryIds.isEmpty) return 0;
+    final count = _db.budgets.id.count();
+    final query = _db.selectOnly(_db.budgets)
+      ..addColumns([count])
+      ..where(_db.budgets.categoryId.isIn(categoryIds));
+    return query.map((r) => r.read(count) ?? 0).getSingle();
   }
 }

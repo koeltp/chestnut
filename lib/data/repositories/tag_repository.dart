@@ -46,11 +46,22 @@ class TagRepository {
   }
 
   /// 批量获取多笔账单的标签（列表渲染用，返回 billId → 标签列表映射）
+  ///
+  /// billId 按 500 一批拆分查询：SQLite 变量数上限 32766（3.32+），
+  /// "全部"模式下账单量一旦超过上限，IN 单条大查询会直接抛
+  /// "too many SQL variables"（5 万笔基线测试实测复现）
   Future<Map<int, List<Tag>>> getTagsByBillIds(List<int> billIds) async {
     if (billIds.isEmpty) return {};
-    final rows = await (_db.select(_db.billTags)
-          ..where((bt) => bt.billId.isIn(billIds)))
-        .get();
+    const chunkSize = 500;
+    final rows = <BillTag>[];
+    for (var i = 0; i < billIds.length; i += chunkSize) {
+      final end = i + chunkSize < billIds.length ? i + chunkSize : billIds.length;
+      rows.addAll(
+        await (_db.select(_db.billTags)
+              ..where((bt) => bt.billId.isIn(billIds.sublist(i, end))))
+            .get(),
+      );
+    }
     final tagIds = rows.map((r) => r.tagId).toSet().toList();
     if (tagIds.isEmpty) return {};
     final tags = await (_db.select(_db.tags)

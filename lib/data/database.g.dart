@@ -89,6 +89,21 @@ class $CategoriesTable extends Categories
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _isFallbackMeta = const VerificationMeta(
+    'isFallback',
+  );
+  @override
+  late final GeneratedColumn<bool> isFallback = GeneratedColumn<bool>(
+    'is_fallback',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_fallback" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -98,6 +113,7 @@ class $CategoriesTable extends Categories
     type,
     parentId,
     sortOrder,
+    isFallback,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -150,6 +166,12 @@ class $CategoriesTable extends Categories
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('is_fallback')) {
+      context.handle(
+        _isFallbackMeta,
+        isFallback.isAcceptableOrUnknown(data['is_fallback']!, _isFallbackMeta),
+      );
+    }
     return context;
   }
 
@@ -189,6 +211,10 @@ class $CategoriesTable extends Categories
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      isFallback: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_fallback'],
+      )!,
     );
   }
 
@@ -222,6 +248,11 @@ class Category extends DataClass implements Insertable<Category> {
 
   /// 排序权重，越小越靠前
   final int sortOrder;
+
+  /// 兜底分类标记：仅收支各一条「其他」为 true。分类删除的迁移承接
+  /// 与钱迹导入的陌生分类落位都按此识别（改名后依然有效）；
+  /// 该分类禁删——否则两条兜底路径同时失效
+  final bool isFallback;
   const Category({
     required this.id,
     required this.name,
@@ -230,6 +261,7 @@ class Category extends DataClass implements Insertable<Category> {
     required this.type,
     this.parentId,
     required this.sortOrder,
+    required this.isFallback,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -245,6 +277,7 @@ class Category extends DataClass implements Insertable<Category> {
       map['parent_id'] = Variable<int>(parentId);
     }
     map['sort_order'] = Variable<int>(sortOrder);
+    map['is_fallback'] = Variable<bool>(isFallback);
     return map;
   }
 
@@ -259,6 +292,7 @@ class Category extends DataClass implements Insertable<Category> {
           ? const Value.absent()
           : Value(parentId),
       sortOrder: Value(sortOrder),
+      isFallback: Value(isFallback),
     );
   }
 
@@ -277,6 +311,7 @@ class Category extends DataClass implements Insertable<Category> {
       ),
       parentId: serializer.fromJson<int?>(json['parentId']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      isFallback: serializer.fromJson<bool>(json['isFallback']),
     );
   }
   @override
@@ -292,6 +327,7 @@ class Category extends DataClass implements Insertable<Category> {
       ),
       'parentId': serializer.toJson<int?>(parentId),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'isFallback': serializer.toJson<bool>(isFallback),
     };
   }
 
@@ -303,6 +339,7 @@ class Category extends DataClass implements Insertable<Category> {
     BillType? type,
     Value<int?> parentId = const Value.absent(),
     int? sortOrder,
+    bool? isFallback,
   }) => Category(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -311,6 +348,7 @@ class Category extends DataClass implements Insertable<Category> {
     type: type ?? this.type,
     parentId: parentId.present ? parentId.value : this.parentId,
     sortOrder: sortOrder ?? this.sortOrder,
+    isFallback: isFallback ?? this.isFallback,
   );
   Category copyWithCompanion(CategoriesCompanion data) {
     return Category(
@@ -323,6 +361,9 @@ class Category extends DataClass implements Insertable<Category> {
       type: data.type.present ? data.type.value : this.type,
       parentId: data.parentId.present ? data.parentId.value : this.parentId,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      isFallback: data.isFallback.present
+          ? data.isFallback.value
+          : this.isFallback,
     );
   }
 
@@ -335,14 +376,23 @@ class Category extends DataClass implements Insertable<Category> {
           ..write('colorValue: $colorValue, ')
           ..write('type: $type, ')
           ..write('parentId: $parentId, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('isFallback: $isFallback')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, iconCode, colorValue, type, parentId, sortOrder);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    iconCode,
+    colorValue,
+    type,
+    parentId,
+    sortOrder,
+    isFallback,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -353,7 +403,8 @@ class Category extends DataClass implements Insertable<Category> {
           other.colorValue == this.colorValue &&
           other.type == this.type &&
           other.parentId == this.parentId &&
-          other.sortOrder == this.sortOrder);
+          other.sortOrder == this.sortOrder &&
+          other.isFallback == this.isFallback);
 }
 
 class CategoriesCompanion extends UpdateCompanion<Category> {
@@ -364,6 +415,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
   final Value<BillType> type;
   final Value<int?> parentId;
   final Value<int> sortOrder;
+  final Value<bool> isFallback;
   const CategoriesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -372,6 +424,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     this.type = const Value.absent(),
     this.parentId = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.isFallback = const Value.absent(),
   });
   CategoriesCompanion.insert({
     this.id = const Value.absent(),
@@ -381,6 +434,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     required BillType type,
     this.parentId = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.isFallback = const Value.absent(),
   }) : name = Value(name),
        iconCode = Value(iconCode),
        colorValue = Value(colorValue),
@@ -393,6 +447,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Expression<int>? type,
     Expression<int>? parentId,
     Expression<int>? sortOrder,
+    Expression<bool>? isFallback,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -402,6 +457,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       if (type != null) 'type': type,
       if (parentId != null) 'parent_id': parentId,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (isFallback != null) 'is_fallback': isFallback,
     });
   }
 
@@ -413,6 +469,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Value<BillType>? type,
     Value<int?>? parentId,
     Value<int>? sortOrder,
+    Value<bool>? isFallback,
   }) {
     return CategoriesCompanion(
       id: id ?? this.id,
@@ -422,6 +479,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       type: type ?? this.type,
       parentId: parentId ?? this.parentId,
       sortOrder: sortOrder ?? this.sortOrder,
+      isFallback: isFallback ?? this.isFallback,
     );
   }
 
@@ -451,6 +509,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (isFallback.present) {
+      map['is_fallback'] = Variable<bool>(isFallback.value);
+    }
     return map;
   }
 
@@ -463,7 +524,8 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
           ..write('colorValue: $colorValue, ')
           ..write('type: $type, ')
           ..write('parentId: $parentId, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('isFallback: $isFallback')
           ..write(')'))
         .toString();
   }
@@ -5220,6 +5282,7 @@ typedef $$CategoriesTableCreateCompanionBuilder =
       required BillType type,
       Value<int?> parentId,
       Value<int> sortOrder,
+      Value<bool> isFallback,
     });
 typedef $$CategoriesTableUpdateCompanionBuilder =
     CategoriesCompanion Function({
@@ -5230,6 +5293,7 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
       Value<BillType> type,
       Value<int?> parentId,
       Value<int> sortOrder,
+      Value<bool> isFallback,
     });
 
 class $$CategoriesTableFilterComposer
@@ -5274,6 +5338,11 @@ class $$CategoriesTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFallback => $composableBuilder(
+    column: $table.isFallback,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -5321,6 +5390,11 @@ class $$CategoriesTableOrderingComposer
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isFallback => $composableBuilder(
+    column: $table.isFallback,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CategoriesTableAnnotationComposer
@@ -5354,6 +5428,11 @@ class $$CategoriesTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFallback => $composableBuilder(
+    column: $table.isFallback,
+    builder: (column) => column,
+  );
 }
 
 class $$CategoriesTableTableManager
@@ -5391,6 +5470,7 @@ class $$CategoriesTableTableManager
                 Value<BillType> type = const Value.absent(),
                 Value<int?> parentId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<bool> isFallback = const Value.absent(),
               }) => CategoriesCompanion(
                 id: id,
                 name: name,
@@ -5399,6 +5479,7 @@ class $$CategoriesTableTableManager
                 type: type,
                 parentId: parentId,
                 sortOrder: sortOrder,
+                isFallback: isFallback,
               ),
           createCompanionCallback:
               ({
@@ -5409,6 +5490,7 @@ class $$CategoriesTableTableManager
                 required BillType type,
                 Value<int?> parentId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<bool> isFallback = const Value.absent(),
               }) => CategoriesCompanion.insert(
                 id: id,
                 name: name,
@@ -5417,6 +5499,7 @@ class $$CategoriesTableTableManager
                 type: type,
                 parentId: parentId,
                 sortOrder: sortOrder,
+                isFallback: isFallback,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

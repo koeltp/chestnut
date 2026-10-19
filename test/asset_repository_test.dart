@@ -7,7 +7,7 @@ import 'package:chestnut/data/repositories/debt_note_repository.dart';
 import 'package:chestnut/models/enums.dart';
 import 'package:chestnut/services/photo_staging_service.dart';
 import 'package:chestnut/services/s3_compatible_client.dart';
-import 'package:drift/drift.dart' show Variable, Value;
+import 'package:drift/drift.dart' show Variable, Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -37,12 +37,32 @@ void _createV8BillsTable(Database raw) {
   ''');
 }
 
+/// 建一张 v13 之前形态的 categories 表（无 is_fallback 列）。
+/// v13 迁移段会触碰 categories（补 is_fallback 列并补种「其他」），
+/// 旧迁移测试的手工旧库需补齐最小骨架供迁移执行
+void _createCategoriesTable(Database raw) {
+  raw.execute('''
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      icon_code INTEGER NOT NULL,
+      color_value INTEGER NOT NULL,
+      type INTEGER NOT NULL,
+      parent_id INTEGER NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  ''');
+}
+
 /// 资产数据层回归测试：增改写入、快照落库、净值聚合与借条并账口径
 ///
 /// 核心保障：净值曲线的数据全部来自快照表（只增不删），聚合规则
 /// （每日取最后一条 / 负债取负 / 归档不删历史 / includeInNet 开关 /
 /// 借条并入两侧）一旦走样，用户看到的资产数字与曲线就会自相矛盾。
 void main() {
+  // 迁移测试会（跨用例并发地）打开多个内存库实例，drift 的"同库
+  // 多实例"启发式在测试环境下必然误报，官方豁免开关关闭刷屏
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   late AppDatabase db;
   late AssetRepository repo;
   late DebtNoteRepository debtRepo;
@@ -580,6 +600,8 @@ void main() {
         ''');
         // v6 时代已存在的 bills 表（v9 迁移段会触碰）
         _createV8BillsTable(raw);
+        // v13 迁移段会触碰 categories（补列 + 补种兜底）
+        _createCategoriesTable(raw);
       },
     );
     final halfDb = AppDatabase.forTesting(halfMigrated);
@@ -587,10 +609,10 @@ void main() {
     // 触发打开：onUpgrade(6→11) 走幂等路径，不抛 duplicate column
     await halfDb.customSelect('SELECT 1').get();
 
-    // 版本已推进到 11
+    // 版本已推进到 13
     final version =
         (await halfDb.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 12);
+    expect(version.data['user_version'], 13);
 
     // 缺失的三列已补齐、debt_notes 已建
     final cols =
@@ -656,6 +678,8 @@ void main() {
         );
         // v7 时代已存在的 bills 表（v9 迁移段会触碰）
         _createV8BillsTable(raw);
+        // v13 迁移段会触碰 categories（补列 + 补种兜底）
+        _createCategoriesTable(raw);
         // 真实 v7 库必有 assets 表（v6 引入，v7 补齐信用卡四列）；
         // v11 迁移要给它加 institution 列并按账户名精准回填
         raw.execute('''
@@ -703,7 +727,7 @@ void main() {
 
     final version =
         (await v7Db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 12);
+    expect(version.data['user_version'], 13);
 
     // v11：institution 列回填——账户名恰为机构名的命中，带后缀的不硬猜，
     // 投资组按券商/平台名单回填
@@ -769,6 +793,8 @@ void main() {
           "INSERT INTO assets (name, kind, category, value_cents, bank) "
           "VALUES ('浦发银行信用卡', 1, '信用卡', 0, '浦发银行')",
         );
+        // v13 迁移段会触碰 categories（补列 + 补种兜底）
+        _createCategoriesTable(raw);
         raw.execute('PRAGMA user_version = 11');
       },
     );
@@ -778,7 +804,7 @@ void main() {
 
     final version =
         (await db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 12);
+    expect(version.data['user_version'], 13);
 
     // institution 列已补齐、bank 列已删、机构值已搬入
     final cols = (await db.customSelect('PRAGMA table_info(assets)').get())

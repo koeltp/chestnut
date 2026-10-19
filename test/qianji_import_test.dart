@@ -116,6 +116,7 @@ void main() {
           type: BillType.expense,
           parentId: null,
           sortOrder: 0,
+          isFallback: false,
         ),
         Category(
           id: 2,
@@ -125,6 +126,7 @@ void main() {
           type: BillType.expense,
           parentId: 1,
           sortOrder: 0,
+          isFallback: false,
         ),
       ];
       final bills = [bill(BillType.expense, '餐饮', '早餐', 100)];
@@ -142,6 +144,7 @@ void main() {
           type: BillType.expense,
           parentId: null,
           sortOrder: 0,
+          isFallback: true,
         ),
       ];
       final bills = [bill(BillType.expense, '其它', '', 100)];

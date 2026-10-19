@@ -555,8 +555,7 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final p in pills)
-              _GroupPill(data: p, onTap: _pickCategories),
+            for (final p in pills) _GroupPill(data: p, onTap: _pickCategories),
             _buildAddPill('选择分类', _pickCategories),
           ],
         ),

@@ -17,6 +17,7 @@ import '../home/period_picker_dialog.dart';
 import 'stats_charts.dart';
 import 'stats_filter_sheet.dart';
 import 'stats_logic.dart';
+import 'stats_query.dart';
 import 'stats_widgets.dart';
 
 /// 统计页（Tab 页 + 分类管理页独立 push 共用）：查询结果页模型
@@ -25,8 +26,8 @@ import 'stats_widgets.dart';
 /// 全部只看这一份数据：
 /// - 外部跳入（分类管理/详情）= 带初始参数 push，系统返回退出
 /// - 点排行项/环图扇区/明细分类 = 当前参数快照压栈 + 换参数出结果；
-///   点"未细分/未知分类"桶 = 快照压栈 + 仅打 directOnly 标记列出
-///   这批账单（不切换分类视图）
+///   点"未细分"桶 = 快照压栈 + 切换到未细分视图列出这批账单
+///   （不切换分类视图）
 /// - 漏斗面板搜索 = **只替换当前参数不压栈**（同层数据换看法，
 ///   不算导航；连续改条件后 ← 直接退出本页/视图）
 /// - 顶栏 ← 与系统返回键一致：弹栈还原快照；栈空退出页面
@@ -65,10 +66,6 @@ class _StatsPageState extends State<StatsPage> {
   /// ←/系统返回逐级还原；改搜索条件不入栈
   final List<StatsQuery> _history = [];
 
-  /// 分类字典缓存：标题父名、面板回显派生、条件→视图映射都要查。
-  /// build 每帧随流刷新；漏斗面板只能由点击打开，此时缓存必已就绪
-  Map<int, Category> _categoriesCache = const {};
-
   /// 图片标记流及其 bills-id 键缓存：集合不变时复用同一流，
   /// StreamBuilder 不重订阅（换流空窗会让相机角标闪一下）
   Stream<Set<int>>? _imageIdsStream;
@@ -84,6 +81,7 @@ class _StatsPageState extends State<StatsPage> {
       _query = StatsQuery(
         month: widget.initialMonth ?? DateTime.now(),
         type: cat?.type ?? BillType.expense,
+        view: cat == null ? StatsViewType.all : StatsViewType.category,
         categoryId: cat?.id,
         tagIds: tag == null ? const {} : {tag.id},
       );
@@ -98,29 +96,30 @@ class _StatsPageState extends State<StatsPage> {
 
   /// 点击跳转（排行项/环图扇区/明细分类）：快照压栈 + 进入分类视图
   void _jumpToCategory(Category category) {
-    if (_query.categoryId == category.id) return;
+    if (_query.view == StatsViewType.category &&
+        _query.categoryId == category.id) {
+      return;
+    }
     setState(() {
       _history.add(_query);
       _query = _query.copyWith(
+        view: StatsViewType.category,
         categoryId: category.id,
-        // 视图身份即过滤口径，进入分类视图清掉多选条件；
-        // 同时离开未细分/未知视图（标记不跨视图身份保留）
+        // 视图身份即过滤口径，进入分类视图清掉多选条件
         filterCategoryIds: const {},
-        directOnly: false,
       );
     });
   }
 
-  /// 点击"未细分/未知分类"桶：快照压栈后仅打上 directOnly 标记，
-  /// 当前视图内改为只列出该桶对应的账单（分类视图 = 直挂一级的账单，
-  /// 全部视图 = 分类已不存在的账单），不切换视图身份。
-  /// 已在该视图内再点同一桶为空操作
+  /// 点击"未细分"桶（一级分类视图的子分类环图/排行）：快照压栈后
+  /// 切换到未细分视图，列出直挂该一级的账单。已在未细分视图内再点
+  /// 为空操作
   void _jumpToUncategorized() {
-    if (_query.directOnly) return;
+    if (_query.view == StatsViewType.uncategorized) return;
     setState(() {
       _history.add(_query);
       _query = _query.copyWith(
-        directOnly: true,
+        view: StatsViewType.uncategorized,
         // 与进入分类视图同口径：视图身份即过滤口径，清掉多选条件
         filterCategoryIds: const {},
       );
@@ -138,15 +137,17 @@ class _StatsPageState extends State<StatsPage> {
 
   /// 右上角漏斗：快捷范围 + 自定义起止日期 + 关键词搜索 + 标签多选。
   /// 面板回显 = 读当前参数（分类视图预填其分类完整组，全部视图预填
-  /// 手动多选条件），所见即所应用
-  Future<void> _showFilterSheet() async {
+  /// 手动多选条件），所见即所应用。
+  /// [categories] 为打开面板时的分类字典快照：回显派生与应用时的
+  /// 完整组映射都基于它（不再依赖 build 期间写入的成员缓存）
+  Future<void> _showFilterSheet(Map<int, Category> categories) async {
     final cid = _query.categoryId;
     final Set<int> initialCategoryIds;
     if (cid != null) {
       // 分类视图：预填该分类 + 全部子分类（与生效过滤口径一致）
       initialCategoryIds = {
         cid,
-        for (final c in _categoriesCache.values)
+        for (final c in categories.values)
           if (c.parentId == cid) c.id,
       };
     } else {
@@ -164,11 +165,17 @@ class _StatsPageState extends State<StatsPage> {
       ),
       builder: (_) => StatsFilterSheet(
         initialRange: _query.userRange,
-        initialType: _viewCategory(_categoriesCache)?.type ?? _query.type,
+        initialType: _viewCategory(categories)?.type ?? _query.type,
         initialKeyword: _query.keyword,
         initialTagIds: _query.tagIds,
         initialCategoryIds: initialCategoryIds,
-        onApply: _applyFilter,
+        onApply: (range, keyword, tagIds, categoryIds) => _applyFilter(
+          categories,
+          range,
+          keyword,
+          tagIds,
+          categoryIds,
+        ),
       ),
     );
   }
@@ -183,6 +190,7 @@ class _StatsPageState extends State<StatsPage> {
   /// （与点排行同效），空集 = 退出分类视图，其余组合 = 全部视图 +
   /// 多选过滤条件
   void _applyFilter(
+    Map<int, Category> categories,
     ({DateTime? start, DateTime? end}) range,
     String keyword,
     Set<int> tagIds,
@@ -225,7 +233,7 @@ class _StatsPageState extends State<StatsPage> {
     }
 
     // 分类条件 → 视图身份映射（完整单组归入视图，混合多选作过滤条件）
-    final viewCatId = _fullGroupCategoryId(categoryIds);
+    final viewCatId = _fullGroupCategoryId(categoryIds, categories);
     setState(() {
       _query = _query.copyWith(
         period: period,
@@ -233,29 +241,28 @@ class _StatsPageState extends State<StatsPage> {
         custom: custom,
         keyword: keyword,
         tagIds: Set<int>.from(tagIds),
+        view: viewCatId == null ? StatsViewType.all : StatsViewType.category,
         categoryId: viewCatId,
         filterCategoryIds: viewCatId == null
             ? Set<int>.from(categoryIds)
             : const {},
-        // 漏斗应用是整组替换搜索条件，未细分标记不保留
-        directOnly: false,
       );
     });
   }
 
   /// 若勾选集合恰好构成"某一级分类 + 其全部子分类"的完整组，
   /// 返回该一级分类 id（即视为进入该分类视图）；否则返回 null
-  int? _fullGroupCategoryId(Set<int> ids) {
+  int? _fullGroupCategoryId(Set<int> ids, Map<int, Category> categories) {
     if (ids.isEmpty) return null;
     final roots = [
       for (final id in ids)
-        if (_categoriesCache[id]?.parentId == null) _categoriesCache[id]!,
+        if (categories[id]?.parentId == null) categories[id]!,
     ];
     if (roots.length != 1) return null;
     final root = roots.first;
     final expected = {
       root.id,
-      for (final c in _categoriesCache.values)
+      for (final c in categories.values)
         if (c.parentId == root.id) c.id,
     };
     return expected.length == ids.length && ids.containsAll(expected)
@@ -372,10 +379,8 @@ class _StatsPageState extends State<StatsPage> {
           stream: context.read<CategoryProvider>().categoriesMapStream(),
           builder: (context, catSnapshot) {
             final categories = catSnapshot.data ?? const <int, Category>{};
-            // 缓存供面板回显与条件映射同步查询（见成员注释）
-            _categoriesCache = categories;
             final viewCat = _viewCategory(categories);
-            final isAllView = viewCat == null;
+            final isAllView = _query.view == StatsViewType.all;
             return Scaffold(
               backgroundColor: AppColors.background,
               appBar: AppBar(
@@ -424,7 +429,7 @@ class _StatsPageState extends State<StatsPage> {
                             _query.filterCategoryIds.isNotEmpty)
                         ? AppColors.primary
                         : AppColors.textPrimary,
-                    onPressed: _showFilterSheet,
+                    onPressed: () => _showFilterSheet(categories),
                   ),
                 ],
               ),
@@ -508,17 +513,22 @@ class _StatsPageState extends State<StatsPage> {
 
   /// 标题：全部视图 = "统计"；分类 = "分类统计-一级名-二级名"
   ///（父名从字典实时查，无需单独同步状态）；
-  /// 未细分/未知视图带后缀标识当前列出的是哪批账单
+  /// 未细分视图带后缀标识当前列出的是哪批账单
   String _title(Map<int, Category> categories, Category? viewCat) {
-    if (viewCat == null) {
-      return _query.directOnly ? '统计-未知分类' : '统计';
+    switch (_query.view) {
+      case StatsViewType.all:
+        return '统计';
+      case StatsViewType.category:
+      case StatsViewType.uncategorized:
+        final parent = viewCat!.parentId == null
+            ? null
+            : categories[viewCat.parentId];
+        final base =
+            '分类统计-${parent == null ? viewCat.name : '${parent.name}-${viewCat.name}'}';
+        return _query.view == StatsViewType.uncategorized
+            ? '$base-未细分'
+            : base;
     }
-    final parent = viewCat.parentId == null
-        ? null
-        : categories[viewCat.parentId];
-    final base =
-        '分类统计-${parent == null ? viewCat.name : '${parent.name}-${viewCat.name}'}';
-    return _query.directOnly ? '$base-未细分' : base;
   }
 
   /// 顶栏副标题：当前查看范围（自定义时显示起止日期，跨年显示"某年-某年"）
@@ -554,44 +564,21 @@ class _StatsPageState extends State<StatsPage> {
     Set<int> imageBillIds = const {},
     Map<int, Asset> assets = const {},
   }) {
-    // 范围过滤（数据层为全量流，内存过滤足够）
-    final (start, end) = _query.range;
-    var filtered = bills.where((b) {
-      if (start != null && b.date.isBefore(start)) return false;
-      if (end != null && !b.date.isBefore(end)) return false;
-      return true;
-    }).toList();
-    filtered = applyKeyword(filtered, categories, _query.keyword);
+    // 主体过滤单遍完成：日期 + 关键词 + 分类口径（按视图身份，见
+    // filterBills 注释）；数据层为全量流，内存过滤足够
+    final filtered = filterBills(
+      bills,
+      categories: categories,
+      range: _query.range,
+      keyword: _query.keyword,
+      view: _query.view,
+      viewCategoryId: viewCat?.id,
+      filterCategoryIds: _query.filterCategoryIds,
+    );
 
-    // 分类过滤：只认账单自身的 categoryId，不做"一级 id 自动展开全部
-    // 二级"。分类视图按 视图分类+其全部子分类 命中（directOnly 时只认
-    // 直挂一级的账单，与环图"未细分"桶口径一致）；全部视图 directOnly
-    // 时与 aggregateByCategory"未知分类"桶同口径（分类已不存在）；
-    // 否则按面板多选条件精确命中（整组语义由"点一级全选"生成的集合表达）
-    final cid = viewCat?.id;
-    if (cid != null) {
-      if (_query.directOnly) {
-        filtered = filtered.where((b) => b.categoryId == cid).toList();
-      } else {
-        final ids = {
-          cid,
-          for (final c in categories.values)
-            if (c.parentId == cid) c.id,
-        };
-        filtered = filtered.where((b) => ids.contains(b.categoryId)).toList();
-      }
-    } else if (_query.directOnly) {
-      filtered = filtered
-          .where((b) => rootCategoryOf(b, categories) == null)
-          .toList();
-    } else if (_query.filterCategoryIds.isNotEmpty) {
-      filtered = filtered
-          .where((b) => _query.filterCategoryIds.contains(b.categoryId))
-          .toList();
-    }
-
-    // 分段器是整页开关：全部视图下汇总/图表/明细都只展示当前收支
-    // 类型的数据；分类视图 typeBills 即 filtered（单分类类型固定）
+    // 分段器是整页开关：全部视图下汇总/图表/明细都只展示当前
+    // 收支类型的数据；分类/未细分视图 typeBills 即 filtered（单分类
+    // 类型固定）
     final typeBills = isAllView
         ? filtered.where((b) => b.type == _query.type).toList()
         : filtered;
@@ -610,7 +597,7 @@ class _StatsPageState extends State<StatsPage> {
         .length;
     final avgPerMonth = months == 0 ? 0 : total ~/ months;
 
-    // 分类占比环形图 + 排行（全部视图共用一份数据）
+    // 分类占比环形图 + 排行（全部视图）
     final catEntries = isAllView
         ? aggregateByCategory(typeBills, categories)
         : const <({Category? category, String name, int cents})>[];
@@ -730,16 +717,8 @@ class _StatsPageState extends State<StatsPage> {
                 centerValue: MoneyUtil.centsToYuanGroupedTrimmed(total),
                 centerValueColor: amountColor,
                 emptyText: emptyText,
-                onSliceTap: (i) {
-                  final target = catEntries[i].category;
-                  // 未知分类（分类已删除/未挂分类）无法钻取，
-                  // 改为列出这批账单
-                  if (target != null) {
-                    _jumpToCategory(target);
-                  } else {
-                    _jumpToUncategorized();
-                  }
-                },
+                // 聚合条目必挂一级分类（删除分类已强制迁移），直接钻取
+                onSliceTap: (i) => _jumpToCategory(catEntries[i].category!),
               ),
             ),
           ),
@@ -780,8 +759,7 @@ class _StatsPageState extends State<StatsPage> {
                 emptyText: emptyText,
                 onSliceTap: (i) {
                   final target = subEntries[i].category;
-                  // 未细分（直挂一级/分类已删）无法钻取子分类，
-                  // 改为列出这批账单
+                  // 未细分（直挂一级）无法钻取子分类，改为列出这批账单
                   if (target != null) {
                     _jumpToCategory(target);
                   } else {
@@ -864,135 +842,3 @@ class _StatsPageState extends State<StatsPage> {
   }
 }
 
-/// 可空字段哨兵：区分 copyWith"不修改"与"置为 null"
-const Object _unset = _Unset();
-
-class _Unset {
-  const _Unset();
-}
-
-/// 统计查询参数（不可变快照）：统计页唯一状态源。
-///
-/// [_history] 里存的就是本对象的快照，← 还原 = 换回旧快照重新搜索；
-/// 视图身份（categoryId）与多选过滤条件（filterCategoryIds）分离：
-/// 前者由跳转/完整组搜索产生并决定页面形态，后者是普通筛选条件
-class StatsQuery {
-  const StatsQuery({
-    this.period = HomePeriod.month,
-    DateTime? month,
-    this.custom,
-    this.type = BillType.expense,
-    this.categoryId,
-    this.filterCategoryIds = const {},
-    this.directOnly = false,
-    this.keyword = '',
-    this.tagIds = const {},
-  }) : assert(month != null || custom != null || true),
-       _month = month;
-
-  /// 月/年锚点（period 为 month/year 时生效）；创建时默认当前月
-  final DateTime? _month;
-  DateTime get month => _month ?? DateTime.now();
-
-  /// 查看范围（按月/按年/全部），与首页口径一致
-  final HomePeriod period;
-
-  /// 自定义起止日期（开始含当天、截止排他），两端可只选其一（开放端
-  /// 不限制）；非空时优先于 [period] 生效
-  final ({DateTime? start, DateTime? end})? custom;
-
-  /// 全部视图的收支类型（分类视图由分类自身类型决定）
-  final BillType type;
-
-  /// 分类视图身份（null = 全部视图）
-  final int? categoryId;
-
-  /// 面板多选分类过滤条件（仅全部视图生效）；分类视图恒为空
-  final Set<int> filterCategoryIds;
-
-  /// 未细分/未知视图标记：由点击"未细分/未知分类"桶产生。分类视图下
-  /// 仅列出直挂一级的账单，全部视图下仅列出分类已不存在的账单；
-  /// 钻取别的分类或漏斗应用时清除（返回键经快照栈自然还原）
-  final bool directOnly;
-
-  /// 已应用的搜索关键词（空 = 未筛选）：过滤备注/定位完整信息/分类名
-  final String keyword;
-
-  /// 已选标签 id 集合（空 = 不按标签筛选）；多个标签取并集
-  final Set<int> tagIds;
-
-  /// 当前范围的 [start, end) 查询边界。
-  /// 口径：开始日与截止日均**含当天**——自定义区间的截止端在内部
-  /// +1 天转为排他边界（选 10/31 = 查到 10/31 当天）；
-  /// 全部模式与开放端为 null（不限制）
-  (DateTime?, DateTime?) get range {
-    final c = custom;
-    if (c != null) {
-      final s = c.start;
-      final e = c.end;
-      return (
-        s == null ? null : DateTime(s.year, s.month, s.day),
-        e == null ? null : DateTime(e.year, e.month, e.day + 1),
-      );
-    }
-    return switch (period) {
-      HomePeriod.month => (
-        DateTime(month.year, month.month),
-        DateTime(month.year, month.month + 1),
-      ),
-      HomePeriod.year => (DateTime(month.year), DateTime(month.year + 1)),
-      HomePeriod.all => (null, null),
-    };
-  }
-
-  /// 当前范围的用户语义区间（起止均含当天）：筛选面板据此回显。
-  /// period 模式也表达成具体日期，面板内即可统一编辑
-  ({DateTime? start, DateTime? end}) get userRange {
-    final c = custom;
-    if (c != null) return c;
-    return switch (period) {
-      HomePeriod.month => (
-        start: DateTime(month.year, month.month, 1),
-        end: DateTime(
-          month.year,
-          month.month,
-          DateTime(month.year, month.month + 1, 0).day,
-        ),
-      ),
-      HomePeriod.year => (
-        start: DateTime(month.year, 1, 1),
-        end: DateTime(month.year, 12, 31),
-      ),
-      HomePeriod.all => (start: null, end: null),
-    };
-  }
-
-  /// 复制并修改部分字段；可空字段（custom/categoryId）默认不修改，
-  /// 传 [_unset] 以外的值即修改（含显式置 null）
-  // ignore: library_private_types_in_public_api
-  StatsQuery copyWith({
-    HomePeriod? period,
-    DateTime? month,
-    Object? custom = _unset,
-    BillType? type,
-    Object? categoryId = _unset,
-    Set<int>? filterCategoryIds,
-    bool? directOnly,
-    String? keyword,
-    Set<int>? tagIds,
-  }) {
-    return StatsQuery(
-      period: period ?? this.period,
-      month: month ?? _month,
-      custom: custom == _unset
-          ? this.custom
-          : custom as ({DateTime? start, DateTime? end})?,
-      type: type ?? this.type,
-      categoryId: categoryId == _unset ? this.categoryId : categoryId as int?,
-      filterCategoryIds: filterCategoryIds ?? this.filterCategoryIds,
-      directOnly: directOnly ?? this.directOnly,
-      keyword: keyword ?? this.keyword,
-      tagIds: tagIds ?? this.tagIds,
-    );
-  }
-}

@@ -240,8 +240,8 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
         ),
         HelpSheetItem(
           icon: Icons.delete_outline,
-          title: '删除连带',
-          description: '删除分类会连带删除其子分类下的账单',
+          title: '删除迁移',
+          description: '删除分类时账单与预算会先迁移到指定分类，并在账单备注追加原分类名；「其他」为兜底分类，不可删除',
         ),
       ],
     );
@@ -295,17 +295,21 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
               Navigator.pop(ctx);
               _openEdit(category);
             }),
-            _actionItem(ctx, '删除', () {
-              Navigator.pop(ctx);
-              _confirmDelete(provider, category);
-            }),
-            // 归属调整：一级可降级为二级；二级可升级或移动到其它一级
-            if (category.parentId == null)
+            // 兜底「其他」禁删：分类删除迁移与钱迹导入都以它承接，
+            // 删掉会让两条兜底路径同时失效（改名不受影响）
+            if (!category.isFallback)
+              _actionItem(ctx, '删除', () {
+                Navigator.pop(ctx);
+                _confirmDelete(provider, category);
+              }),
+            // 归属调整：一级可降级为二级；二级可升级或移动到其它一级。
+            // 兜底「其他」必须保持一级（兜底查找按一级识别），不允许降级
+            if (category.parentId == null && !category.isFallback)
               _actionItem(ctx, '改为二级分类', () {
                 Navigator.pop(ctx);
                 _changeToSub(category);
               })
-            else ...[
+            else if (category.parentId != null) ...[
               _actionItem(ctx, '改为一级分类', () {
                 Navigator.pop(ctx);
                 _changeToParent(category);
@@ -470,45 +474,177 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     await _moveToParentSub(provider, sub);
   }
 
-  /// 删除确认：一级分类连带其全部子分类，双方账单一并删除；
-  /// 弹窗列出子分类数与受影响账单数，让用户明确影响范围再决定
+  /// 删除分类：无账单/预算直接普通确认删除；有关联数据则弹迁移对话框
+  /// 指定承接分类（默认选中兜底「其他」/删二级时的父分类），账单与
+  /// 预算一并迁移，账单备注记录原分类
   Future<void> _confirmDelete(
     CategoryProvider provider,
     Category category,
   ) async {
-    // 一级分类取其子分类列表，账单数按"自身+子分类"合计（与删除范围一致）
+    // 一级分类取其子分类列表，影响范围按"自身+子分类"合计（与删除范围一致）
     final subs = category.parentId == null
-        ? (await provider.categoriesStream(_type).first)
+        ? (await provider.categoriesStream(category.type).first)
               .where((c) => c.parentId == category.id)
               .toList()
         : const <Category>[];
-    final billCount = await provider.countBillsInCategories([
-      category.id,
-      for (final s in subs) s.id,
-    ]);
+    final ids = [category.id, for (final s in subs) s.id];
+    final billCount = await provider.countBillsInCategories(ids);
+    final budgetCount = await provider.countBudgetsInCategories(ids);
     if (!mounted) return;
+
+    // 无关联数据：无需迁移，普通确认即可
+    if (billCount == 0 && budgetCount == 0) {
+      final scope = subs.isEmpty ? '' : '及其 ${subs.length} 个子分类';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('删除分类'),
+          content: Text('删除「${category.name}」$scope，确定吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.expense),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && mounted) {
+        await provider.deleteCategory(category.id);
+      }
+      return;
+    }
+
+    // 承接候选：同类型、排除自身及子树。删一级 = 其他一级；
+    // 删二级 = 父分类（并入直挂）+ 同级其他二级。兜底「其他」禁删，
+    // 删一级时候选恒非空；删二级时候选必含父分类
+    final all = await provider.categoriesStream(category.type).first;
+    if (!mounted) return;
+    final excluded = ids.toSet();
+    final candidates = category.parentId == null
+        ? all
+              .where((c) => c.parentId == null && !excluded.contains(c.id))
+              .toList()
+        : [
+            ...all.where((c) => c.id == category.parentId),
+            ...all.where(
+              (c) => c.parentId == category.parentId && !excluded.contains(c.id),
+            ),
+          ];
+    if (candidates.isEmpty) {
+      showAppToast(context, '没有可承接的分类，请先创建一个分类');
+      return;
+    }
+
+    // 默认承接：删一级 → 兜底「其他」；删二级 → 父分类（直挂一级）
+    final fallback = await provider.findFallbackCategory(category.type);
+    if (!mounted) return;
+    final defaultTarget = category.parentId == null
+        ? (fallback != null && candidates.any((c) => c.id == fallback.id)
+              ? fallback
+              : candidates.first)
+        : candidates.firstWhere(
+            (c) => c.id == category.parentId,
+            orElse: () => candidates.first,
+          );
+
     final scope = subs.isEmpty ? '' : '及其 ${subs.length} 个子分类';
-    final impact = billCount > 0 ? '，$billCount 笔账单将被一并删除' : '';
-    final confirmed = await showDialog<bool>(
+    final impacts = [
+      if (billCount > 0) '$billCount 笔账单',
+      if (budgetCount > 0) '$budgetCount 条预算',
+    ].join('、');
+    final hint = budgetCount > 0 ? '（同月预算金额相加）' : '';
+
+    // 单选迁移对话框：预选默认承接，确认才执行（SimpleDialog 点选即
+    // 执行没有"不选"路径，无法承载默认态）
+    var selected = defaultTarget;
+    final target = await showDialog<Category>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除分类'),
-        content: Text('删除「${category.name}」$scope$impact，确定吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('迁移并删除'),
+          contentPadding: const EdgeInsets.fromLTRB(0, 16, 0, 0),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  '删除「${category.name}」$scope，$impacts将迁移到所选分类，'
+                  '账单备注记录原分类$hint：',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: RadioGroup<int>(
+                    // RadioGroup 统一管理选中态（groupValue/onChanged
+                    // 已废弃）：点选只改本地 selected，点"迁移并删除"才生效
+                    groupValue: selected.id,
+                    onChanged: (id) => setDialogState(() {
+                      selected = candidates.firstWhere((x) => x.id == id);
+                    }),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final c in candidates)
+                          RadioListTile<int>(
+                            value: c.id,
+                            title: Row(
+                              children: [
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: Color(c.colorValue),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                // 二级删除时的父分类选项 = 并入一级直挂
+                                Expanded(
+                                  child: Text(
+                                    c.id == category.parentId &&
+                                            category.parentId != null
+                                        ? '${c.name}（直挂一级）'
+                                        : c.name,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.expense),
-            child: const Text('删除'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, selected),
+              style: TextButton.styleFrom(foregroundColor: AppColors.expense),
+              child: const Text('迁移并删除'),
+            ),
+          ],
+        ),
       ),
     );
-    if (confirmed == true && mounted) {
-      await provider.deleteCategoryWithBills(category.id);
+    if (target != null && mounted) {
+      await provider.migrateAndDeleteCategory(category.id, target.id);
     }
   }
 }
