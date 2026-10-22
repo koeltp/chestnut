@@ -81,7 +81,7 @@ jobs:
 
       - name: 构建 Gradle 网络环境（切回官方源 + 清除本地代理）
         run: |
-          sed -i 's#mirrors.cloud.tencent.com/gradle#services.gradle.org/distribution#' \
+          sed -i 's#mirrors.cloud.tencent.com/gradle#services.gradle.org/distributions#' \
             android/gradle/wrapper/gradle-wrapper.properties
           # 本地 gradle.properties 显式配置 127.0.0.1 代理（Gradle JVM 不读
           # 系统代理），runner 上该端口无服务，所有 Gradle 请求都会
