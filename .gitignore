@@ -59,6 +59,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Gradle 构建产物（含 problems-report 等诊断报告），纯本地生成不入库
+/android/build/
+
 # Widget Preview related
 .widget_preview/
 
