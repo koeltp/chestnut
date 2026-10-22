@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 文字图标的约定 codePoint：0 不与任何真实 Material 图标冲突，
-/// 数据库 iconCode 存 0 即为"文字图标"（显示名称首字），无需加列迁移
-const int kTextIconCode = 0;
+import 'category_icons.dart';
 
 /// 分类头像：统一显示分类图标（圆形浅色底 + 分类色图标）或名称首字
 /// （iconCode 为 [kTextIconCode] 时），两种模式同风格：13% 透明分类
@@ -55,8 +53,7 @@ class CategoryAvatar extends StatelessWidget {
               ),
             )
           : Icon(
-              // ignore: non_const_argument_for_const_parameter
-              IconData(iconCode, fontFamily: 'MaterialIcons'),
+              categoryIconByCode(iconCode),
               color: c,
               size: iconSize,
             ),

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,7 +15,7 @@ import '../providers/cloud_storage_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
 import '../utils/show_toast.dart';
-import 'category_avatar.dart';
+import 'category_icons.dart';
 import 'confirm_dialog.dart';
 import 'detail_widgets.dart';
 import 'photo_viewer_page.dart';
@@ -503,11 +503,7 @@ class _DetailBodyState extends State<_DetailBody> {
                                   ),
                                 )
                               : Icon(
-                                  IconData(
-                                    // ignore: non_const_argument_for_const_parameter
-                                    category.iconCode,
-                                    fontFamily: 'MaterialIcons',
-                                  ),
+                                  categoryIconByCode(category.iconCode),
                                   size: 16,
                                   color: Color(category.colorValue),
                                 ),

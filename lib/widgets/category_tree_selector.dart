@@ -4,6 +4,7 @@ import '../data/database.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimens.dart';
 import 'category_avatar.dart';
+import 'category_icons.dart';
 
 /// 分类树选择模式
 enum CategoryTreeMode {
@@ -557,9 +558,7 @@ class _Glyph extends StatelessWidget {
       );
     }
     return Icon(
-      // 码点存库动态读取非 const，发布构建需 --no-tree-shake-icons
-      // ignore: non_const_argument_for_const_parameter
-      IconData(category.iconCode, fontFamily: 'MaterialIcons'),
+      categoryIconByCode(category.iconCode),
       color: color,
       size: 21,
     );
