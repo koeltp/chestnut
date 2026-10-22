@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -80,6 +81,16 @@ class UpdateInfo {
 
   /// 发布日期（仅展示用）
   final String? publishedAt;
+
+  /// 发布时间的本地时区展示文本（"yyyy-MM-dd HH:mm"），
+  /// 缺失或解析失败返回 null，由调用方自行兜底
+  String? get publishedAtLocalText {
+    final iso = publishedAt;
+    if (iso == null) return null;
+    final t = DateTime.tryParse(iso);
+    if (t == null) return null;
+    return DateFormat('yyyy-MM-dd HH:mm').format(t.toLocal());
+  }
 }
 
 /// 应用内自更新服务：检查清单 → 下载 APK（带进度）→ 校验 → 拉起安装器。
@@ -96,7 +107,7 @@ class UpdateService {
   static const _kIgnoredUpdateCode = 'ignored_update_code';
 
   /// 拉取线上版本清单并解析（不与本地版本比较）。
-  /// 更新日志弹层用它展示最新一版的日志（已是最新时"最新版"即当前版）；
+  /// 更新日志弹层与更新记录页顶部用它展示最新一版的日志；
   /// [checkForUpdate] 在此之上做版本比较
   Future<UpdateInfo> fetchLatestManifest() async {
     final uri = Uri.parse(
