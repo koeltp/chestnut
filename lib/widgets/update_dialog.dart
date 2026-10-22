@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../pages/settings/changelog_page.dart';
 import '../services/update_service.dart';
@@ -164,6 +165,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     );
   }
 
+  /// 清单里的 ISO8601 发布时间转本地时区的 "yyyy-MM-dd HH:mm"；
+  /// 解析失败原样返回（清单字段容错，不让格式问题挡住更新弹窗）
+  String _formatPublishedAt(String iso) {
+    final t = DateTime.tryParse(iso);
+    if (t == null) return iso;
+    return DateFormat('yyyy-MM-dd HH:mm').format(t.toLocal());
+  }
+
   /// 头部：Logo + 发现新版本 + 版本与发布日期
   Widget _buildHeader() {
     return Row(
@@ -204,7 +213,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             Text(
               _info.publishedAt == null
                   ? 'v${_info.versionName}'
-                  : 'v${_info.versionName} · ${_info.publishedAt}',
+                  : 'v${_info.versionName} · ${_formatPublishedAt(_info.publishedAt!)}',
               style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.textSecondary,
