@@ -87,9 +87,12 @@ jobs:
       - name: 构建 release APK
         run: set -o pipefail; flutter build apk --release 2>&1 | tee build_log.txt
 
-      - name: 构建失败时输出日志尾部（少量文本网页可见，供匿名排查）
+      - name: 构建失败时输出日志尾部（转为错误注解，匿名 API 可读）
         if: failure()
-        run: tail -c 4000 build_log.txt
+        run: |
+          tail -n 40 build_log.txt | while IFS= read -r line; do
+            echo "::error::$line"
+          done
 
       - name: 签名指纹校验（确认 CI 用的是发布 keystore 而非误录的其他文件）
         env:
