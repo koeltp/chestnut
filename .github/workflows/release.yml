@@ -83,15 +83,18 @@ jobs:
           sed -i '/systemProp.http.proxyHost/d;/systemProp.http.proxyPort/d;/systemProp.https.proxyHost/d;/systemProp.https.proxyPort/d;/systemProp.http.nonProxyHosts/d' \
             android/gradle.properties
 
-      # --target-platform android-arm64：默认 fat APK 含 arm32/arm64/x64 三套
-      # 引擎与 AOT 产物，128MB；单 arm64 约 85MB，下载更快且现代手机全覆盖
-      # （记账 App 无 x86 模拟器场景）
+      # --split-per-abi：出单架构 APK。仅 --target-platform 不够——它只限
+      # Flutter 自家产物（libflutter/libapp），管不住第三方 AAR 自带的多套
+      # ABI so（高德 arm32 23MB、sqlite3 x64 等，白带 26.5MB）；split 机制
+      # 按 ABI 真正拆包，所有 so（含 AAR）都被过滤。产物为
+      # app-arm64-v8a-release.apk。注意：split 模式 versionCode 会自动
+      # +2000（arm64 ABI 偏移），latest.json 须从产物读真实值
       - name: 构建 release APK
-        run: set -o pipefail; flutter build apk --release --target-platform android-arm64 2>&1 | tee build_log.txt
+        run: set -o pipefail; flutter build apk --release --split-per-abi --target-platform android-arm64 2>&1 | tee build_log.txt
         # 产物大小记入日志，便于盯体积膨胀趋势
       - name: 记录产物大小
         if: success()
-        run: du -h build/app/outputs/flutter-apk/app-release.apk
+        run: du -h build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
       - name: 构建失败时输出日志尾部（转为错误注解，匿名 API 可读）
         if: failure()
@@ -112,10 +115,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          APK=build/app/outputs/flutter-apk/app-release.apk
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           SHA256=$(sha256sum "$APK" | awk '{print $1}')
           FILE_SIZE=$(stat -c%s "$APK")
-          python3 - "$SHA256" "$FILE_SIZE" <<'EOF'
+          # split-per-abi 会给 versionCode 加 ABI 偏移（+2000），与 pubspec
+          # 的构建号不同——用 aapt2 从产物读真实值，保证清单与 APK 一致
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n1)
+          REAL_CODE=$("$AAPT2" dump badging "$APK" | grep -o "versionCode='[0-9]*'" | grep -o '[0-9]*')
+          REAL_NAME=$("$AAPT2" dump badging "$APK" | grep -o "versionName='[^']*'" | sed "s/versionName='//;s/'$//")
+          python3 - "$SHA256" "$FILE_SIZE" "$REAL_CODE" "$REAL_NAME" <<'EOF'
           import json, sys, datetime, os, urllib.request
 
           # 更新日志：从 GitHub API 直取 annotated tag 的 message。
@@ -143,10 +151,10 @@ jobs:
                   if line.strip()
               ]
 
-          sha256, file_size = sys.argv[1], int(sys.argv[2])
+          sha256, file_size, version_code, version_name = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
           manifest = {
-              'versionCode': int('${{ env.VERSION_CODE }}'),
-              'versionName': '${{ env.VERSION_NAME }}',
+              'versionCode': version_code,
+              'versionName': version_name,
               'apkUrl': 'https://github.com/koeltp/chestnut/releases/download/v${{ env.VERSION_NAME }}/chestnut-${{ env.VERSION_NAME }}.apk',
               'sha256': sha256,
               'fileSize': file_size,
@@ -164,7 +172,7 @@ jobs:
       # 产物按版本号命名后随 Release 上传（GitHub 单资产上限 2GB，
       # APK 直链与 latest.json 中 apkUrl 的文件名保持一致）
       - name: 重命名产物
-        run: cp build/app/outputs/flutter-apk/app-release.apk "chestnut-${{ env.VERSION_NAME }}.apk"
+        run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "chestnut-${{ env.VERSION_NAME }}.apk"
 
       - name: 创建 GitHub Release 并上传产物
         uses: softprops/action-gh-release@v2
