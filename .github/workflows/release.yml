@@ -35,11 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # fetch-depth: 0：默认浅克隆拉不到 annotated tag 对象，
-      # 后面 git cat-file -t 会返回 commit 而非 tag，tag message 提取为空
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: tag 与 pubspec 版本一致性校验
         run: |
@@ -53,14 +49,6 @@ jobs:
           fi
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-
-      - name: 取 tag message 作为应用内更新日志（非 annotated tag 则留空）
-        run: |
-          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
-            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > tag_message.txt
-          else
-            : > tag_message.txt
-          fi
 
       - uses: subosito/flutter-action@v2
         with:
@@ -121,15 +109,41 @@ jobs:
             | grep -c "6D:8E:ED:05:1A:FD:97:86:EF:9C:8C:23:0F:D1:29:AE:2B:A5:F5:80"
 
       - name: 生成 latest.json（字段与 UpdateInfo.fromJson 对齐）
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
           SHA256=$(sha256sum "$APK" | awk '{print $1}')
           FILE_SIZE=$(stat -c%s "$APK")
           python3 - "$SHA256" "$FILE_SIZE" <<'EOF'
-          import json, sys, datetime
+          import json, sys, datetime, os, urllib.request
+
+          # 更新日志：从 GitHub API 直取 annotated tag 的 message。
+          # tag push 事件下 checkout 的浅克隆场景里本地 git 不一定能看到
+          # tag 对象（实测曾提取为空），API 是唯一可靠来源
+          repo = os.environ['GITHUB_REPOSITORY']
+          tag = os.environ['GITHUB_REF_NAME']
+          headers = {'User-Agent': 'chestnut-release'}
+          token = os.environ.get('GITHUB_TOKEN')
+          if token:
+              headers['Authorization'] = 'Bearer ' + token
+          def api(path):
+              req = urllib.request.Request(
+                  'https://api.github.com/repos/' + repo + path,
+                  headers=headers,
+              )
+              return json.load(urllib.request.urlopen(req, timeout=15))
+          notes = []
+          ref = api('/git/ref/tags/' + tag)
+          if ref.get('object', {}).get('type') == 'tag':
+              obj = api('/git/tags/' + ref['object']['sha'])
+              notes = [
+                  line.strip()
+                  for line in obj.get('message', '').splitlines()
+                  if line.strip()
+              ]
+
           sha256, file_size = sys.argv[1], int(sys.argv[2])
-          with open('tag_message.txt', encoding='utf-8') as f:
-              notes = [line.strip() for line in f if line.strip()]
           manifest = {
               'versionCode': int('${{ env.VERSION_CODE }}'),
               'versionName': '${{ env.VERSION_NAME }}',
@@ -141,6 +155,9 @@ jobs:
           }
           with open('latest.json', 'w', encoding='utf-8') as f:
               json.dump(manifest, f, ensure_ascii=False, indent=2)
+          # 更新日志同时作为 Release 页面正文，与 latest.json 同一事实源
+          with open('release_body.txt', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(notes))
           print(json.dumps(manifest, ensure_ascii=False, indent=2))
           EOF
 
@@ -154,7 +171,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: chestnut ${{ env.VERSION_NAME }}
-          body_path: tag_message.txt
+          body_path: release_body.txt
           files: |
             chestnut-${{ env.VERSION_NAME }}.apk
             latest.json
