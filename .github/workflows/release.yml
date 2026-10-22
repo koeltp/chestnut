@@ -85,7 +85,11 @@ jobs:
             android/gradle/wrapper/gradle-wrapper.properties
 
       - name: 构建 release APK
-        run: flutter build apk --release
+        run: set -o pipefail; flutter build apk --release 2>&1 | tee build_log.txt
+
+      - name: 构建失败时输出日志尾部（少量文本网页可见，供匿名排查）
+        if: failure()
+        run: tail -c 4000 build_log.txt
 
       - name: 签名指纹校验（确认 CI 用的是发布 keystore 而非误录的其他文件）
         env:
