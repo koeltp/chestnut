@@ -177,6 +177,18 @@ const kCategoryIconGroups = <CategoryIconGroup>[
     (Icons.restaurant_menu, '请客'),
     (Icons.connect_without_contact, '份子钱'),
   ]),
+  // 公益组：捐款/筹款/义卖/志愿等慈善场景，与预置"公益"分类配套，
+  // 让老用户自建公益分类时不用去人情组借图标；语义与人情相邻
+  CategoryIconGroup('公益', [
+    (Icons.favorite_border, '献爱心'),
+    (Icons.handshake, '互助'),
+    (Icons.healing, '大病救助'),
+    (Icons.groups, '志愿服务'),
+    (Icons.store, '义卖'),
+    (Icons.agriculture, '助农'),
+    (Icons.park, '环保'),
+    (Icons.church, '教会'),
+  ]),
   CategoryIconGroup('理财', [
     (Icons.account_balance_wallet, '储蓄'),
     (Icons.candlestick_chart, '股票'),

@@ -61,6 +61,8 @@ app.*.map.json
 
 # Gradle 构建产物（含 problems-report 等诊断报告），纯本地生成不入库
 /android/build/
+# JVM 崩溃日志（MS JDK 偶发 EXCEPTION_ACCESS_VIOLATION 留下）
+/android/hs_err_pid*.log
 
 # Widget Preview related
 .widget_preview/
