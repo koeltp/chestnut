@@ -740,9 +740,42 @@ const _defaultCategories = <_CategorySeed>[
       _CategorySeed('网课', Icons.language, 0xFFFDCB6E, BillType.expense, 4),
     ],
   ),
+  // 公益组：捐赠类支出独立成组（非日常消费，需在统计中单独可见），
+  // 图标/颜色与编辑页图标库一一对应；插在"其他"之前，兜底组保持收尾
+  _CategorySeed(
+    '公益',
+    Icons.volunteer_activism,
+    0xFF4FB3A6,
+    BillType.expense,
+    9,
+    children: [
+      _CategorySeed('捐款', Icons.favorite, 0xFF4FB3A6, BillType.expense, 0),
+      _CategorySeed(
+        '网络筹款',
+        Icons.medical_services,
+        0xFF4FB3A6,
+        BillType.expense,
+        1,
+      ),
+      _CategorySeed(
+        '义卖义捐',
+        Icons.shopping_cart,
+        0xFF4FB3A6,
+        BillType.expense,
+        2,
+      ),
+      _CategorySeed(
+        '志愿服务',
+        Icons.connect_without_contact,
+        0xFF4FB3A6,
+        BillType.expense,
+        3,
+      ),
+    ],
+  ),
   // 兜底组：归不进前述分类的支出放这里，常驻末位（无子分类）；
   // 分类删除迁移与钱迹导入的承接分类，禁删
-  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 9,
+  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 10,
       isFallback: true),
   // 收入分类
   _CategorySeed('工资', Icons.work, 0xFF4E9E5F, BillType.income, 0),
