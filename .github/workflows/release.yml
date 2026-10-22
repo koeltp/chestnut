@@ -1,7 +1,10 @@
-# 发版流水线：推 v* tag 自动出签名包并发布到博客（GitHub Pages）
+# 发版流水线：推 v* tag 自动出签名包并发布到本仓库 GitHub Releases
 #
 # 流程：tag → 版本一致性校验 → 还原密钥 → 构建 → 指纹校验 →
-#       生成 latest.json（含 sha256/fileSize）→ 推博客仓库 chestnut/ 目录
+#       生成 latest.json（含 sha256/fileSize）→ 创建 Release 上传 APK + 清单
+#
+# 应用内更新从 GitHub 的 releases/latest/download/latest.json 固定直链
+# 取清单（恒指向最新 Release），APK 下载直链由清单的 apkUrl 给出
 #
 # 前置 Secrets（仓库 Settings → Secrets and variables → Actions）：
 #   KEYSTORE_BASE64    jks 文件的纯 base64，本地 PowerShell 生成：
@@ -10,8 +13,6 @@
 #   KEYSTORE_PASSWORD  keystore 密码
 #   KEY_ALIAS          别名（chestnut）
 #   KEY_PASSWORD       key 密码
-#   DEPLOY_REPO        博客仓库（owner/name，Pages 源仓库）
-#   DEPLOY_TOKEN       PAT（对博客仓库有 contents:write 权限）
 #
 # 发版动作：改 pubspec version → commit → git tag -a v1.2.1 -m "更新说明…"
 #           → git push origin v1.2.1；tag message 逐行成为应用内更新日志
@@ -21,8 +22,9 @@ on:
   push:
     tags: ['v*']
 
+# 创建 Release 与上传资产需要写权限（GITHUB_TOKEN，无需 PAT）
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: release
@@ -90,8 +92,8 @@ jobs:
             android/gradle.properties
 
       # --target-platform android-arm64：默认 fat APK 含 arm32/arm64/x64 三套
-      # 引擎与 AOT 产物，128MB 超 GitHub 单文件 100MB 硬限制（push 被拒）；
-      # 单 arm64 约 50MB，现代手机全覆盖（记账 App 无 x86 模拟器场景）
+      # 引擎与 AOT 产物，128MB；单 arm64 约 85MB，下载更快且现代手机全覆盖
+      # （记账 App 无 x86 模拟器场景）
       - name: 构建 release APK
         run: set -o pipefail; flutter build apk --release --target-platform android-arm64 2>&1 | tee build_log.txt
         # 产物大小记入日志，便于盯体积膨胀趋势
@@ -127,7 +129,7 @@ jobs:
           manifest = {
               'versionCode': int('${{ env.VERSION_CODE }}'),
               'versionName': '${{ env.VERSION_NAME }}',
-              'apkUrl': 'https://www.taipi.top/chestnut/chestnut-${{ env.VERSION_NAME }}.apk',
+              'apkUrl': 'https://github.com/koeltp/chestnut/releases/download/v${{ env.VERSION_NAME }}/chestnut-${{ env.VERSION_NAME }}.apk',
               'sha256': sha256,
               'fileSize': file_size,
               'releaseNotes': notes,
@@ -138,29 +140,17 @@ jobs:
           print(json.dumps(manifest, ensure_ascii=False, indent=2))
           EOF
 
-      - name: 发布到博客仓库 chestnut/ 目录
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ secrets.DEPLOY_REPO }}
-          token: ${{ secrets.DEPLOY_TOKEN }}
-          path: pages
+      # 产物按版本号命名后随 Release 上传（GitHub 单资产上限 2GB，
+      # APK 直链与 latest.json 中 apkUrl 的文件名保持一致）
+      - name: 重命名产物
+        run: cp build/app/outputs/flutter-apk/app-release.apk "chestnut-${{ env.VERSION_NAME }}.apk"
 
-      - name: 拷贝产物并提交
-        run: |
-          # 所有命令 stderr 转为错误注解（匿名 API 可读），保留原始退出码
-          exec 2> >(while IFS= read -r line; do echo "::error::$line"; done)
-          APK=build/app/outputs/flutter-apk/app-release.apk
-          # 首次发布时博客仓库尚无 chestnut/ 目录，cp/find 都会因目录不存在失败
-          mkdir -p pages/chestnut
-          cp "$APK" "pages/chestnut/chestnut-${{ env.VERSION_NAME }}.apk"
-          cp latest.json pages/chestnut/latest.json
-          # Pages 仓库有 1GB 软限制，历史 APK 无消费方（应用内更新只认
-          # latest.json 直链），只保留当前版本，防止仓库无限膨胀
-          find pages/chestnut -name '*.apk' \
-            ! -name "chestnut-${{ env.VERSION_NAME }}.apk" -delete
-          cd pages
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add chestnut
-          git commit -m "chestnut ${{ env.VERSION_NAME }}+${{ env.VERSION_CODE }}"
-          git push
+      - name: 创建 GitHub Release 并上传产物
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: chestnut ${{ env.VERSION_NAME }}
+          body_path: tag_message.txt
+          files: |
+            chestnut-${{ env.VERSION_NAME }}.apk
+            latest.json

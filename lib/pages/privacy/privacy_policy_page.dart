@@ -40,7 +40,8 @@ class PrivacyPolicyPage extends StatelessWidget {
           _SectionTitle('二、权限使用说明'),
           _Paragraph(
             '1. 网络访问：仅用于地图瓦片加载、地点搜索（高德开放平台）、'
-            '应用内版本更新（访问 www.taipi.top 获取版本清单与安装包），'
+            '应用内版本更新（从 GitHub 仓库 koeltp/chestnut 的发布页'
+            '获取版本清单与安装包），'
             '以及账单图片的上传与下载（仅在你自行配置图片云存储后，'
             '直连你本人配置的存储服务）；不会向任何服务器发送你的账目数据。\n'
             '2. 位置信息：仅在你主动使用"记账定位"、地图选点或搜索附近地点时'
@@ -79,7 +80,8 @@ class PrivacyPolicyPage extends StatelessWidget {
           ),
           _SectionTitle('五、应用更新'),
           _Paragraph(
-            '本应用通过 www.taipi.top 上托管的版本清单检查更新，'
+            '本应用通过 GitHub 仓库 koeltp/chestnut 发布页（GitHub Releases）'
+            '托管的版本清单检查更新，'
             '请求仅包含网络访问本身所需的标准信息，不携带任何身份标识或账目数据。'
             '更新安装包经 SHA-256 与文件大小双重校验后才会提示安装。',
           ),

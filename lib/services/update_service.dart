@@ -19,7 +19,7 @@ class UpdateException implements Exception {
   String toString() => message;
 }
 
-/// 最新版本信息（对应博客上托管的 latest.json 清单）
+/// 最新版本信息（对应 GitHub Release 上的 latest.json 清单）
 class UpdateInfo {
   const UpdateInfo({
     required this.versionCode,
@@ -84,11 +84,13 @@ class UpdateInfo {
 
 /// 应用内自更新服务：检查清单 → 下载 APK（带进度）→ 校验 → 拉起安装器。
 ///
-/// 清单与安装包均托管在个人博客（GitHub Pages），无自建服务器；
-/// 任何失败都只提示、绝不阻塞记账主流程。
+/// 清单与安装包均托管在本仓库 GitHub Releases（latest.json 随版本一起上传），
+/// 无自建服务器；任何失败都只提示、绝不阻塞记账主流程。
 class UpdateService {
-  /// 版本清单地址；追加时间戳绕开 GitHub Pages/CDN 缓存，保证及时生效
-  static const _manifestUrl = 'https://www.taipi.top/chestnut/latest.json';
+  /// 版本清单地址；GitHub 的 releases/latest/download 直链恒指向最新
+  /// Release 的同名资产；追加时间戳绕开 CDN 缓存，保证及时生效
+  static const _manifestUrl =
+      'https://github.com/koeltp/chestnut/releases/latest/download/latest.json';
 
   /// "以后再说"记忆键：记录用户已忽略的版本构建号，同版本自动提示只弹一次
   static const _kIgnoredUpdateCode = 'ignored_update_code';
@@ -133,7 +135,7 @@ class UpdateService {
 
   /// 下载 APK 到应用缓存目录，[onProgress] 回调 (已收字节, 总字节)；
   /// 服务端未返回 content-length 时 total 为 -1。
-  /// 不做断点续传：包体约 60MB，失败整体重下更简单可靠；
+  /// 不做断点续传：包体约 85MB，失败整体重下更简单可靠；
   /// 缓存在 App 私有目录，卸载即清，不需要任何存储权限。
   Future<File> downloadApk(
     UpdateInfo info, {
@@ -141,7 +143,7 @@ class UpdateService {
   }) async {
     final cacheDir = await getTemporaryDirectory();
     final updateDir = Directory(p.join(cacheDir.path, 'updates'));
-    // 下载前清掉目录里历次更新残留的旧 APK：包体约 60MB 且文件名带版本号
+    // 下载前清掉目录里历次更新残留的旧 APK：包体约 85MB 且文件名带版本号
     // 互不覆盖，不清会随版本更替无限堆积；旧包安装完成后即无用，
     // 只保留本次要下的这份。删除失败不阻断下载。
     if (await updateDir.exists()) {
