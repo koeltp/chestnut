@@ -141,6 +141,8 @@ jobs:
       - name: 拷贝产物并提交
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
+          # 首次发布时博客仓库尚无 chestnut/ 目录，cp/find 都会因目录不存在失败
+          mkdir -p pages/chestnut
           cp "$APK" "pages/chestnut/chestnut-${{ env.VERSION_NAME }}.apk"
           cp latest.json pages/chestnut/latest.json
           # Pages 仓库有 1GB 软限制，历史 APK 无消费方（应用内更新只认
