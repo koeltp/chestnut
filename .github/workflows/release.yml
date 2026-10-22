@@ -79,10 +79,15 @@ jobs:
           storeFile=../chestnut-release.jks
           EOF
 
-      - name: Gradle 发行版切回官方源（本地用腾讯镜像加速，但对海外 runner 拒连）
+      - name: 构建 Gradle 网络环境（切回官方源 + 清除本地代理）
         run: |
           sed -i 's#mirrors.cloud.tencent.com/gradle#services.gradle.org/distribution#' \
             android/gradle/wrapper/gradle-wrapper.properties
+          # 本地 gradle.properties 显式配置 127.0.0.1 代理（Gradle JVM 不读
+          # 系统代理），runner 上该端口无服务，所有 Gradle 请求都会
+          # Connection refused——CI 直连官方源，清除代理行
+          sed -i '/systemProp.http.proxyHost/d;/systemProp.http.proxyPort/d;/systemProp.https.proxyHost/d;/systemProp.https.proxyPort/d;/systemProp.http.nonProxyHosts/d' \
+            android/gradle.properties
 
       - name: 构建 release APK
         run: set -o pipefail; flutter build apk --release 2>&1 | tee build_log.txt
