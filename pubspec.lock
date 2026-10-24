@@ -841,10 +841,10 @@ packages:
     dependency: "direct main"
     description:
       name: map_launcher
-      sha256: "628d62243f638b20b62363b51e4b5d119bf33a119c336df6c56fd5d0b6a7527c"
+      sha256: "5201a3d76aee07df0a5b0db99e89e55a8cadadffc02e1bd4d132032e066ad1b5"
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.0"
+    version: "7.0.0"
   matcher:
     dependency: transitive
     description:
