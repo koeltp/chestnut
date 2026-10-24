@@ -13,8 +13,6 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
-
   # 状态管理
   provider: ^6.1.2
   # 本地数据库（drift 基于 SQLite，类型安全）
