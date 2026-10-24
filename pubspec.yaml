@@ -38,11 +38,11 @@ dependencies:
   x_amap_base: ^1.0.3
   http: ^1.6.0
   # 生物识别（指纹/面容快捷解锁）
-  local_auth: ^2.3.0
+  local_auth: ^3.0.2
   # PIN 与安全答案的加盐哈希
   crypto: ^3.0.6
-  local_auth_android: ^1.0.56
-  local_auth_darwin: ^1.6.1
+  local_auth_android: ^2.3.0
+  local_auth_darwin: ^2.0.5
   map_launcher: ^6.0.0
   package_info_plus: ^10.2.2
   open_filex: ^4.7.0
