@@ -117,9 +117,9 @@ adb-wifi-qr --connect
 # 只有一台机器时，可直接运行
 flutter build apk --debug ; adb install -r build\app\outputs\flutter-apk\app-debug.apk ; adb shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 # IP:PORT 连接指定IP设备
-adb -s 192.168.10.3:44749 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:44749 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
+adb -s 192.168.10.3:36691 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:36691 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 
-flutter build apk --debug ; adb -s 192.168.10.3:44749 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:44749 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
+flutter build apk --debug ; adb -s 192.168.10.3:36691 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:36691 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 ``` 
 ## 发布构建
 

@@ -14,7 +14,8 @@ class BillRepository {
   /// 记账联动引擎（AssetRepository 无状态仅持 _db，就地构造零成本）
   late final _assetRepo = AssetRepository(_db);
 
-  /// 查询某月的全部账单（按日期倒序，同日按创建时间倒序）
+  /// 查询某月的全部账单（按日期倒序；同日按发生时刻倒序，未填时刻沉底，
+  /// 时刻相同再按创建时间倒序）
   Stream<List<Bill>> watchBillsInMonth(DateTime month) {
     return watchBillsBetween(
       DateTime(month.year, month.month),
@@ -22,15 +23,16 @@ class BillRepository {
     );
   }
 
-  /// 查询某年的全部账单（按日期倒序，同日按创建时间倒序）
+  /// 查询某年的全部账单（排序规则同 [watchBillsInMonth]）
   Stream<List<Bill>> watchBillsInYear(int year) {
     return watchBillsBetween(DateTime(year), DateTime(year + 1));
   }
 
-  /// 查询全部账单（按日期倒序，同日按创建时间倒序）
+  /// 查询全部账单（排序规则同 [watchBillsInMonth]）
   Stream<List<Bill>> watchAllBills() {
     return (_db.select(_db.bills)..orderBy([
           (b) => OrderingTerm.desc(b.date),
+          (b) => OrderingTerm.desc(b.timeMinute),
           (b) => OrderingTerm.desc(b.createdAt),
         ]))
         .watch();
@@ -44,13 +46,14 @@ class BillRepository {
   }
 
   /// 某账户的流水（账户明细页）：关联为付款方或收款方的账单都要，
-  /// 按日期倒序、同日按创建时间倒序。转账账单会在同一列表出现两次
+  /// 排序规则同 [watchBillsInMonth]。转账账单会在同一列表出现两次
   /// （一次作为转出方、一次作为转入方），UI 按"本方视角"展示方向
   Stream<List<Bill>> watchBillsOfAsset(int assetId) {
     return (_db.select(_db.bills)
           ..where((b) => b.assetId.equals(assetId) | b.toAssetId.equals(assetId))
           ..orderBy([
             (b) => OrderingTerm.desc(b.date),
+            (b) => OrderingTerm.desc(b.timeMinute),
             (b) => OrderingTerm.desc(b.createdAt),
           ]))
         .watch();
@@ -72,12 +75,13 @@ class BillRepository {
           )
           ..orderBy([
             (b) => OrderingTerm.desc(b.date),
+            (b) => OrderingTerm.desc(b.timeMinute),
             (b) => OrderingTerm.desc(b.createdAt),
           ]))
         .watch();
   }
 
-  /// 查询时间区间 [start, end) 内的账单（按日期倒序，同日按创建时间倒序）
+  /// 查询时间区间 [start, end) 内的账单（排序规则同 [watchBillsInMonth]）
   ///
   /// 注意不能用 isBetweenValues（闭区间）：上界必须排除，
   /// 否则查 9 月时会把 10 月 1 日的账单（date 为当日 0 点）一并带出。
@@ -90,6 +94,7 @@ class BillRepository {
           )
           ..orderBy([
             (b) => OrderingTerm.desc(b.date),
+            (b) => OrderingTerm.desc(b.timeMinute),
             (b) => OrderingTerm.desc(b.createdAt),
           ]))
         .watch();

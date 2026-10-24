@@ -13,8 +13,6 @@ analyzer:
   exclude:
     - build/**
     - android/**
-    - ios/**
-    - windows/**
     # 第三方 fork：保持上游原样，不参与本项目 lint
     - third_party/**
 
