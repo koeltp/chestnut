@@ -13,7 +13,10 @@ param(
   [string]$VersionName
 )
 
-$ErrorActionPreference = 'Stop'
+# 不用 'Stop'：PS 5.1 下原生命令的 stderr 输出（如 flutter 的镜像提示横幅、
+# gradle 的 JVM 警告）在重定向/作业宿主中会包装成 ErrorRecord，Stop 模式会
+# 直接炸掉脚本。失败控制靠每步之后的 Assert-LastExit 退出码判定，更可靠。
+$ErrorActionPreference = 'Continue'
 Set-Location $PSScriptRoot\..
 
 function Invoke-Step {
