@@ -1,0 +1,27 @@
+# Dependabot 依赖升级：pub 包与 GitHub Actions 每周检查
+#
+# 策略：minor/patch 打包成一个 PR（低噪音）；major 各自单独开 PR，
+# 触发 CI（analyze + test + lock 源校验），人工评估 changelog 后合并
+version: 2
+updates:
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
