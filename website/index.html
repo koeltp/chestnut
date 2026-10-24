@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>栗子记账 — 无广告、无账号、数据完全本地的记账 App</title>
+<meta name="description" content="栗子记账：一款安静的 Android 记账 App。无广告、无需注册、数据全部保存在本机，支持地图定位、统计报表、预算管理、本地备份。">
+<meta property="og:title" content="栗子记账 — 安静的记账 App">
+<meta property="og:description" content="无广告、无账号、数据完全本地。地图定位、统计报表、预算管理、本地备份。">
+<meta property="og:image" content="assets/logo.png">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<style>
+  :root {
+    --chestnut: #8B5A2B;
+    --chestnut-dark: #6b4420;
+    --chestnut-light: #b07d47;
+    --cream: #faf6f0;
+    --card: #ffffff;
+    --ink: #2d2418;
+    --ink-soft: #6f6252;
+    --line: #eadfd0;
+    --radius: 18px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; display: block; }
+  a { color: var(--chestnut); text-decoration: none; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* ── 导航 ── */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(250, 246, 240, .92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 1080px; margin: 0 auto; padding: 12px 20px;
+    display: flex; align-items: center; gap: 22px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--ink); }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .nav-links { display: flex; gap: 18px; margin-left: auto; font-size: 14.5px; }
+  .nav-links a { color: var(--ink-soft); }
+  .nav-links a:hover { color: var(--chestnut); }
+  .nav-dl {
+    background: var(--chestnut); color: #fff !important;
+    padding: 7px 16px; border-radius: 999px; font-weight: 600;
+  }
+  .nav-dl:hover { background: var(--chestnut-dark); }
+  @media (max-width: 640px) { .nav-links a:not(.nav-dl) { display: none; } }
+
+  /* ── Hero ── */
+  header.hero { padding: 72px 0 56px; text-align: center; }
+  .hero img.logo { width: 96px; height: 96px; border-radius: 24px; margin: 0 auto 20px; box-shadow: 0 12px 32px rgba(139, 90, 43, .22); }
+  .hero h1 { font-size: 40px; letter-spacing: 2px; margin-bottom: 12px; }
+  .hero p.sub { font-size: 18px; color: var(--ink-soft); max-width: 560px; margin: 0 auto 28px; }
+  .hero .tags { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
+  .hero .tags span {
+    font-size: 13px; color: var(--chestnut-dark);
+    background: #f1e7d8; border: 1px solid var(--line);
+    padding: 4px 12px; border-radius: 999px;
+  }
+  .btn-main {
+    display: inline-block; background: var(--chestnut); color: #fff;
+    font-size: 17px; font-weight: 600; padding: 13px 34px;
+    border-radius: 999px; box-shadow: 0 8px 22px rgba(139, 90, 43, .30);
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-main:hover { transform: translateY(-2px); background: var(--chestnut-dark); box-shadow: 0 12px 26px rgba(139, 90, 43, .35); }
+  .dl-meta { margin-top: 14px; font-size: 13px; color: var(--ink-soft); }
+  .dl-meta a { text-decoration: underline; }
+
+  /* ── 通用 section ── */
+  section { padding: 64px 0; }
+  section:nth-of-type(even) { background: #f4ede2; }
+  .sec-title { text-align: center; font-size: 28px; margin-bottom: 8px; }
+  .sec-desc { text-align: center; color: var(--ink-soft); margin-bottom: 44px; font-size: 15.5px; }
+
+  /* ── 特性 ── */
+  .features {
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  .feature {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 22px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .feature:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(45, 36, 24, .08); }
+  .feature .ico { font-size: 30px; margin-bottom: 10px; }
+  .feature h3 { font-size: 16.5px; margin-bottom: 6px; }
+  .feature p { font-size: 14px; color: var(--ink-soft); }
+
+  /* ── 截图 ── */
+  .shots {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
+  .shot {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .shot img { width: 100%; aspect-ratio: 9 / 19; object-fit: cover; object-position: top; }
+  .shot figcaption {
+    text-align: center; font-size: 13.5px; color: var(--ink-soft); padding: 10px 6px;
+  }
+
+  /* ── 隐私 ── */
+  .privacy { max-width: 720px; margin: 0 auto; text-align: center; }
+  .privacy p { color: var(--ink-soft); margin-top: 14px; font-size: 15.5px; }
+
+  /* ── 更新日志 ── */
+  .changelog { max-width: 760px; margin: 0 auto; }
+  .changelog details {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 22px; margin-bottom: 12px;
+  }
+  .changelog summary { font-weight: 700; cursor: pointer; font-size: 16px; list-style: none; display: flex; align-items: baseline; gap: 10px; }
+  .changelog summary::before { content: "▸"; color: var(--chestnut-light); transition: transform .15s; }
+  .changelog details[open] summary::before { transform: rotate(90deg); }
+  .changelog summary .date { font-weight: 400; font-size: 13px; color: var(--ink-soft); }
+  .changelog ul { margin: 12px 0 2px 4px; list-style: none; }
+  .changelog li { font-size: 14.5px; color: var(--ink-soft); padding: 4px 0 4px 20px; position: relative; }
+  .changelog li::before { content: ""; position: absolute; left: 4px; top: 13px; width: 6px; height: 6px; border-radius: 50%; background: var(--chestnut-light); }
+
+  /* ── 页脚 ── */
+  footer { border-top: 1px solid var(--line); padding: 36px 0 44px; text-align: center; color: var(--ink-soft); font-size: 13.5px; }
+  footer .links { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+  footer a { color: var(--chestnut); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="brand" href="#"><img src="assets/logo.png" alt="栗子记账">栗子记账</a>
+    <div class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#shots">截图</a>
+      <a href="#changelog">更新日志</a>
+      <a href="#feedback">反馈</a>
+      <a class="nav-dl" href="download/latest/chestnut-latest.apk">下载</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <img class="logo" src="assets/logo.png" alt="栗子记账 logo">
+    <h1>栗子记账</h1>
+    <p class="sub">一款安静的记账 App——无广告、无需注册、数据完全保存在你的手机里。</p>
+    <div class="tags">
+      <span>无广告</span><span>免注册</span><span>数据本地</span><span>开源可查</span><span>轻量 60MB</span>
+    </div>
+    <a class="btn-main" href="download/latest/chestnut-latest.apk">⬇️ 下载最新版（Android · arm64）</a>
+    <p class="dl-meta">当前版本 1.2.4 · 2026-10-24 · 备用直链：<a href="https://github.com/koeltp/chestnut/releases/latest/download/chestnut-latest.apk">GitHub Releases</a></p>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <h2 class="sec-title">功能与特性</h2>
+    <p class="sec-desc">把"记下来"这件事做到最顺手，剩下的交给它。</p>
+    <div class="features">
+      <div class="feature"><div class="ico">⚡</div><h3>一笔秒记</h3><p>金额、分类、备注三步以内完成，补记历史账单自动落到当天发生时刻的位置。</p></div>
+      <div class="feature"><div class="ico">🏷️</div><h3>自定义分类与标签</h3><p>90+ 内置分类图标，支持自建分类组合图标库；标签让一笔账挂上多个维度。</p></div>
+      <div class="feature"><div class="ico">📊</div><h3>统计报表</h3><p>按日 / 月 / 年多粒度看收支，分类占比、趋势一目了然，支持多条件筛选。</p></div>
+      <div class="feature"><div class="ico">🎯</div><h3>预算管理</h3><p>月度预算与超支提醒，花到哪了、还能花多少，随时心里有数。</p></div>
+      <div class="feature"><div class="ico">📍</div><h3>地图定位</h3><p>记一笔时可选地图位置，事后按地点回忆这笔消费，经纬度仅存本地。</p></div>
+      <div class="feature"><div class="ico">🧾</div><h3>借条管理</h3><p>借入借出独立记录，与流水统一时间线展示，往来清晰。</p></div>
+      <div class="feature"><div class="ico">💾</div><h3>本地备份</h3><p>数据全量导出为文件，随存随取；换机迁移不依赖任何云端账号。</p></div>
+      <div class="feature"><div class="ico">🔒</div><h3>隐私优先</h3><p>无广告 SDK、不上传账单、离线可用；应用内更新带 SHA-256 校验。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="shots">
+  <div class="wrap">
+    <h2 class="sec-title">截图一览</h2>
+    <p class="sec-desc">界面干净，没有多余的东西。</p>
+    <div class="shots">
+      <figure class="shot"><img loading="lazy" src="screenshots/add-bill.jpg" alt="记一笔"><figcaption>记一笔</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="screenshots/categories.jpg" alt="分类管理"><figcaption>分类管理</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="screenshots/stats.jpg" alt="统计报表"><figcaption>统计报表</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="screenshots/budget.jpg" alt="预算"><figcaption>预算</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="screenshots/location-picker.jpg" alt="地图定位"><figcaption>地图定位</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="screenshots/backup.jpg" alt="本地备份"><figcaption>本地备份</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap privacy">
+    <h2 class="sec-title">隐私承诺</h2>
+    <p><strong>账单只属于你。</strong>所有数据保存在手机本地的加密数据库中，应用没有任何广告 SDK，不请求多余权限，不收集、不上传任何账单信息。应用内更新从本站获取版本清单并校验 SHA-256，全程可审计（本项目开源，见下方 GitHub）。</p>
+  </div>
+</section>
+
+<section id="changelog">
+  <div class="wrap">
+    <h2 class="sec-title">更新日志</h2>
+    <p class="sec-desc">完整记录见 <a href="https://github.com/koeltp/chestnut/blob/main/CHANGELOG.md">CHANGELOG.md</a>。</p>
+    <div class="changelog">
+      <details open>
+        <summary>v1.2.4 <span class="date">2026-10-24</span></summary>
+        <ul>
+          <li>明细列表同一天内按发生时刻倒序排列（如 9:30 在 9:20 上方），未填时刻的账单沉底；补记的历史账单会落回当天的发生时刻位置</li>
+        </ul>
+      </details>
+      <details>
+        <summary>v1.2.3 <span class="date">2026-10-22</span></summary>
+        <ul>
+          <li>分类图标库新增"公益"组（献爱心、互助、大病救助、志愿服务、义卖、助农、环保等），捐赠类支出自建分类时可直接选用</li>
+        </ul>
+      </details>
+      <details>
+        <summary>v1.2.2 <span class="date">2026-10-22</span></summary>
+        <ul>
+          <li>更新记录页顶部展示线上最新版本卡片：带"可更新"标识、更新说明与一键更新入口</li>
+          <li>更新弹窗与更新记录页的发布时间统一显示为本地时区</li>
+        </ul>
+      </details>
+      <details>
+        <summary>v1.2.1 <span class="date">2026-10-22</span></summary>
+        <ul>
+          <li>修复账单数量较多时标签查询崩溃的问题</li>
+          <li>安装包体积缩减约 3MB，包体从 86MB 降至 60MB</li>
+        </ul>
+      </details>
+      <details>
+        <summary>v1.2.0 <span class="date">2026-10-19</span></summary>
+        <ul>
+          <li>日期选择弹窗升级：年/月/日网格快速选择，日历式布局</li>
+          <li>全应用年份范围统一为 1900 ~ 当前年</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="links" id="feedback">
+      <a href="https://github.com/koeltp/chestnut">GitHub 开源仓库</a>
+      <a href="https://github.com/koeltp/chestnut/issues">问题反馈</a>
+      <a href="mailto:tp@taipi.top">邮件联系</a>
+      <a href="https://www.taipi.top">作者博客</a>
+    </div>
+    <p>栗子记账 © 2026 · 数据本地存储，无需任何账号</p>
+  </div>
+</footer>
+
+</body>
+</html>
