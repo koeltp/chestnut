@@ -103,7 +103,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   double? get _progress =>
       _total > 0 ? (_received / _total).clamp(0.0, 1.0) : null;
 
-  String _mb(int bytes) => (bytes / 1048576).toStringAsFixed(1);
+  /// 体积按 10^6 进制显示（MB），与 Android 系统安装器、应用商店口径一致；
+  /// 若按 1024（MiB）显示，用户会看到下载 61.8、安装时变 64.8 的困惑
+  String _mb(int bytes) => (bytes / 1000000).toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) {
