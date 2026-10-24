@@ -55,7 +55,7 @@ jobs:
       # 没有这一步 runner 每次冷启动重新拉全部依赖，构建多花 3~5 分钟。
       # 首次运行写缓存，之后命中（wrapper 切官方源的 sed 是固定操作，
       # 不影响缓存 key 的稳定）
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - uses: subosito/flutter-action@v2
         with:
