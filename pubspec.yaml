@@ -29,7 +29,7 @@ dependencies:
   # 日期与数字格式化
   intl: ^0.20.2
   # CSV 导出
-  csv: ^6.0.0
+  csv: ^8.0.0
   share_plus: ^13.3.1
   geolocator: ^14.0.2
   geocoding: ^5.0.0
