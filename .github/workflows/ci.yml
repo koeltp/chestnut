@@ -21,6 +21,15 @@ jobs:
       - name: 安装依赖
         run: flutter pub get
 
+      # 本机若带着 PUB_HOSTED_URL=镜像 跑 pub get，会把 lock 改写成镜像源；
+      # 在 CI 层拦下，避免人肉记忆兜底（历史上已发生过两次）
+      - name: 校验依赖锁源为 pub.dev
+        run: |
+          if grep -q "pub.flutter-io.cn" pubspec.lock; then
+            echo "::error::pubspec.lock 含镜像源，请还原为 pub.dev 后再推送"
+            exit 1
+          fi
+
       - name: 静态检查
         run: flutter analyze
 

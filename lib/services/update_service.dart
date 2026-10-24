@@ -99,6 +99,13 @@ class UpdateInfo {
 /// （chestnut.taipi.top）分发以规避 GitHub 国内直连不可靠的问题；
 /// 任何失败都只提示、绝不阻塞记账主流程。
 class UpdateService {
+  /// [client] 仅供测试注入 mock；生产路径不传，按需自建并自毁
+  UpdateService({http.Client? client}) : _injectedClient = client;
+
+  final http.Client? _injectedClient;
+
+  http.Client _newClient() => _injectedClient ?? http.Client();
+
   /// 版本清单地址。GitHub Releases 国内直连不可靠，清单与 APK 均走
   /// Cloudflare Worker 反代（cloudflare/worker.js 部署在 chestnut.taipi.top），
   /// `latest/download` 直链恒指向最新 Release 的同名资产；
@@ -116,11 +123,15 @@ class UpdateService {
     final uri = Uri.parse(
       '$_manifestUrl?t=${DateTime.now().millisecondsSinceEpoch}',
     );
+    final client = _newClient();
     final http.Response resp;
     try {
-      resp = await http.get(uri).timeout(const Duration(seconds: 8));
+      resp = await client.get(uri).timeout(const Duration(seconds: 8));
     } catch (_) {
       throw const UpdateException('网络连接失败，请稍后再试');
+    } finally {
+      // 注入的 client 由调用方（测试）管理，仅自建的用完即关
+      if (_injectedClient == null) client.close();
     }
     if (resp.statusCode != 200) {
       throw UpdateException('版本服务暂不可用（HTTP ${resp.statusCode}）');
