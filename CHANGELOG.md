@@ -2,6 +2,12 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.5] - 2026-10-24
+
+### 修复
+
+- 部分网络环境下「检查更新」提示网络连接失败：更新清单与安装包下载改经 Cloudflare CDN 分发，国内网络可达性显著提升
+
 ## [1.2.4] - 2026-10-24
 
 ### 优化
