@@ -46,8 +46,10 @@ void _declareAmapPrivacyAgreed() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 固定竖屏，记账场景无横屏需求
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // 固定竖屏，记账场景无横屏需求（不需等待生效，不阻塞启动）
+  unawaited(
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
+  );
   // 启动早期执行待定数据恢复：必须在数据库首次打开前完成文件替换
   await BackupService().restoreIfNeeded();
   // 清理上次会话遗留的导出临时文件（分享时微信异步读取，不能当场删）

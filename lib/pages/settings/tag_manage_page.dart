@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -104,7 +106,7 @@ class _TagManagePageState extends State<TagManagePage> {
       await context
           .read<TagRepository>()
           .updateTag(tag.id, result.name, result.color);
-      _refresh();
+      unawaited(_refresh());
     } catch (e) {
       if (mounted) showAppToast(context, '保存失败：$e');
     }
@@ -114,7 +116,7 @@ class _TagManagePageState extends State<TagManagePage> {
   Future<void> _delete(Tag tag) async {
     await context.read<TagRepository>().deleteTag(tag.id);
     if (!mounted) return;
-    _refresh();
+    unawaited(_refresh());
   }
 
   /// 单击标签弹操作菜单（编辑/删除/查看统计；长按拖动排序由胶囊自身承担）
@@ -196,7 +198,7 @@ class _TagManagePageState extends State<TagManagePage> {
         ],
       ),
     );
-    if (confirmed == true) _delete(tag);
+    if (confirmed == true) unawaited(_delete(tag));
   }
 
   /// 新建标签：弹窗内输入名称 + 选择颜色
@@ -211,7 +213,7 @@ class _TagManagePageState extends State<TagManagePage> {
       await context
           .read<TagRepository>()
           .addTag(result.name, color: result.color);
-      _refresh();
+      unawaited(_refresh());
     } catch (e) {
       if (mounted) showAppToast(context, '创建失败：$e');
     }
@@ -223,12 +225,12 @@ class _TagManagePageState extends State<TagManagePage> {
   Future<void> _onReorder(List<int> orderedIds) async {
     try {
       await context.read<TagRepository>().reorderTags(orderedIds);
-      if (mounted) _refresh();
+      if (mounted) unawaited(_refresh());
     } catch (e) {
       if (mounted) {
         showAppToast(context, '排序保存失败：$e');
         // 失败时同步回数据库顺序，避免 UI 与实际数据不一致
-        _refresh();
+        unawaited(_refresh());
       }
     }
   }

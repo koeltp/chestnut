@@ -293,7 +293,8 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       // 缓存拿不到无所谓，实时定位还在后面
     }
     if (_locating) return;
-    _locateBySystem();
+    // 后台启动实时定位，结果经回调回到本页，此处不等待
+    unawaited(_locateBySystem());
   }
 
   /// 系统实时定位主源。forceLocationManager 强走 Android LocationManager
@@ -900,10 +901,10 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
           ],
         );
       }
-      return Center(
+      return const Center(
         child: Text(
           '附近没有找到地点',
-          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
       );
     }

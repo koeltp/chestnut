@@ -1,0 +1,19 @@
+# 跨编辑器基础一致性：Dart 代码由 dart format 兜底，此处主要约束
+# yaml / markdown / gradle / xml 等周边文件。
+# 不设 end_of_line：行尾交由 git core.autocrlf 处理，避免编辑器与 git 打架。
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+# Markdown 行尾双空格是硬换行语法，不清理
+trim_trailing_whitespace = false
+
+[*.{yml,yaml,dart,json}]
+indent_size = 2
+
+[*.{java,kt,xml,gradle,properties,ps1}]
+indent_size = 4

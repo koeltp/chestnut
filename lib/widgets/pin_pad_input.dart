@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -41,7 +42,8 @@ class _PinPadInputState extends State<PinPadInput>
 
   Future<void> _press(int digit) async {
     if (_digits.length >= 6 || _shake.isAnimating) return;
-    HapticFeedback.lightImpact();
+    // 震动反馈 fire-and-forget，无需等待
+    unawaited(HapticFeedback.lightImpact());
     setState(() => _digits.add(digit));
     if (_digits.length < 6) return;
     final ok = await widget.onCompleted(_digits.join());

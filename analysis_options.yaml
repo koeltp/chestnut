@@ -28,8 +28,17 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
+    # ---- 在 flutter_lints 默认集之上加严的部分（渐进启用，存量由 dart fix 清理）----
+    # async 调用漏 await 会静默吞错/产生竞态，编译期提醒
+    unawaited_futures: true
+    # 函数显式返回类型，防推断漂移
+    always_declare_return_types: true
+    # Flutter 性能标配：编译期常量，减少不必要的 rebuild
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_const_constructors_in_immutables: true
+
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
