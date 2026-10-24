@@ -34,7 +34,7 @@ class NumberKeyboard extends StatelessWidget {
     // 白底与页面融为一体，键间以细分割线区隔
     return Column(
       children: [
-        Divider(height: 1, thickness: 1, color: AppColors.divider),
+        const Divider(height: 1, thickness: 1, color: AppColors.divider),
         _row([
           _numberKey('1'),
           _numberKey('2'),
@@ -123,7 +123,7 @@ class NumberKeyboard extends StatelessWidget {
         child: InkWell(
           onTap: onDone,
           borderRadius: BorderRadius.circular(AppDimens.radiusControl),
-          child: SizedBox(
+          child: const SizedBox(
             height: 40,
             child: Center(
               child: Text(

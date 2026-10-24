@@ -31,9 +31,9 @@ class NetValueCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             '总净值（总资产 − 总负债）',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
             ),
@@ -224,7 +224,7 @@ class DebtNoteCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.north_east,
                   size: 18,
                   color: AppColors.income,
@@ -243,11 +243,11 @@ class DebtNoteCard extends StatelessWidget {
                       ),
                       Text(
                         fmtAssetAmount(summary.lendOutAllCents, masked),
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: AppColors.income,
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                          fontFeatures: [FontFeature.tabularFigures()],
                         ),
                       ),
                     ],
@@ -262,7 +262,7 @@ class DebtNoteCard extends StatelessWidget {
               padding: const EdgeInsets.only(left: AppDimens.gapMd),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.south_west,
                     size: 18,
                     color: AppColors.expense,
@@ -281,11 +281,11 @@ class DebtNoteCard extends StatelessWidget {
                         ),
                         Text(
                           fmtAssetAmount(summary.borrowInAllCents, masked),
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: AppColors.expense,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                            fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],

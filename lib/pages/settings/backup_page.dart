@@ -473,37 +473,37 @@ class _BackupPageState extends State<BackupPage> {
       context,
       title: '备份与恢复说明',
       items: [
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.ios_share,
           title: '分享备份',
           description: '生成完整备份文件发送到微信/网盘等，App 内不留副本',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.download_outlined,
           title: '保存到手机',
           description: '快照存到你选的位置（如下载目录），卸载应用也不会删除',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.restore_outlined,
           title: '导入备份',
           description: '从备份文件恢复全部数据，会覆盖当前数据；导入前会自动把当前数据备份一份，选错了能找回来',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.upload_file,
           title: '导入钱迹账单',
           description: '选择钱迹 App 导出的 Excel 账单，逐组选好对应分类后追加导入（不覆盖现有数据）；导入前会自动备份，导入后可立即整批撤销',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.history,
           title: '历史备份',
           description: '升级、装回旧版或导入前自动生成的保险，点击可恢复，长按可删除',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.event_available,
           title: '每日备份',
           description: '打开开关后，每天第一次打开应用时自动备份一次，自动保留最近 7 天',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.shield_outlined,
           title: '数据安全',
           description: '备份文件包含全部账单数据，请妥善保管，建议保存到网盘的私密空间',
@@ -559,7 +559,6 @@ class _BackupPageState extends State<BackupPage> {
         dialogTitle: '保存备份',
         fileName: '栗子记账备份_$stamp.sqlite',
         bytes: await source.readAsBytes(),
-        type: FileType.any,
       );
       // 临时文件用完即弃：保存成功/取消都不留私有副本
       if (await source.exists()) await source.delete();

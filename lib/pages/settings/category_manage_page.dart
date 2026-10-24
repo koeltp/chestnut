@@ -218,27 +218,27 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
       context,
       title: '分类管理说明',
       items: [
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.touch_app_outlined,
           title: '单击修改',
           description: '单击一级分类或子分类，可修改名称与图标',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.drag_indicator,
           title: '长按排序',
           description: '长按一级或二级分类拖动，可直接调整排序',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.unfold_more,
           title: '展开/收起',
           description: '点击一级分类右侧箭头，展开或收起子分类',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.add_circle_outline,
           title: '新增分类',
           description: '面板内"添加子类"可为该一级分类新增子分类；右下角 + 新增一级分类，支持批量添加',
         ),
-        HelpSheetItem(
+        const HelpSheetItem(
           icon: Icons.delete_outline,
           title: '删除迁移',
           description: '删除分类时账单与预算会先迁移到指定分类，并在账单备注追加原分类名；「其他」为兜底分类，不可删除',

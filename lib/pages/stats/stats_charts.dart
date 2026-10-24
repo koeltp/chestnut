@@ -319,7 +319,7 @@ class StatsBarChartPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+        style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
       ),
       textDirection: TextDirection.ltr,
     )..layout();

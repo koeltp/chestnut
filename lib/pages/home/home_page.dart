@@ -131,12 +131,12 @@ class _HomePageState extends State<HomePage> {
                 if (view.entries.isEmpty) {
                   // 空月也要能拉：包进可滚动视图（SliverFillRemaining
                   // 占满一屏且 AlwaysScrollable 保证边界 overscroll 可用）
-                  return CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
+                  return const CustomScrollView(
+                    physics: AlwaysScrollableScrollPhysics(),
                     slivers: [
                       SliverFillRemaining(
                         hasScrollBody: false,
-                        child: const _EmptyState(),
+                        child: _EmptyState(),
                       ),
                     ],
                   );

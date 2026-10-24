@@ -293,7 +293,7 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
               ],
             ),
           ),
-          Divider(height: 10, thickness: 1, color: AppColors.fill),
+          const Divider(height: 10, thickness: 1, color: AppColors.fill),
           Row(
             children: [
               const Text(
@@ -323,12 +323,12 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
       maxLength: 10,
       inputFormatters: [LengthLimitingTextInputFormatter(10)],
       // 紧凑行高：卡片行高固定 28，输入区不得撑高
-      decoration: InputDecoration(
+      decoration: const InputDecoration(
         isDense: true,
         contentPadding: EdgeInsets.zero,
         counterText: '',
         hintText: '输入分类名称',
-        hintStyle: const TextStyle(
+        hintStyle: TextStyle(
           fontSize: 14,
           color: AppColors.textSecondary,
         ),

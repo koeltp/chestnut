@@ -414,7 +414,7 @@ class _DetailBodyState extends State<_DetailBody> {
                               fontSize: 20,
                               fontWeight: FontWeight.w600,
                               color: amountColor,
-                              fontFeatures: [FontFeature.tabularFigures()],
+                              fontFeatures: const [FontFeature.tabularFigures()],
                             ),
                           ),
                     // 有优惠时在实付下方展示原价（划线）与省额

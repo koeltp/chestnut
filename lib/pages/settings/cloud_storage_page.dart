@@ -165,11 +165,11 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
 
   /// 顶部说明卡
   Widget _buildIntro() {
-    return SectionCard(
+    return const SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '接入你自己的云存储',
             style: TextStyle(
               fontSize: 15,
@@ -177,7 +177,7 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
               color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             '给账单附上小票、发票等凭证图片。图片只在你主动添加时上传到'
             '你自己配置的云存储空间，栗子记账不经手、不中转、不备份到'
@@ -261,8 +261,8 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
             ),
           ),
           if (_guideOpen)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
               child: Text(
                 '· Endpoint：对象存储的服务地址，在服务商控制台的桶概览里'
                 '可以找到（R2 为"S3 API"后面的地址）\n'

@@ -178,10 +178,10 @@ class _SettingsPageState extends State<SettingsPage> {
                             '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.netCents.abs())}';
                     return Text(
                       text,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+                        fontFeatures: [FontFeature.tabularFigures()],
                       ),
                     );
                   },

@@ -331,19 +331,19 @@ class _BudgetPageState extends State<BudgetPage> {
             },
           ),
           const SizedBox(height: AppDimens.gapSm),
-          Row(
+          const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
+              Icon(
                 Icons.info_outline,
                 size: 14,
                 color: AppColors.textSecondary,
               ),
-              const SizedBox(width: 4),
+              SizedBox(width: 4),
               Expanded(
                 child: Text(
                   '切换后立即补全本月未设项，已设置的金额不会被自动改动',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),

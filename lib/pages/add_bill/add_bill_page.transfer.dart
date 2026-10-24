@@ -82,7 +82,7 @@ mixin _TransferArea on _AddBillBase {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Positioned.fill(
+          const Positioned.fill(
             child: Center(
               child: SizedBox(
                 height: 1,

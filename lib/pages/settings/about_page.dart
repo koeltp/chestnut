@@ -107,8 +107,8 @@ class _AboutPageState extends State<AboutPage> {
 
   /// 一句话简介
   Widget _buildIntroCard() {
-    return SectionCard(
-      child: const Padding(
+    return const SectionCard(
+      child: Padding(
         padding: EdgeInsets.all(4),
         child: Text(
           '一款无广告、无账号、数据完全本地的开源记账 App。\n'

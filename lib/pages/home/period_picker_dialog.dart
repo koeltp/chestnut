@@ -154,11 +154,11 @@ class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
 
   /// "月份起始日"行（钱迹支持自定义起始日，当前版本固定 01 仅展示）
   Widget _startDayRow() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 15, 20, 15),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 15, 20, 15),
       child: Row(
         children: [
-          const Text(
+          Text(
             '月份起始日',
             style: TextStyle(
               fontSize: 17,
@@ -166,12 +166,12 @@ class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
               color: AppColors.textPrimary,
             ),
           ),
-          const Spacer(),
-          const Text(
+          Spacer(),
+          Text(
             '01',
             style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
           ),
-          const Icon(
+          Icon(
             Icons.chevron_right,
             size: 20,
             color: AppColors.textSecondary,

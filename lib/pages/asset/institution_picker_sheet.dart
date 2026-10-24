@@ -126,7 +126,7 @@ class _InstitutionPickerSheetState extends State<_InstitutionPickerSheet> {
             ),
           ),
         ),
-        Divider(height: 1, color: AppColors.divider),
+        const Divider(height: 1, color: AppColors.divider),
         Flexible(
           child: rows.isEmpty
               ? const Padding(
