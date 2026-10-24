@@ -23,89 +23,65 @@ flutter test           # 全量通过
 
 ## 一键发布（推荐）
 
-完整发版 = **先写 CHANGELOG → 跑脚本 → 主仓库归档 → 博客上传 → 线上验证 → 真包回归**。以下按顺序执行，以 1.1.6 为例。
+完整发版 = **写 CHANGELOG → 跑本地预检脚本 → 提交 + annotated tag → CI 自动发布 → 线上验证 → 真包回归**。
+
+> 架构说明：`.github/workflows/release.yml` 在推送 `v*` tag 后自动完成构建、签名、生成
+> `latest.json` 并创建 GitHub Release（上传 APK + 固定名副本 + 清单）。应用从
+> `releases/latest/download/latest.json` 固定直链读取更新清单，APK 直链由清单的
+> `apkUrl` 给出（同样指向 GitHub Release）。博客下载按钮指向同一固定直链，免维护。
+> **线上事实源是 CI，本地脚本只做发版前预检。**
 
 ### 第 0 步：写 CHANGELOG（顺序不能反）
 
-`CHANGELOG.md` 顶部追加新版本条目（`## [x.y.z] - 日期`，条目用 `- ` 列表）。它决定应用内更新弹窗文案，且脚本从同版本段提取 releaseNotes——先跑脚本后改 CHANGELOG 会导致清单是旧文案。
+`CHANGELOG.md` 顶部追加新版本条目（`## [x.y.z] - 日期`，条目用 `- ` 列表）。它是版本留档与发布脚本文案提取的来源——先写 CHANGELOG 再走后面步骤。
 
 条目书写约定：
 
 - **releaseNotes 口径 = "用户可感知的增量"**：新增 / 修复 / 明显界面变化才进；纯代码重构、依赖升级等对用户零信息量的条目加 `[内部]` 前缀（`- [内部] xxx`），脚本提取时自动跳过——CHANGELOG 留档完整，更新弹窗只显示用户关心的
 - **hotfix 不新开段**：版本名不变、仅构建号 +1 的紧急修复，修复条目**追加进该版本名已有的段**（App 按 versionCode 判新，CHANGELOG 同版本名一段）
 
-### 第 1 步：跑发布脚本
+### 第 1 步：跑本地预检脚本
 
 ```powershell
-.\scripts\release.ps1 -VersionName 1.1.6   # 指定版本名，构建号自动 +1
-.\scripts\release.ps1                      # 沿用 pubspec 当前版本名，仅构建号 +1
+.\scripts\release.ps1 -VersionName 1.2.4   # 指定版本名，构建号自动 +1
+.\scripts\release.ps1                       # 沿用 pubspec 当前版本名，仅构建号 +1
 ```
 
-脚本自动完成：版本号写回 pubspec → `flutter analyze` + `flutter test`（失败即中止）→ arm64 release 构建 → aapt2 自检（versionCode = 构建号 + 2000、INTERNET 权限显式声明）→ 产物整理：
+脚本自动完成：版本号写回 pubspec → `flutter analyze` + `flutter test`（失败即中止）→ arm64 release 构建 → aapt2 自检（versionCode = 构建号 + 2000、INTERNET 权限显式声明）→ 产物整理到 `dist/`（APK + manifest 本地预检副本）。
 
-- `dist/chestnut-<版本>-arm64.apk`（每版本唯一文件名，防 CDN 缓存吐旧包）
-- `dist/manifest-<版本>.json`——**与博客 latest.json 同构**（含 `_comment`/`forceUpdate`/releaseNotes 数组/小写 sha256/日期 publishedAt），收尾时直接覆盖上传，不再手改 JSON
+> 本地构建的 APK 仅用于预检与真包回归，**线上发布包由 CI 构建上传**，两者同
+> commit 同配置，体积略有差异（本机 JDK 与 runner 不同）属正常。
 
-脚本结尾会打印剩余人工步骤提醒。
-
-### 第 2 步：主仓库提交 + tag
+### 第 2 步：主仓库提交 + annotated tag（更新文案源）
 
 ```powershell
 git add pubspec.yaml CHANGELOG.md
-git commit -m "chore(release): 1.1.6"
-git tag v1.1.6
-git push origin main v1.1.6
+git commit -m "chore(release): 1.2.4"
+git tag -a v1.2.4 -m "明细列表同一天内按发生时刻倒序排列（如 9:30 在 9:20 上方）"
+git push origin main v1.2.4
 ```
 
-（若脚本/文档/清单 schema 也有改动，一并提交。）
+**tag message 就是应用内更新弹窗的 releaseNotes**：CI 逐行读取 annotated tag message 生成 `latest.json` 的 `releaseNotes` 与 Release 页面正文（见 release.yml）。必须把 CHANGELOG 里用户可感知的条目逐行写进 message，`[内部]` 条目不写。
 
-### 第 3 步：GitHub Release 建档（仅存档，不指 apkUrl——GitHub Releases 国内下载速度为 0）
+（若脚本/文档/workflow 也有改动，一并提交。）
+
+### 第 3 步：CI 自动发布 + 线上验证
+
+推送 tag 后 GitHub Actions 自动执行（仓库 Actions 页盯全绿，约 10~15 分钟）：构建（含 `--no-tree-shake-icons`）→ 签名指纹校验 → 生成 latest.json → 创建 GitHub Release 并上传三件产物：
+
+- `chestnut-<版本>.apk`——版本化文件名（防 CDN/缓存吐旧包）
+- `chestnut-latest.apk`——固定名副本，`releases/latest/download/` 直链恒指最新
+- `latest.json`——应用内更新清单
+
+验证（Actions 全绿后）：
 
 ```powershell
-# gh 不在 PATH 时用绝对路径；配置目录写入受限时先重定向
-$env:GH_CONFIG_DIR = "$env:TEMP\gh-config"
-$gh = 'C:\Program Files\GitHub CLI\gh.exe'
-& $gh release create v1.1.6 dist\chestnut-1.1.6-arm64.apk --title "1.1.6" --notes $notes
-& $gh release edit v1.1.6 --latest=true   # 连续建档时最后一个会抢 Latest，收尾必须显式指定
+(Invoke-WebRequest "https://github.com/koeltp/chestnut/releases/latest/download/latest.json" -UseBasicParsing).Content
 ```
 
-notes 用 CHANGELOG 同版本段的 Markdown（分组标题改 `##`）。
+核对 `versionCode`（应为构建号 + 2000）、`releaseNotes`（应为 tag message 内容）。
 
-### 第 4 步：产物上传博客仓库（`D:\work\prod\blog`）
-
-```powershell
-# APK：复制新版，删除旧版（博客 downloads/ 只保留最新一版，历史版本在 GitHub Releases）
-Copy-Item dist\chestnut-1.1.6-arm64.apk D:\work\prod\blog\src\.vuepress\public\downloads\ -Force
-Remove-Item D:\work\prod\blog\src\.vuepress\public\downloads\chestnut-1.1.5-arm64.apk
-
-# 清单：直接覆盖（脚本产物已与 latest.json 同构，_comment 保留）
-Copy-Item dist\manifest-1.1.6.json D:\work\prod\blog\src\.vuepress\public\chestnut\latest.json -Force
-```
-
-### 第 5 步：博客文章同步
-
-`D:\work\prod\blog\src\docs\article\栗子记账.md` 四处核对：下载按钮链接与文案（文首）、版本号/架构/体积小字、直链（第二节）、SHA-256 校验值（大写展示）。博客介绍文字本身人工撰写。
-
-### 第 6 步：提交并推送博客（触发部署）
-
-```powershell
-git add src/.vuepress/public 'src/docs/article/栗子记账.md'
-git commit -m "chore: 栗子记账 v1.1.6 发版"
-git push    # 61MB 大文件的 GH001 警告属正常
-```
-
-### 第 7 步：线上验证（部署构建需几分钟，轮询确认）
-
-```powershell
-# 清单：带 ?t=毫秒 破 CDN 缓存，versionCode 应为新值
-$t = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-(Invoke-WebRequest "https://www.taipi.top/chestnut/latest.json?t=$t" -UseBasicParsing).Content
-
-# APK：Content-Length 应与清单 fileSize 一致（文件名每版本全新，无旧缓存风险）
-Invoke-WebRequest "https://www.taipi.top/downloads/chestnut-1.1.6-arm64.apk?t=$t" -Method Head -UseBasicParsing
-```
-
-### 第 8 步：真包回归
+### 第 4 步：真包回归
 
 见下文"发布后回归"——手机现有正式包走「我的 → 检查更新」升级，再测地图/定位/POI/分享。
 
@@ -131,32 +107,34 @@ Get-FileHash <apk> -Algorithm SHA256
 
 ## 命名与分发
 
-- APK **每版本换文件名**：`chestnut-<版本>-arm64.apk`。同名覆盖会被 CDN 边缘节点在缓存 TTL 内继续吐旧包，导致校验失败且极难发现
-- 应用内更新的清单按 versionCode 判断新旧，携带 `sha256` 与 `fileSize` 双校验；下载 URL 追加时间戳参数破 CDN 缓存
-- 清单（`latest.json`）实际 schema——脚本 `dist/manifest-<版本>.json` 产出即此结构，直接覆盖上传：
+- APK **每版本换文件名**：CI 上传 `chestnut-<版本>.apk` 与固定名副本 `chestnut-latest.apk`（后者配合 `releases/latest/download/` 直链恒指最新）
+- 应用内更新的清单按 versionCode 判断新旧，携带 `sha256` 与 `fileSize` 双校验
+- 清单（`latest.json`）实际 schema——CI 按此结构生成并随 Release 上传：
 
 ```json
 {
-  "_comment": "维护者说明（原样保留）",
-  "versionCode": 4010,
-  "versionName": "1.1.6",
-  "apkUrl": "https://www.taipi.top/downloads/chestnut-1.1.6-arm64.apk",
-  "sha256": "小写十六进制（Get-FileHash 结果需 ToLower）",
-  "fileSize": 64652736,
-  "forceUpdate": false,
+  "versionCode": 6020,
+  "versionName": "1.2.4",
+  "apkUrl": "https://github.com/koeltp/chestnut/releases/download/v1.2.4/chestnut-1.2.4.apk",
+  "sha256": "小写十六进制（CI 用 sha256sum 计算）",
+  "fileSize": 63282123,
   "releaseNotes": [
-    "条目与 CHANGELOG 同源，字符串数组（App 端 UpdateService 按数组解析）"
+    "逐行来自 annotated tag message（App 端 UpdateService 按数组解析）"
   ],
-  "publishedAt": "2026-10-11"
+  "publishedAt": "2026-10-24T04:46:57+00:00"
 }
 ```
+
+> App 端 `UpdateInfo.fromJson` 对缺失字段容错（`forceUpdate` 缺省 false、
+> `releaseNotes`/`publishedAt` 可空），CI 生成不带 `forceUpdate` 字段的清单即可。
 
 ## 发布后回归（release 真包必做）
 
 - 安装 release 包验证（注意与 debug 包 `top.taipi.chestnut.debug` 区分，正式包为 `top.taipi.chestnut`）
+- **分类图标正常渲染**（码点入库运行时构造，构建若漏了 `--no-tree-shake-icons` 会显示成方框，且只在 release 包出现）
 - **地图打开 / 定位 / POI 搜索 / 分享文件**——debug 与 release 的权限注入差异历史上踩过坑，这条不能省
 - 应用内「检查更新」链路：能读到新清单、校验通过、拉起安装
 
 ## 更新日志
 
-`CHANGELOG.md` 每版本追加条目，与应用内更新弹窗的 releaseNotes 保持同源。**发版时先更新 CHANGELOG 再跑发布脚本**（顺序不能反，见"一键发布"）。
+`CHANGELOG.md` 每版本追加条目，作为仓库留档；应用内更新弹窗的 releaseNotes 在发版时**从 CHANGELOG 的用户可感知条目提炼进 annotated tag message**（CI 读取 message 生成清单，见"一键发布"第 2 步）。

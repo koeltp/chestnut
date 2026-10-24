@@ -155,15 +155,17 @@ foreach ($line in (Get-Content 'CHANGELOG.md' -Encoding UTF8)) {
 }
 $releaseNotes = @($notes | Where-Object { $_.Trim() })
 
-# 应用内更新清单：与博客 latest.json 同构，收尾时直接覆盖上传即可。
+# 应用内更新清单：线上事实源是 CI 生成并随 GitHub Release 上传的 latest.json
+# （App 从 releases/latest/download/latest.json 固定直链读取），本文件仅为
+# 本地预检副本，字段与 CI 产物同构（apkUrl 同指 GitHub Release 直链）。
 # versionCode 判断新旧（构建号+2000 实际值），sha256 小写，forceUpdate 默认 false
 $manifestCode = $newBuild + 2000
 if ($actualCode) { $manifestCode = $actualCode }   # aapt2 自检通过时以 APK 实际值为准
 $manifest = [ordered]@{
-  _comment     = '栗子记账最新版本清单。发版步骤：1) pubspec 版本号与构建号(+N)+1；2) flutter build apk --release --no-tree-shake-icons --split-per-abi 取 arm64 包，文件名带版本号放入 /downloads/；3) GitHub koeltp/chestnut 网页建 release（tag vx.y.z）上传 APK 存档（仅存档/对外展示，不指 apkUrl——GitHub Releases 国内下载速度为 0）；4) 更新本文件 versionCode/versionName/apkUrl/sha256/fileSize/releaseNotes；5) push。注意：--split-per-abi 会给 arm64 包的 versionCode 加 2000 偏移（构建号1→2001、2→2002），本文件 versionCode 必须填 APK 实际值，App 按它判断新旧'
+  _comment     = '栗子记账最新版本清单。线上事实源由 CI（.github/workflows/release.yml）在 tag 推送后自动生成并随 GitHub Release 上传：apkUrl 指向 Release 直链，releaseNotes 取自 annotated tag message（逐行）。本文件由 release.ps1 本地预检生成，供构建后核对 versionCode/sha256/fileSize 与文案，不上传不覆盖'
   versionCode  = $manifestCode
   versionName  = $VersionName
-  apkUrl       = "https://www.taipi.top/downloads/$apkName"
+  apkUrl       = "https://github.com/koeltp/chestnut/releases/download/v$VersionName/chestnut-$VersionName.apk"
   sha256       = $hash.ToLower()
   fileSize     = $size
   forceUpdate  = $false
@@ -182,11 +184,11 @@ Write-Host "更新清单：dist\manifest-$VersionName.json"
 # ---------- 6. 收尾提示 ----------
 
 Write-Host ""
-Write-Host "✅ $VersionName 构建完成" -ForegroundColor Green
+Write-Host "✅ $VersionName 本地预检构建完成（线上发布包由 CI 在 tag 推送后自动构建）" -ForegroundColor Green
 Write-Host "剩余人工步骤（详见 RELEASING.md「一键发布」）："
-Write-Host "  1. 提交 pubspec.yaml + CHANGELOG.md，打 tag v$VersionName，gh release create（收尾 --latest=true）"
-Write-Host "  2. APK 传博客仓库 D:\work\prod\blog\src\.vuepress\public\downloads\，删旧版只留最新"
-Write-Host "  3. dist\manifest-$VersionName.json 内容覆盖博客 src\.vuepress\public\chestnut\latest.json"
-Write-Host "  4. 博客文章 src\docs\article\栗子记账.md 同步版本号/下载直链/SHA-256"
-Write-Host "  5. push 博客部署，线上验证 latest.json 与带 ?t= 的 APK 哈希"
-Write-Host "  6. release 真包回归：地图打开 / 定位 / POI / 分享文件 / 应用内检查更新"
+Write-Host "  1. 提交 pubspec.yaml + CHANGELOG.md"
+Write-Host "  2. 打 annotated tag 并把用户可感知条目逐行写进 tag message（App 更新文案源）："
+Write-Host "     git tag -a v$VersionName -m `"更新文案第一行`""
+Write-Host "  3. git push origin main v$VersionName —— CI 自动构建并创建 GitHub Release"
+Write-Host "  4. Actions 全绿后验证 releases/latest/download/latest.json 的 releaseNotes"
+Write-Host "  5. release 真包回归：地图打开 / 定位 / POI / 分享文件 / 分类图标 / 应用内检查更新"

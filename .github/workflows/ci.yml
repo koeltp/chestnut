@@ -1,5 +1,5 @@
 # CI：每次推送/PR 自动跑静态检查与全量测试
-# 只做 analyze + test：构建打包留给本地（含签名与密钥，不进 CI）
+# 构建打包由 Release 流水线负责（release.yml，tag 推送触发，签名密钥走 Secrets）
 name: CI
 
 on:
