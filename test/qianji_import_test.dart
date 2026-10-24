@@ -108,7 +108,7 @@ void main() {
 
     test('自动归级：二级命中已有二级分类', () {
       final categories = [
-        Category(
+        const Category(
           id: 1,
           name: '餐饮',
           iconCode: 0,
@@ -118,7 +118,7 @@ void main() {
           sortOrder: 0,
           isFallback: false,
         ),
-        Category(
+        const Category(
           id: 2,
           name: '早餐',
           iconCode: 0,
@@ -136,7 +136,7 @@ void main() {
 
     test('钱迹"其它"归级到栗子"其他"', () {
       final categories = [
-        Category(
+        const Category(
           id: 1,
           name: '其他',
           iconCode: 0,

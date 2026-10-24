@@ -60,7 +60,7 @@ class _SheetScaffold extends StatelessWidget {
               ),
             ),
           ),
-          Divider(height: 1, color: AppColors.divider),
+          const Divider(height: 1, color: AppColors.divider),
           Flexible(child: child),
         ],
       ),

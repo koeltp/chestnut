@@ -50,7 +50,7 @@ void main() {
       borrowInAllCents: 0,
     );
     // 未存过开关状态时默认模糊（与生产口径一致）
-    await tester.pumpWidget(wrap(NetValueCard(summary: summary)));
+    await tester.pumpWidget(wrap(const NetValueCard(summary: summary)));
     expect(find.text('¥ ****'), findsNWidgets(3)); // 净值 + 总资产 + 总负债
 
     // 点整卡切换明文：净值与两列全部显示真实金额
@@ -74,7 +74,7 @@ void main() {
       borrowInAllCents: 0,
     );
     // 模糊态只模糊金额，百分比与项数照常展示
-    await tester.pumpWidget(wrap(LiabilityRateCard(summary: summary)));
+    await tester.pumpWidget(wrap(const LiabilityRateCard(summary: summary)));
     expect(find.text('负债率'), findsOneWidget);
     expect(find.text('2 项资产 | 1 项负债'), findsOneWidget);
     expect(find.text('50.0%'), findsOneWidget);
