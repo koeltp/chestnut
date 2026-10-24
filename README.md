@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/koeltp/chestnut/releases/latest/download/chestnut-latest.apk">⬇️ 下载最新版 APK（arm64-v8a）</a>
+  <a href="https://chestnut.taipi.top/download/latest/chestnut-latest.apk">⬇️ 下载最新版 APK（arm64-v8a）</a>
   &nbsp;·&nbsp;
   <a href="https://www.taipi.top/docs/article/%E6%A0%97%E5%AD%90%E8%AE%B0%E8%B4%A6.html">介绍文章</a>
   &nbsp;·&nbsp;

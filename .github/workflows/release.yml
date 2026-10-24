@@ -164,7 +164,9 @@ jobs:
           manifest = {
               'versionCode': version_code,
               'versionName': version_name,
-              'apkUrl': 'https://github.com/koeltp/chestnut/releases/download/v${{ env.VERSION_NAME }}/chestnut-${{ env.VERSION_NAME }}.apk',
+              # apkUrl 走 CF Worker 反代域（cloudflare/worker.js）：GitHub 直链
+              # 国内不可靠，下载与校验全程走 Cloudflare CDN
+              'apkUrl': 'https://chestnut.taipi.top/download/v${{ env.VERSION_NAME }}/chestnut-${{ env.VERSION_NAME }}.apk',
               'sha256': sha256,
               'fileSize': file_size,
               'releaseNotes': notes,

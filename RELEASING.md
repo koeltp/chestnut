@@ -26,9 +26,11 @@ flutter test           # 全量通过
 完整发版 = **写 CHANGELOG → 跑本地预检脚本 → 提交 + annotated tag → CI 自动发布 → 线上验证 → 真包回归**。
 
 > 架构说明：`.github/workflows/release.yml` 在推送 `v*` tag 后自动完成构建、签名、生成
-> `latest.json` 并创建 GitHub Release（上传 APK + 固定名副本 + 清单）。应用从
-> `releases/latest/download/latest.json` 固定直链读取更新清单，APK 直链由清单的
-> `apkUrl` 给出（同样指向 GitHub Release）。博客下载按钮指向同一固定直链，免维护。
+> `latest.json` 并创建 GitHub Release（上传 APK + 固定名副本 + 清单）。GitHub Release
+> 是唯一事实源；因 GitHub 国内直连不可靠，**对外分发统一走 Cloudflare Worker 反代**
+> `chestnut.taipi.top`（`cloudflare/worker.js`，白名单转发 Release 资产）：
+> 应用从 `chestnut.taipi.top/latest/download/latest.json` 读清单，清单里的
+> `apkUrl` 同指 Worker 域（CI 生成时已替换），博客与 README 下载按钮也指向 Worker 域。
 > **线上事实源是 CI，本地脚本只做发版前预检。**
 
 ### 第 0 步：写 CHANGELOG（顺序不能反）
@@ -76,10 +78,11 @@ git push origin main v1.2.4
 验证（Actions 全绿后）：
 
 ```powershell
-(Invoke-WebRequest "https://github.com/koeltp/chestnut/releases/latest/download/latest.json" -UseBasicParsing).Content
+# 经 Worker 域验证（国内用户实际走的链路）
+(Invoke-WebRequest "https://chestnut.taipi.top/latest/download/latest.json" -UseBasicParsing).Content
 ```
 
-核对 `versionCode`（应为构建号 + 2000）、`releaseNotes`（应为 tag message 内容）。
+核对 `versionCode`（应为构建号 + 2000）、`releaseNotes`（应为 tag message 内容）、`apkUrl`（应为 Worker 域）。
 
 ### 第 4 步：真包回归
 

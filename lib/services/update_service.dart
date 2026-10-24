@@ -95,13 +95,16 @@ class UpdateInfo {
 
 /// 应用内自更新服务：检查清单 → 下载 APK（带进度）→ 校验 → 拉起安装器。
 ///
-/// 清单与安装包均托管在本仓库 GitHub Releases（latest.json 随版本一起上传），
-/// 无自建服务器；任何失败都只提示、绝不阻塞记账主流程。
+/// 清单与安装包均由本仓库 GitHub Releases 提供，经 Cloudflare Worker 反代
+/// （chestnut.taipi.top）分发以规避 GitHub 国内直连不可靠的问题；
+/// 任何失败都只提示、绝不阻塞记账主流程。
 class UpdateService {
-  /// 版本清单地址；GitHub 的 releases/latest/download 直链恒指向最新
-  /// Release 的同名资产；追加时间戳绕开 CDN 缓存，保证及时生效
+  /// 版本清单地址。GitHub Releases 国内直连不可靠，清单与 APK 均走
+  /// Cloudflare Worker 反代（cloudflare/worker.js 部署在 chestnut.taipi.top），
+  /// `latest/download` 直链恒指向最新 Release 的同名资产；
+  /// 追加时间戳绕开 CDN 缓存，保证及时生效
   static const _manifestUrl =
-      'https://github.com/koeltp/chestnut/releases/latest/download/latest.json';
+      'https://chestnut.taipi.top/latest/download/latest.json';
 
   /// "以后再说"记忆键：记录用户已忽略的版本构建号，同版本自动提示只弹一次
   static const _kIgnoredUpdateCode = 'ignored_update_code';
