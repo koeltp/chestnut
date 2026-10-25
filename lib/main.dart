@@ -254,27 +254,49 @@ class _StartupGateState extends State<_StartupGate> {
   late bool _agreed =
       widget.prefs.getBool(kPrivacyAgreedKey) ?? false;
 
+  /// 补传进行中标记：冷启动与回前台的多次触发互斥，避免并发重复上传
+  bool _uploadingImages = false;
+
+  AppLifecycleListener? _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
     // 启动静默补传（仅同意隐私政策后，与其他联网行为同口径）：
     // 扫描 uploadState != done 的图片记录逐张补传，失败留在下次启动重试
     if (_agreed) unawaited(_uploadPendingImages());
+    // 回前台也触发补传：App 只是切到后台未死时（如记账后切微信再切回），
+    // 冷启动补传不会发生，回到前台时同样静默补一次
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () => unawaited(_uploadPendingImages()),
+    );
   }
 
-  /// 延迟触发启动补传：避开启动高峰，也让弱网下首屏请求优先。
+  @override
+  void dispose() {
+    _lifecycleListener?.dispose();
+    super.dispose();
+  }
+
+  /// 延迟触发静默补传：避开启动高峰，也让弱网下首屏请求优先。
   /// 未配置/未启用云存储时 createClient 为 null，无任何图片网络行为
   Future<void> _uploadPendingImages() async {
-    // 捕获依赖后再进入 await：补传是异步任务，不能依赖 async gap 后的 context
-    final repo = context.read<BillImageRepository>();
-    final debtRepo = context.read<DebtNoteRepository>();
-    await Future<void>.delayed(const Duration(seconds: 5));
-    if (!mounted) return;
-    final client = context.read<CloudStorageProvider>().createClient();
-    if (client == null) return;
-    await repo.uploadPending(client);
-    // 借据照片同口径补传（失败的单张由下次启动继续重试）
-    await debtRepo.uploadPending(client);
+    if (_uploadingImages) return;
+    _uploadingImages = true;
+    try {
+      // 捕获依赖后再进入 await：补传是异步任务，不能依赖 async gap 后的 context
+      final repo = context.read<BillImageRepository>();
+      final debtRepo = context.read<DebtNoteRepository>();
+      await Future<void>.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+      final client = context.read<CloudStorageProvider>().createClient();
+      if (client == null) return;
+      await repo.uploadPending(client);
+      // 借据照片同口径补传（失败的单张由下次触发继续重试）
+      await debtRepo.uploadPending(client);
+    } finally {
+      _uploadingImages = false;
+    }
   }
 
   Future<void> _agree() async {

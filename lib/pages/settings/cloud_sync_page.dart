@@ -91,7 +91,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
             _buildUploadButton(status.pendingTotal),
             const SizedBox(height: 14),
             const Text(
-              '上传失败会留待下次启动应用时自动补传，'
+              '上传失败会留待下次启动或切回应用时自动补传，'
               '这里可随时手动兜底；单张失败也可在对应详情里点击重传',
               style: TextStyle(
                 fontSize: 12,

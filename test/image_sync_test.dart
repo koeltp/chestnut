@@ -60,7 +60,7 @@ void main() {
       final doneRow = await db.select(db.billImages).get();
       await (db.update(db.billImages)
             ..where((t) => t.id.equals(doneRow.first.id)))
-          .write(BillImagesCompanion(
+          .write(const BillImagesCompanion(
         uploadState: Value(BillImageUploadState.done),
       ));
       final updated = await repo.watchSyncCount().first;
