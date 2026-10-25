@@ -12,6 +12,11 @@ import 'package:path_provider/path_provider.dart';
 /// · 账单图片：`receipts`（本地 {support}/receipts/，云端 chestnut/receipts/）
 /// · 借据照片：`debt_photos`（本地 {support}/debt_photos/，云端 chestnut/debt_photos/）
 ///
+/// 本地与云端共用「按业务发生月分目录」的结构：正式文件位于
+/// {dirName}/{yyyyMM}/（如 receipts/202610/），文件名
+/// {yyyyMMdd}_{实体ID}_{随机}.jpg 自带日期与归属，控制台浏览/追溯
+/// 不依赖数据库。
+///
 /// 服务无状态（仅持有目录名），各处可直接构造，无需依赖注入。
 class PhotoStagingService {
   PhotoStagingService({required this.dirName});
@@ -30,23 +35,38 @@ class PhotoStagingService {
         .create(recursive: true);
   }
 
-  /// 正式目录（{dirName}/{entityId}/，与云端按实体分目录的 key 对应）
-  Future<Directory> entityDir(int entityId) async {
+  /// 正式目录（{dirName}/{yyyyMM}/，按业务发生月分目录，与云端 key 对应）
+  Future<Directory> monthDir(DateTime occurredOn) async {
     final support = await getApplicationSupportDirectory();
-    return Directory(p.join(support.path, dirName, '$entityId'))
+    return Directory(p.join(support.path, dirName, _yyyymm(occurredOn)))
         .create(recursive: true);
   }
 
-  /// 云端对象键：chestnut/{dirName}/{entityId}/{时间戳}_{随机}.jpg。
-  /// 前缀 chestnut/ 让桶内与本 App 相关的对象聚在一起，便于用户清理
-  String objectKeyFor(int entityId, String fileName) =>
-      'chestnut/$dirName/$entityId/$fileName';
+  /// 云端对象键：chestnut/{dirName}/{yyyyMM}/{yyyyMMdd}_{实体ID}_{随机}.jpg。
+  /// 按业务发生月分目录（补记的历史账归入发生月），前缀 chestnut/
+  /// 让桶内与本 App 相关的对象聚在一起，便于用户清理
+  String objectKeyFor(DateTime occurredOn, String fileName) =>
+      'chestnut/$dirName/${_yyyymm(occurredOn)}/$fileName';
 
-  /// 唯一文件名（含扩展名）：毫秒时间戳 + 4 位随机，同毫秒添加多张也不冲突
+  /// 正式文件名（含扩展名）：{yyyyMMdd}_{实体ID}_{4位随机}.jpg。
+  /// 日期取业务发生日（账单/借条日期），实体 ID 让文件名不查库即可
+  /// 追溯归属；同日多张靠 4 位随机后缀区分（65536 种，冲突可忽略）
+  String finalFileName(DateTime occurredOn, int entityId) =>
+      '${_yyyymmdd(occurredOn)}_$entityId'
+      '_${Random().nextInt(0xFFFF).toRadixString(16).padLeft(4, '0')}.jpg';
+
+  /// 暂存文件名（含扩展名）：毫秒时间戳 + 4 位随机，同毫秒添加多张
+  /// 也不冲突。仅用于暂存目录，转正时的正式名见 [finalFileName]
   String uniqueFileName() {
     final rand = Random().nextInt(0xFFFF).toRadixString(16).padLeft(4, '0');
     return '${DateTime.now().millisecondsSinceEpoch}_$rand.jpg';
   }
+
+  static String _yyyymm(DateTime d) => '${d.year.toString().padLeft(4, '0')}'
+      '${d.month.toString().padLeft(2, '0')}';
+
+  static String _yyyymmdd(DateTime d) =>
+      '${_yyyymm(d)}${d.day.toString().padLeft(2, '0')}';
 
   /// 压缩并暂存一张照片，返回暂存文件路径；实体保存时由各仓储转正入库
   Future<String> stage(Uint8List raw) async {

@@ -29,10 +29,11 @@ class BillImageRepository {
 
   // ---------- 入库（账单保存时） ----------
 
-  /// 账单保存时登记暂存图片：移入正式目录、生成 objectKey、写行。
-  /// 返回新记录列表（uploadState = pending），供调用方异步上传
+  /// 账单保存时登记暂存图片：按账单日期移入月份目录、生成 objectKey、
+  /// 写行。返回新记录列表（uploadState = pending），供调用方异步上传
   Future<List<BillImage>> attachStagedImages(
     int billId,
+    DateTime occurredOn,
     List<String> stagedPaths,
   ) async {
     final result = <BillImage>[];
@@ -40,9 +41,9 @@ class BillImageRepository {
     for (final path in stagedPaths) {
       final src = File(path);
       if (!await src.exists()) continue;
-      final fileName = photos.uniqueFileName();
+      final fileName = photos.finalFileName(occurredOn, billId);
       final dest =
-          p.join((await photos.entityDir(billId)).path, fileName);
+          p.join((await photos.monthDir(occurredOn)).path, fileName);
       // 同一分区内 rename 是原子操作，比 copy+delete 快且不留中间态
       try {
         await src.rename(dest);
@@ -54,7 +55,7 @@ class BillImageRepository {
       final id = await _db.into(_db.billImages).insert(
             BillImagesCompanion.insert(
               billId: billId,
-              objectKey: photos.objectKeyFor(billId, fileName),
+              objectKey: photos.objectKeyFor(occurredOn, fileName),
               localPath: dest,
               uploadState: BillImageUploadState.pending,
               sort: Value(sort++),

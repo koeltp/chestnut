@@ -417,10 +417,11 @@ void main() {
       borrowedAt: DateTime(2026, 10, 1),
       stagedPhotoPaths: [staged1, staged2],
     );
-    // 转正后照片行成对出现，objectKey 指向该借条目录
+    // 转正后照片行成对出现，objectKey 按借款月归目录、文件名带借条 ID
     var photos = await debtRepo.getPhotosByNoteId(note.id);
     expect(photos, hasLength(2));
-    expect(photos[0].objectKey, startsWith('chestnut/debt_photos/${note.id}/'));
+    expect(photos[0].objectKey,
+        startsWith('chestnut/debt_photos/202610/20261001_${note.id}_'));
     expect(photos[0].uploadState, BillImageUploadState.pending);
 
     // 上传成功：假客户端收到 PUT，状态转 done

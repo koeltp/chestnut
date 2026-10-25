@@ -16,7 +16,7 @@ import 'asset_repository.dart';
 /// 选图/压缩等暂存逻辑统一走 [photos] 服务：
 /// · 表单选图 → [photos].stage 压缩后进 debt_photos/.staging/；
 /// · 借条保存 → [attachStagedPhotos] 把暂存文件转正到
-///   debt_photos/{noteId}/ 并落 debt_note_images 行（uploadState = pending）；
+///   debt_photos/{借款年月}/ 并落 debt_note_images 行（uploadState = pending）；
 /// · 上传 → [uploadPhotos] / [uploadPending]，失败改 failed 等启动补传；
 /// · 读取 → 永远本地优先，缓存缺失时 [ensureLocalFile] 按 objectKey
 ///   从云端拉回；删除 → 记录与本地文件同步清，云端对象异步删
@@ -36,11 +36,12 @@ class DebtNoteRepository {
   final PhotoStagingService photos =
       PhotoStagingService(dirName: 'debt_photos');
 
-  /// 把一批暂存照片转正到借条正式目录并落 debt_note_images 行
+  /// 把一批暂存照片按借款日期转正到月份目录并落 debt_note_images 行
   /// （uploadState = pending，由调用方触发上传）；
   /// 单张失败（暂存文件丢失）跳过不阻塞其余，与账单图片同口径
   Future<List<DebtNoteImage>> attachStagedPhotos(
     int noteId,
+    DateTime occurredOn,
     List<String> stagedPaths,
   ) async {
     final result = <DebtNoteImage>[];
@@ -48,8 +49,8 @@ class DebtNoteRepository {
     for (final stagedPath in stagedPaths) {
       final src = File(stagedPath);
       if (!await src.exists()) continue;
-      final name = photos.uniqueFileName();
-      final dest = p.join((await photos.entityDir(noteId)).path, name);
+      final name = photos.finalFileName(occurredOn, noteId);
+      final dest = p.join((await photos.monthDir(occurredOn)).path, name);
       try {
         // 同一分区内 rename 是原子操作，比 copy+delete 快且不留中间态
         await src.rename(dest);
@@ -61,7 +62,7 @@ class DebtNoteRepository {
       final id = await _db.into(_db.debtNoteImages).insert(
             DebtNoteImagesCompanion.insert(
               noteId: noteId,
-              objectKey: photos.objectKeyFor(noteId, name),
+              objectKey: photos.objectKeyFor(occurredOn, name),
               localPath: dest,
               uploadState: BillImageUploadState.pending,
               sort: Value(sort++),
@@ -196,7 +197,7 @@ class DebtNoteRepository {
               includeInTotal: Value(includeInTotal),
             ),
           );
-      await attachStagedPhotos(id, stagedPhotoPaths);
+      await attachStagedPhotos(id, borrowedAt, stagedPhotoPaths);
       // 关联账户时同步增减余额（借出扣钱/借入进账）
       await _applyDebtNoteEffect(
         direction,
@@ -243,7 +244,7 @@ class DebtNoteRepository {
           await deletePhoto(image, client: client);
         }
       }
-      await attachStagedPhotos(existing.id, stagedPhotoPaths);
+      await attachStagedPhotos(existing.id, borrowedAt, stagedPhotoPaths);
       await (_db.update(_db.debtNotes)..where((n) => n.id.equals(existing.id)))
           .write(
         DebtNotesCompanion(

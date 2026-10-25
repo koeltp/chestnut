@@ -113,6 +113,7 @@ mixin _SaveAndBudget on _AddBillBase {
     // 移除的已入库图统一删记录/本地文件/云端对象
     final attached = await _imageRepo.attachStagedImages(
       savedBillId,
+      _draft.date,
       _stagedImages,
     );
     for (final removed in _removedExistingImages) {
