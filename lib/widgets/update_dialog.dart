@@ -16,6 +16,7 @@ Future<UpdateDialogResult?> showUpdateDialog(
   return showDialog<UpdateDialogResult>(
     context: context,
     // 强更不可点遮罩关闭；下载中也通过内部 PopScope 防误关
+    // （弱更下载中的退出走主按钮"取消下载"，不放开遮罩）
     barrierDismissible: !info.forceUpdate,
     builder: (_) => _UpdateDialog(info: info),
   );
@@ -77,6 +78,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           _error = '无法打开安装器，请在系统设置允许安装后重试';
         });
       }
+    } on UpdateCancelledException {
+      // 用户点了"取消下载"：回到展示态，可重新发起或"以后再说"
+      if (!mounted) return;
+      setState(() {
+        _phase = _Phase.idle;
+        _received = 0;
+        _total = -1;
+      });
     } on UpdateException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -93,6 +102,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       Navigator.of(context).pop(UpdateDialogResult.dismissed);
     }
   }
+
+  /// "取消下载"：中断进行中的下载，异常路径回到展示态
+  void _cancelDownload() => _service.cancelDownload();
 
   /// "去备份"：关闭弹窗，由调用方跳转备份页（备份方式由用户在页内自选）
   void _goBackup() {
@@ -339,7 +351,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   Widget _buildActions() {
     switch (_phase) {
       case _Phase.downloading:
-        return _filledButton('正在下载…', enabled: false);
+        // 弱更给显式取消入口（回到展示态，可重试可忽略）；
+        // 强更必须完成更新流程，不给取消。遮罩/返回键的防误触拦截不变
+        return _info.forceUpdate
+            ? _filledButton('正在下载…', enabled: false)
+            : _filledButton('取消下载', onTap: _cancelDownload);
       case _Phase.error:
         return Row(
           children: [

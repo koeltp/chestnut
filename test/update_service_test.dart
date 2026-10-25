@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,6 +7,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -258,4 +261,73 @@ void main() {
       expect(await service.isIgnored(1), isFalse);
     });
   });
+
+  group('downloadApk 取消下载', () {
+    test('下载中取消：抛 UpdateCancelledException，残包不残留', () async {
+      // 真实本地服务端慢速吐流（首块后挂住），比 mock 更能验证
+      // "关闭 client 中断在途流"这条真实链路
+      final tmp = await Directory.systemTemp.createTemp('update_cancel_test');
+      final prevProvider = PathProviderPlatform.instance;
+      PathProviderPlatform.instance = _FakePathProvider(tmp.path);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      var hangClosed = false;
+      final sub = server.listen((request) async {
+        request.response.bufferOutput = false;
+        request.response.contentLength = 16 << 20;
+        request.response.add(List.filled(64 << 10, 1));
+        await request.response.flush();
+        // 首块之后挂住不关，模拟大包慢速下载
+        while (!hangClosed) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      });
+
+      try {
+        final service = UpdateService();
+        final info = UpdateInfo(
+          versionCode: 2,
+          versionName: '9.9.9-test',
+          apkUrl: 'http://127.0.0.1:${server.port}/x.apk',
+        );
+        final firstChunk = Completer<void>();
+        final done = Completer<File>();
+        unawaited(
+          service.downloadApk(info, onProgress: (received, _) {
+            if (received > 0 && !firstChunk.isCompleted) firstChunk.complete();
+          }).then(done.complete, onError: done.completeError),
+        );
+        await firstChunk.future.timeout(const Duration(seconds: 5));
+        service.cancelDownload();
+        await expectLater(
+          done.future,
+          throwsA(isA<UpdateCancelledException>()),
+        );
+        // 下载目录里的残包已被清理
+        expect(
+          Directory(p.join(tmp.path, 'updates')).listSync(),
+          isEmpty,
+        );
+      } finally {
+        hangClosed = true;
+        await sub.cancel();
+        await server.close(force: true);
+        PathProviderPlatform.instance = prevProvider;
+        await tmp.delete(recursive: true);
+      }
+    });
+
+    test('无进行中下载时取消是空操作', () {
+      UpdateService().cancelDownload();
+    });
+  });
+}
+
+/// path_provider 的测试桩：downloadApk 需要临时目录落盘
+class _FakePathProvider extends PathProviderPlatform {
+  _FakePathProvider(this._tempPath);
+
+  final String _tempPath;
+
+  @override
+  Future<String?> getTemporaryPath() async => _tempPath;
 }

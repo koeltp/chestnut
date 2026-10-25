@@ -27,6 +27,7 @@ import 'providers/budget_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/cloud_storage_provider.dart';
 import 'providers/debt_note_provider.dart';
+import 'providers/image_sync_status_provider.dart';
 import 'providers/lock_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/backup_service.dart';
@@ -217,6 +218,13 @@ class _ProvidersApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<DebtNoteProvider>(
           create: (ctx) => DebtNoteProvider(ctx.read<DebtNoteRepository>()),
+        ),
+        // 图片云同步状态：聚合小票/借据两表计数，同步页与两处红点角标共用
+        ChangeNotifierProvider<ImageSyncStatusProvider>(
+          create: (ctx) => ImageSyncStatusProvider(
+            ctx.read<BillImageRepository>(),
+            ctx.read<DebtNoteRepository>(),
+          ),
         ),
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(prefs),

@@ -128,17 +128,36 @@ class BillImageRepository {
   }
 
   /// 启动补传：扫描全部非 done 记录逐个上传，返回成功张数。
+  /// [onProgress] 每传完一张回调 (已完成张数, 总张数)，供手动补传的进度展示；
   /// 数据量为个人记账量级，全量取回后 Dart 端过滤足够
-  Future<int> uploadPending(S3CompatibleClient client) async {
+  Future<int> uploadPending(
+    S3CompatibleClient client, {
+    void Function(int done, int total)? onProgress,
+  }) async {
     final rows = await _db.select(_db.billImages).get();
     final pending = rows
         .where((r) => r.uploadState != BillImageUploadState.done)
         .toList();
     var success = 0;
+    var finished = 0;
     for (final image in pending) {
       if (await _uploadOne(image, client)) success++;
+      onProgress?.call(++finished, pending.length);
     }
     return success;
+  }
+
+  /// 图片同步计数流（总数 + 未同步数）：同步页统计与各处红点角标的
+  /// 数据源。个人记账量级表很小，全表 watch 后 Dart 端过滤足够
+  Stream<({int total, int pending})> watchSyncCount() {
+    return _db.select(_db.billImages).watch().map(
+          (rows) => (
+            total: rows.length,
+            pending: rows
+                .where((r) => r.uploadState != BillImageUploadState.done)
+                .length,
+          ),
+        );
   }
 
   /// 手动重传单张（详情弹窗"未上传"角标点击触发），返回是否成功

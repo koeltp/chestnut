@@ -10,6 +10,7 @@ import '../../data/database.dart';
 import '../../data/repositories/asset_repository.dart' show AssetSummary;
 import '../../providers/asset_provider.dart';
 import '../../providers/cloud_storage_provider.dart';
+import '../../providers/image_sync_status_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/export_service.dart';
 import '../../services/update_service.dart';
@@ -272,6 +273,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 builder: (_) => const CloudStoragePage(),
               ),
             ),
+            // 有图片未同步时在入口挂红点数，冷启动补传失败不再隐形
+            badgeCount:
+                context.watch<ImageSyncStatusProvider>().counts.pendingTotal,
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(
@@ -328,6 +332,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    int badgeCount = 0,
   }) {
     return InkWell(
       onTap: onTap,
@@ -346,7 +351,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: AppColors.tint(color),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: color, size: 21),
+              child: Badge(
+                isLabelVisible: badgeCount > 0,
+                label: Text('$badgeCount'),
+                child: Icon(icon, color: color, size: 21),
+              ),
             ),
             const SizedBox(width: AppDimens.gapMd),
             Expanded(

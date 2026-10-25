@@ -20,6 +20,12 @@ class UpdateException implements Exception {
   String toString() => message;
 }
 
+/// 用户主动取消下载的专用异常：弹窗据此回到展示态，
+/// 而不是当作网络失败走"重试"分支
+class UpdateCancelledException extends UpdateException {
+  const UpdateCancelledException() : super('下载已取消');
+}
+
 /// 最新版本信息（对应 GitHub Release 上的 latest.json 清单）
 class UpdateInfo {
   const UpdateInfo({
@@ -106,6 +112,21 @@ class UpdateService {
 
   http.Client _newClient() => _injectedClient ?? http.Client();
 
+  /// 进行中下载的底层 client 句柄：cancelDownload 靠关掉它中断流
+  http.Client? _activeDownloadClient;
+
+  /// 用户是否已请求取消：downloadApk 的 catch 据此区分"取消"与"网络失败"
+  bool _cancelRequested = false;
+
+  /// 用户主动取消下载：关闭底层 client 使流中断，downloadApk 会抛
+  /// [UpdateCancelledException]；无进行中下载时调用是空操作
+  void cancelDownload() {
+    final client = _activeDownloadClient;
+    if (client == null) return;
+    _cancelRequested = true;
+    client.close();
+  }
+
   /// 版本清单地址。GitHub Releases 国内直连不可靠，清单与 APK 均走
   /// Cloudflare Worker 反代（cloudflare/worker.js 部署在 chestnut.taipi.top），
   /// `latest/download` 直链恒指向最新 Release 的同名资产；
@@ -189,7 +210,8 @@ class UpdateService {
     // 同名残包（上次失败/下完未安装）直接删掉重下，避免追加脏数据
     if (await apkFile.exists()) await apkFile.delete();
 
-    final client = http.Client();
+    _cancelRequested = false;
+    final client = _activeDownloadClient = http.Client();
     // 提到 try 外：收流结束后还要核对实收字节与 Content-Length
     var total = -1;
     var received = 0;
@@ -222,9 +244,13 @@ class UpdateService {
       }
     } catch (e) {
       if (await apkFile.exists()) await apkFile.delete();
+      // 用户取消优先于一切失败原因：即便 cancel 恰好赶上 HTTP 错误，
+      // 也按取消处理，让弹窗回展示态而不是弹"重试"
+      if (_cancelRequested) throw const UpdateCancelledException();
       if (e is UpdateException) rethrow;
       throw const UpdateException('下载中断，请检查网络后重试');
     } finally {
+      _activeDownloadClient = null;
       client.close();
     }
     // 连接提前断开时流可能"正常结束"却没收全，显式拦下，

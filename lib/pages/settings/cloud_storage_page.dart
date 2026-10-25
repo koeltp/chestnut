@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/cloud_storage_provider.dart';
+import '../../providers/image_sync_status_provider.dart';
 import '../../services/s3_compatible_client.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
+import 'cloud_sync_page.dart';
 
 /// 图片云存储配置页
 ///
@@ -138,9 +140,29 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
     final cloud = context.watch<CloudStorageProvider>();
     // 开关放行条件：本次会话测试通过，或此前已处于启用态
     final canEnable = _testPassed == true;
+    final sync = context.watch<ImageSyncStatusProvider>().counts;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('图片云存储')),
+      appBar: AppBar(
+        title: const Text('图片云存储'),
+        // 同步状态入口：仅启用后有意义；有未同步时挂红点数提醒
+        actions: [
+          if (cloud.enabled)
+            IconButton(
+              tooltip: '同步状态',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CloudSyncPage(),
+                ),
+              ),
+              icon: Badge(
+                isLabelVisible: sync.pendingTotal > 0,
+                label: Text('${sync.pendingTotal}'),
+                child: const Icon(Icons.cloud_sync_outlined),
+              ),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppDimens.pagePadding,
