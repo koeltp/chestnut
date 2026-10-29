@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../pages/settings/changelog_page.dart';
@@ -5,8 +7,9 @@ import '../services/update_service.dart';
 import '../theme/app_colors.dart';
 
 /// 更新弹窗结果：installed = 已拉起系统安装器；goBackup = 用户选择先去备份，
-/// 调用方负责跳转备份页；dismissed = 忽略/取消
-enum UpdateDialogResult { installed, goBackup, dismissed }
+/// 调用方负责跳转备份页；backgrounded = 转入后台下载（下载继续，弹窗关闭）；
+/// dismissed = 忽略/取消
+enum UpdateDialogResult { installed, goBackup, backgrounded, dismissed }
 
 /// 弹出更新弹窗；弱更点遮罩关闭返回 null（等效 dismissed）
 Future<UpdateDialogResult?> showUpdateDialog(
@@ -15,8 +18,8 @@ Future<UpdateDialogResult?> showUpdateDialog(
 ) {
   return showDialog<UpdateDialogResult>(
     context: context,
-    // 强更不可点遮罩关闭；下载中也通过内部 PopScope 防误关
-    // （弱更下载中的退出走主按钮"取消下载"，不放开遮罩）
+    // 强更不可点遮罩关闭；弱更随时可关——下载已交给系统 DownloadManager，
+    // 关弹窗 = 转后台继续下，回来看进度/安装即可
     barrierDismissible: !info.forceUpdate,
     builder: (_) => _UpdateDialog(info: info),
   );
@@ -42,31 +45,123 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   var _total = -1;
   String? _error;
 
+  /// 进度轮询器：下载已托管给系统 DownloadManager，
+  /// 弹窗只负责每 500ms 问一次系统"下到哪了"
+  Timer? _pollTimer;
+
   UpdateInfo get _info => widget.info;
 
-  /// 下载 → 校验 → 安装，任一环节失败就地转错误态（可重试）
+  @override
+  void initState() {
+    super.initState();
+    _resumePendingIfNeeded();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  /// 弹窗打开时接管后台下载：存在同版本的待续下载（上次转后台/进程被杀）
+  /// 就直接进入下载态恢复进度显示；版本不一致的旧任务由服务取消清退
+  Future<void> _resumePendingIfNeeded() async {
+    final resumed = await _service.reusePendingDownload(_info.versionCode);
+    if (!resumed || !mounted) return;
+    final snapshot = await _service.pollDownloadSnapshot();
+    if (!mounted) return;
+    if (snapshot == null || snapshot.isActive) {
+      // 还在下（或刚被接管）：直接恢复进度显示
+      if (snapshot != null) {
+        setState(() {
+          _phase = _Phase.downloading;
+          _received = snapshot.received;
+          _total = snapshot.total;
+        });
+        _beginPolling();
+      }
+      return;
+    }
+    // 完成态/失败态不走轮询，就地收尾
+    if (snapshot.isSuccessful) {
+      await _finishInstall();
+    } else {
+      setState(() {
+        _phase = _Phase.error;
+        _error = '下载中断了，点"重试"接着来';
+      });
+    }
+  }
+
+  /// 发起下载：任务交给系统下载器，本地只记录凭据并开始轮询进度。
+  /// 失败就地转错误态（可重试）
   Future<void> _startDownload() async {
     setState(() {
       _phase = _Phase.downloading;
       _received = 0;
-      // 清单一般会带大小；没有则等响应头 contentLength 回填
+      // 清单一般会带大小；系统下载器入队后从查询里回填
       _total = _info.fileSize ?? -1;
       _error = null;
     });
     try {
-      final file = await _service.downloadApk(
-        _info,
-        onProgress: (received, total) {
-          if (!mounted) return;
-          setState(() {
-            _received = received;
-            _total = total;
-          });
-        },
-      );
-      // 校验失败会抛 UpdateException，由下方统一 catch 转错误态
-      await _service.verifyApk(file, _info);
+      await _service.startDownload(_info);
+    } on UpdateException catch (e) {
       if (!mounted) return;
+      setState(() {
+        _phase = _Phase.error;
+        _error = e.message;
+      });
+      return;
+    }
+    if (!mounted) return;
+    _beginPolling();
+  }
+
+  void _beginPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      unawaited(_pollOnce());
+    });
+  }
+
+  /// 轮询一次系统下载状态：进行中刷新进度；完成走校验安装；
+  /// 失败转错误态；记录消失（被系统清理/外部取消）回到展示态
+  Future<void> _pollOnce() async {
+    final snapshot = await _service.pollDownloadSnapshot();
+    if (!mounted) return;
+    if (snapshot == null) {
+      _pollTimer?.cancel();
+      setState(() => _phase = _Phase.idle);
+      return;
+    }
+    if (snapshot.isSuccessful) {
+      _pollTimer?.cancel();
+      await _finishInstall();
+      return;
+    }
+    if (snapshot.isFailed) {
+      _pollTimer?.cancel();
+      setState(() {
+        _phase = _Phase.error;
+        _error = '下载中断了，点"重试"接着来（已下载部分系统会自动续传）';
+      });
+      return;
+    }
+    setState(() {
+      _received = snapshot.received;
+      _total = snapshot.total;
+    });
+  }
+
+  /// 下载完成 → 校验 → 安装，校验/定位失败转错误态（可重试）
+  Future<void> _finishInstall() async {
+    setState(() {
+      // -1 哨兵 = 校验阶段：进度条转不确定态，文案切"正在校验"
+      _received = -1;
+      _total = -1;
+    });
+    try {
+      final file = await _service.consumeDownloadedApk();
       final launched = await _service.installApk(file);
       if (!mounted) return;
       if (launched) {
@@ -78,14 +173,6 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           _error = '无法打开安装器，请在系统设置允许安装后重试';
         });
       }
-    } on UpdateCancelledException {
-      // 用户点了"取消下载"：回到展示态，可重新发起或"以后再说"
-      if (!mounted) return;
-      setState(() {
-        _phase = _Phase.idle;
-        _received = 0;
-        _total = -1;
-      });
     } on UpdateException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -103,15 +190,33 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     }
   }
 
-  /// "取消下载"：中断进行中的下载，异常路径回到展示态
-  void _cancelDownload() => _service.cancelDownload();
+  /// "取消下载"：让系统删除任务与半途文件，回到展示态
+  Future<void> _cancelDownload() async {
+    _pollTimer?.cancel();
+    await _service.cancelDownload();
+    if (!mounted) return;
+    setState(() {
+      _phase = _Phase.idle;
+      _received = 0;
+      _total = -1;
+    });
+  }
 
-  /// "去备份"：关闭弹窗，由调用方跳转备份页（备份方式由用户在页内自选）
+  /// "后台下载"：关弹窗继续下（系统托管），通知栏可见进度，
+  /// 下次打开更新弹窗自动恢复进度显示
+  void _backgroundDownload() {
+    _pollTimer?.cancel();
+    Navigator.of(context).pop(UpdateDialogResult.backgrounded);
+  }
+
+  /// "去备份"：关闭弹窗，由调用方跳转备份页（备份方式由用户在页内自选）。
+  /// 下载未开始时直接关；下载中关掉即转后台，互不影响
   void _goBackup() {
+    _pollTimer?.cancel();
     Navigator.of(context).pop(UpdateDialogResult.goBackup);
   }
 
-  /// 0..1 进度；总大小未知时返回 null（走不确定进度条）
+  /// 0..1 进度；总大小未知（-1）时返回 null（走不确定进度条）
   double? get _progress =>
       _total > 0 ? (_received / _total).clamp(0.0, 1.0) : null;
 
@@ -121,8 +226,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // 强更或下载进行中禁止系统返回键关闭，避免更新流程半途而废
-    final canPop = !_info.forceUpdate && _phase != _Phase.downloading;
+    // 强更禁止系统返回键关闭；弱更随时可关（关 = 下载转后台）
+    final canPop = !_info.forceUpdate;
     return PopScope(
       canPop: canPop,
       child: Dialog(
@@ -277,7 +382,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     );
   }
 
-  /// 下载进度：已知总大小显示确定进度+百分比，否则不确定进度条+已下大小
+  /// 下载进度：已知总大小显示确定进度+百分比，否则不确定进度条；
+  /// _received = -1 表示校验阶段，显示"正在校验"
   Widget _buildProgress() {
     final value = _progress;
     return Column(
@@ -294,10 +400,12 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         ),
         const SizedBox(height: 8),
         Text(
-          value == null
-              ? '正在下载 · ${_mb(_received)} MB'
-              : '正在下载 ${(value * 100).toStringAsFixed(0)}%'
-                  ' · ${_mb(_received)}/${_mb(_total)} MB',
+          switch (value) {
+            null when _received < 0 => '正在校验安装包…',
+            null => '正在下载 · ${_mb(_received)} MB',
+            final v => '正在下载 ${(v * 100).toStringAsFixed(0)}%'
+                ' · ${_mb(_received)}/${_mb(_total)} MB',
+          },
           style: const TextStyle(
             fontSize: 12,
             color: AppColors.textSecondary,
@@ -347,15 +455,29 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     );
   }
 
-  /// 底部按钮：随状态在 忽略/更新/重试/取消 之间切换
+  /// 底部按钮：随状态在 更新/重试/取消/后台下载 之间切换
   Widget _buildActions() {
     switch (_phase) {
       case _Phase.downloading:
-        // 弱更给显式取消入口（回到展示态，可重试可忽略）；
-        // 强更必须完成更新流程，不给取消。遮罩/返回键的防误触拦截不变
+        // 弱更：可取消（删任务回展示态）也可转后台（关弹窗继续下）；
+        // 强更必须完成更新流程，不给取消、不给转后台。
+        // 遮罩/返回键对强更仍然锁死
         return _info.forceUpdate
             ? _filledButton('正在下载…', enabled: false)
-            : _filledButton('取消下载', onTap: _cancelDownload);
+            : Row(
+                children: [
+                  Expanded(
+                    child: _subtleButton(
+                      '取消下载',
+                      onTap: () => unawaited(_cancelDownload()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _filledButton('后台下载', onTap: _backgroundDownload),
+                  ),
+                ],
+              );
       case _Phase.error:
         return Row(
           children: [
@@ -391,7 +513,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     }
   }
 
-  /// 主按钮：蓝底白字；下载中置灰不可点
+  /// 主按钮：蓝底白字；置灰表示不可点
   Widget _filledButton(String text, {VoidCallback? onTap, bool enabled = true}) {
     return SizedBox(
       height: 42,

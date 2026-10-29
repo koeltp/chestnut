@@ -1,17 +1,18 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:chestnut/services/system_downloader.dart';
 import 'package:chestnut/services/update_service.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('UpdateInfo.fromJson 清单解析', () {
     test('完整清单解析：sha256 归一小写，各字段就位', () {
       final info = UpdateInfo.fromJson(const {
@@ -262,72 +263,231 @@ void main() {
     });
   });
 
-  group('downloadApk 取消下载', () {
-    test('下载中取消：抛 UpdateCancelledException，残包不残留', () async {
-      // 真实本地服务端慢速吐流（首块后挂住），比 mock 更能验证
-      // "关闭 client 中断在途流"这条真实链路
-      final tmp = await Directory.systemTemp.createTemp('update_cancel_test');
-      final prevProvider = PathProviderPlatform.instance;
-      PathProviderPlatform.instance = _FakePathProvider(tmp.path);
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      var hangClosed = false;
-      final sub = server.listen((request) async {
-        request.response.bufferOutput = false;
-        request.response.contentLength = 16 << 20;
-        request.response.add(List.filled(64 << 10, 1));
-        await request.response.flush();
-        // 首块之后挂住不关，模拟大包慢速下载
-        while (!hangClosed) {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
-      });
+  group('系统下载器生命周期', () {
+    const channelName = 'test/system_downloader';
+    late Directory tmp;
+    late Map<String, Object? Function(Object? args)> handlers;
+    final startArgs = <Object?>[];
+    final cancelArgs = <Object?>[];
+    var cleanupCount = 0;
 
-      try {
-        final service = UpdateService();
-        final info = UpdateInfo(
-          versionCode: 2,
-          versionName: '9.9.9-test',
-          apkUrl: 'http://127.0.0.1:${server.port}/x.apk',
-        );
-        final firstChunk = Completer<void>();
-        final done = Completer<File>();
-        unawaited(
-          service.downloadApk(info, onProgress: (received, _) {
-            if (received > 0 && !firstChunk.isCompleted) firstChunk.complete();
-          }).then(done.complete, onError: done.completeError),
-        );
-        await firstChunk.future.timeout(const Duration(seconds: 5));
-        service.cancelDownload();
-        await expectLater(
-          done.future,
-          throwsA(isA<UpdateCancelledException>()),
-        );
-        // 下载目录里的残包已被清理
-        expect(
-          Directory(p.join(tmp.path, 'updates')).listSync(),
-          isEmpty,
-        );
-      } finally {
-        hangClosed = true;
-        await sub.cancel();
-        await server.close(force: true);
-        PathProviderPlatform.instance = prevProvider;
-        await tmp.delete(recursive: true);
-      }
+    setUp(() async {
+      tmp = await Directory.systemTemp.createTemp('chestnut_dl_test');
+      startArgs.clear();
+      cancelArgs.clear();
+      cleanupCount = 0;
+      handlers = {};
+      handlers['cancel'] = (_) => 1;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel(channelName),
+              (call) async {
+        final handler = handlers[call.method];
+        if (handler == null) throw MissingPluginException();
+        switch (call.method) {
+          case 'start':
+            startArgs.add(call.arguments);
+          case 'cancel':
+            cancelArgs.add(call.arguments);
+          case 'cleanup':
+            cleanupCount++;
+        }
+        return handler(call.arguments);
+      });
+      SharedPreferences.setMockInitialValues(<String, Object>{});
     });
 
-    test('无进行中下载时取消是空操作', () {
-      UpdateService().cancelDownload();
+    tearDown(() async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel(channelName), null);
+      await tmp.delete(recursive: true);
+    });
+
+    UpdateService service() => UpdateService(
+          downloader: SystemDownloader(channel: const MethodChannel(channelName)),
+        );
+
+    UpdateInfo info({String? sha256, int? fileSize}) => UpdateInfo(
+          versionCode: 6029,
+          versionName: '9.9.9',
+          apkUrl: 'https://example.com/chestnut-9.9.9.apk',
+          sha256: sha256,
+          fileSize: fileSize,
+        );
+
+    /// 用真实字节构造一条"系统下载完成"的记录，返回待校验文件
+    Future<File> seedCompletedDownload(
+      UpdateService svc,
+      List<int> content,
+    ) async {
+      final file = File('${tmp.path}${Platform.pathSeparator}seed.apk');
+      await file.writeAsBytes(content);
+      handlers['start'] = (_) => 4242;
+      handlers['cleanup'] = (_) => null;
+      handlers['query'] = (_) => {
+            'status': SystemDownloadStatus.successful,
+            'received': content.length,
+            'total': content.length,
+            'localUri': Uri.file(file.path).toString(),
+            'reason': 0,
+          };
+      await svc.startDownload(info());
+      return file;
+    }
+
+    test('startDownload：入队带缓存穿透参数，凭据落库，目录被清理', () async {
+      handlers['start'] = (_) => 42;
+      handlers['cleanup'] = (_) => null;
+      final svc = service();
+      await svc.startDownload(info());
+      expect(cleanupCount, 1, reason: '下载前应清理历史残留');
+      expect(startArgs, hasLength(1));
+      final args = startArgs.single as Map<Object?, Object?>;
+      expect(args['fileName'], 'chestnut-9.9.9.apk');
+      expect((args['url'] as String).contains('t='), isTrue,
+          reason: 'CDN 缓存穿透时间戳必须带上');
+      expect(args['title'], '栗子记账 v9.9.9');
+
+      // 凭据已落库：能查到进行中快照
+      handlers['query'] = (_) => {
+            'status': SystemDownloadStatus.running,
+            'received': 10,
+            'total': 100,
+            'localUri': '',
+            'reason': 0,
+          };
+      final snapshot = await svc.pollDownloadSnapshot();
+      expect(snapshot, isNotNull);
+      expect(snapshot!.status, SystemDownloadStatus.running);
+      expect(snapshot.received, 10);
+      expect(snapshot.total, 100);
+    });
+
+    test('startDownload：入队失败（原生异常）转可展示的 UpdateException', () async {
+      handlers['cleanup'] = (_) => null;
+      handlers['start'] = (_) =>
+          throw PlatformException(code: 'DOWNLOAD_ERROR', message: 'boom');
+      await expectLater(
+        service().startDownload(info()),
+        throwsA(
+          isA<UpdateException>()
+              .having((e) => e.message, 'message', '无法开始下载，请稍后再试'),
+        ),
+      );
+    });
+
+    test('pollDownloadSnapshot：无下载记录返回 null', () async {
+      expect(await service().pollDownloadSnapshot(), isNull);
+    });
+
+    test('consumeDownloadedApk：完成 → 校验通过 → 返回文件并清记录', () async {
+      final svc = service();
+      final file = await seedCompletedDownload(svc, [1, 2, 3, 4]);
+      // seedCompletedDownload 未带 sha/size 清单：校验直接放行
+      final result = await svc.consumeDownloadedApk();
+      expect(result.path, file.path);
+      // 记录已清：再查无下载
+      expect(await svc.pollDownloadSnapshot(), isNull);
+    });
+
+    test('consumeDownloadedApk：哈希不符 → 删残包清记录并抛可展示异常', () async {
+      final svc = service();
+      final file = await seedCompletedDownload(svc, [1, 2, 3, 4]);
+      handlers['start'] = (_) => 4242;
+      handlers['cleanup'] = (_) => null;
+      handlers['query'] = (_) => {
+            'status': SystemDownloadStatus.successful,
+            'received': 4,
+            'total': 4,
+            'localUri': Uri.file(file.path).toString(),
+            'reason': 0,
+          };
+      // 清单给的 sha 与文件实际内容不符
+      await svc.startDownload(
+        info(
+          sha256:
+              '0000000000000000000000000000000000000000000000000000000000000000',
+        ),
+      );
+      await expectLater(
+        svc.consumeDownloadedApk(),
+        throwsA(
+          isA<UpdateException>()
+              .having((e) => e.message, 'message', contains('哈希校验失败')),
+        ),
+      );
+      expect(await file.exists(), isFalse, reason: '校验失败的残包应被删除');
+      expect(await svc.pollDownloadSnapshot(), isNull, reason: '记录应被清掉');
+    });
+
+    test('consumeDownloadedApk：非本地路径（content://）→ 报错清记录', () async {
+      final svc = service();
+      handlers['start'] = (_) => 4242;
+      handlers['cleanup'] = (_) => null;
+      handlers['query'] = (_) => {
+            'status': SystemDownloadStatus.successful,
+            'received': 4,
+            'total': 4,
+            'localUri': 'content://downloads/x.apk',
+            'reason': 0,
+          };
+      await svc.startDownload(info());
+      await expectLater(
+        svc.consumeDownloadedApk(),
+        throwsA(
+          isA<UpdateException>()
+              .having((e) => e.message, 'message', '无法定位下载的安装包'),
+        ),
+      );
+      expect(await svc.pollDownloadSnapshot(), isNull);
+    });
+
+    test('cancelDownload：有记录 → 通知系统取消并清记录；无记录 → 空操作', () async {
+      final svc = service();
+      handlers['start'] = (_) => 4242;
+      handlers['cleanup'] = (_) => null;
+      handlers['query'] = (_) => {
+            'status': SystemDownloadStatus.running,
+            'received': 1,
+            'total': 10,
+            'localUri': '',
+            'reason': 0,
+          };
+      await svc.startDownload(info());
+      await svc.cancelDownload();
+      expect(cancelArgs, hasLength(1));
+      expect(
+        ((cancelArgs.single as Map<Object?, Object?>)['id'] as num).toInt(),
+        4242,
+      );
+      expect(await svc.pollDownloadSnapshot(), isNull);
+
+      // 无记录时不再发系统调用
+      cancelArgs.clear();
+      await svc.cancelDownload();
+      expect(cancelArgs, isEmpty);
+    });
+
+    test('reusePendingDownload：同版本复用，不同版本取消旧任务', () async {
+      final svc = service();
+      handlers['start'] = (_) => 4242;
+      handlers['cleanup'] = (_) => null;
+      handlers['query'] = (_) => {
+            'status': SystemDownloadStatus.running,
+            'received': 1,
+            'total': 10,
+            'localUri': '',
+            'reason': 0,
+          };
+      await svc.startDownload(info());
+
+      // 同版本：复用，不动系统任务
+      expect(await svc.reusePendingDownload(6029), isTrue);
+      expect(cancelArgs, isEmpty);
+
+      // 不同版本（清单已变/已装更新）：取消旧任务并清记录
+      expect(await svc.reusePendingDownload(6030), isFalse);
+      expect(cancelArgs, hasLength(1));
+      expect(await svc.pollDownloadSnapshot(), isNull);
     });
   });
-}
-
-/// path_provider 的测试桩：downloadApk 需要临时目录落盘
-class _FakePathProvider extends PathProviderPlatform {
-  _FakePathProvider(this._tempPath);
-
-  final String _tempPath;
-
-  @override
-  Future<String?> getTemporaryPath() async => _tempPath;
 }
