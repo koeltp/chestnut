@@ -16,12 +16,12 @@ dependencies:
   # 状态管理
   provider: ^6.1.2
   # 本地数据库（drift 基于 SQLite，类型安全）
-  drift: ^2.28.0
-  sqlite3_flutter_libs: ^0.5.32
+  drift: ^2.35.3
+  sqlite3_flutter_libs: ^0.6.0+eol
   # 直接使用 SQLite 连接：降级检测、备份快照、导入预检
-  sqlite3: ^2.4.0
+  sqlite3: ^3.8.0
   # 备份文件的选择与保存（SAF）
-  file_picker: ^13.1.0
+  file_picker: ^13.3.0
   path_provider: ^2.1.5
   path: ^1.9.1
   # 图表（分类占比饼图、收支趋势折线图）
@@ -40,7 +40,7 @@ dependencies:
   # 生物识别（指纹/面容快捷解锁）
   local_auth: ^2.3.0
   # PIN 与安全答案的加盐哈希
-  crypto: ^3.0.6
+  crypto: ^3.0.8
   local_auth_android: ^1.0.56
   local_auth_darwin: ^1.6.1
   map_launcher: ^7.0.0
@@ -65,8 +65,8 @@ dev_dependencies:
   path_provider_platform_interface: ^2.1.0
 
   # drift 代码生成
-  drift_dev: ^2.28.0
-  build_runner: ^2.7.1
+  drift_dev: ^2.35.2
+  build_runner: ^2.17.1
 
   # 从 Logo 一键生成各平台桌面图标
   flutter_launcher_icons: ^0.14.4
