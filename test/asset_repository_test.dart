@@ -10,6 +10,7 @@ import 'package:chestnut/services/s3_compatible_client.dart';
 import 'package:drift/drift.dart' show Variable, Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -76,6 +77,12 @@ void main() {
   });
 
   tearDown(() => db.close());
+
+  /// 昨天（yyyy-MM-dd）：前向填充的历史序列铺到昨天为止
+  String yesterdayKey() {
+    final y = DateTime.now().subtract(const Duration(days: 1));
+    return DateFormat('yyyy-MM-dd').format(y);
+  }
 
   Future<int> insertAssetWithSnapshot(
     int assetId,
@@ -181,17 +188,48 @@ void main() {
     await insertAssetWithSnapshot(a.id, '2026-10-08', 9000);
     await insertAssetWithSnapshot(b.id, '2026-10-08', 4000);
 
-    // 昨天净值 = 9000 − 4000 = 5000；今天的快照不入历史序列
+    // 昨天净值 = 9000 − 4000 = 5000；今天的快照不入历史序列。
+    // 前向填充：10-08 到昨天每个自然日都有点，空白天沿用 5000
     final history = await repo.watchNetHistory().first;
-    expect(history, hasLength(1));
-    expect(history.single.$1, '2026-10-08');
-    expect(history.single.$2, 5000);
+    expect(history.first.$1, '2026-10-08');
+    expect(history.last.$1, yesterdayKey());
+    expect(history.every((p) => p.$2 == 5000), isTrue);
 
     // 汇总口径：资产合计 10000、负债合计 5000、快照净值 5000
     final summary = await repo.watchSummary().first;
     expect(summary.assetCents, 10000);
     expect(summary.liabilityCents, 5000);
     expect(summary.snapshotNetCents, 5000);
+  });
+
+  test('前向填充：空白天沿用前值，不再归零', () async {
+    await repo.insertAsset(
+      name: '现金',
+      kind: AssetKind.asset,
+      category: '现金',
+      valueCents: 10000,
+    );
+    final a = (await repo.watchActive().first).single;
+    await repo.insertAsset(
+      name: '房贷',
+      kind: AssetKind.liability,
+      category: '房贷',
+      valueCents: 5000,
+    );
+    final b = (await repo.watchActive().first).last;
+
+    // 10-08 各一条快照；10-09 什么都没发生；10-10 只更新 A
+    await insertAssetWithSnapshot(a.id, '2026-10-08', 9000);
+    await insertAssetWithSnapshot(b.id, '2026-10-08', 4000);
+    await insertAssetWithSnapshot(a.id, '2026-10-10', 9500);
+
+    final byDay = {
+      for (final p in await repo.watchNetHistory().first) p.$1: p.$2,
+    };
+    expect(byDay['2026-10-08'], 5000); // 9000 − 4000
+    expect(byDay['2026-10-09'], 5000); // 空白天：沿用前值而非归零
+    expect(byDay['2026-10-10'], 5500); // B 无当日快照，沿用 4000
+    expect(byDay[yesterdayKey()], 5500); // 尾段铺到昨天
   });
 
   test('历史市值记录：同日多条只留最后一条，按日倒序', () async {
@@ -235,8 +273,10 @@ void main() {
         .toList();
     expect(snaps, hasLength(1));
     expect(snaps.single.valueCents, 10000);
+    // 修正后的水位前向填充到昨天为止
     final history = await repo.watchNetHistory().first;
-    expect(history.single.$2, 10000);
+    expect(history.first.$1, '2026-10-09');
+    expect(history.every((p) => p.$2 == 10000), isTrue);
   });
 
   test('删除某日快照：该日不再参与净值聚合', () async {
@@ -251,10 +291,11 @@ void main() {
     await insertAssetWithSnapshot(a.id, '2026-10-10', 10000);
 
     await repo.deleteSnapshotDay(a.id, '2026-10-09');
+    // 删除后只剩 10-10 的快照：序列从 10-10 起前向填充
     final history = await repo.watchNetHistory().first;
-    expect(history, hasLength(1));
-    expect(history.single.$1, '2026-10-10');
-    expect(history.single.$2, 10000);
+    expect(history.first.$1, '2026-10-10');
+    expect(history.last.$1, yesterdayKey());
+    expect(history.every((p) => p.$2 == 10000), isTrue);
   });
 
   test('归档资产：退出汇总统计，历史快照保留参与曲线聚合', () async {
@@ -271,9 +312,10 @@ void main() {
     // 汇总为空：归档后不计净值
     final summary = await repo.watchSummary().first;
     expect(summary.netCents, 0);
-    // 历史点仍在：曲线不回溯断层
+    // 历史点仍在：曲线不回溯断层（10-08 起前向填充到昨天）
     final history = await repo.watchNetHistory().first;
-    expect(history.single.$2, 7000);
+    expect(history.first.$1, '2026-10-08');
+    expect(history.every((p) => p.$2 == 7000), isTrue);
     // 归档列表可见且可恢复
     final archived = await repo.watchArchived().first;
     expect(archived.single.id, asset.id);

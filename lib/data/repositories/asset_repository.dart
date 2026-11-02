@@ -177,8 +177,10 @@ class AssetRepository {
   /// 监听历史净值序列（不含今天：当天净值随资产表实时变化，由 UI 以
   /// 当前值补上最后一点，保证曲线末点与卡片数字始终一致）
   ///
-  /// 聚合口径：按日取每项资产当天最后一条快照，净值 = Σ资产 − Σ负债；
-  /// 当日尚无快照的资产不计入（快照在创建/更新市值时落，天然满足）。
+  /// 聚合口径（前向填充）：每项资产取"最近一条 ≤ 当天"的快照参与合计，
+  /// 净值 = Σ资产 − Σ负债；首条快照起到昨天，每个自然日都有输出点。
+  /// 无快照的空白天沿用前值（"没录 = 还是上次那个数"），不再归零——
+  /// 消费/重估日落的是真实快照，闲置日水位本来就不该变。
   /// 已归档资产的历史快照保留参与聚合，避免曲线回溯断层。
   /// 注意：借条无快照，曲线为纯资产快照口径。
   Stream<List<NetValuePoint>> watchNetHistory() {
@@ -196,27 +198,47 @@ class AssetRepository {
           ]);
     return query.watch().map((rows) {
       final todayKey = _dayKey(DateTime.now());
-      // day -> (assetId -> 当天最后一条市值)，后写覆盖即"当天最后一条"
-      final byDay = <String, Map<int, int>>{};
+      final todayDate = DateTime.parse(todayKey);
+      // assetId -> 最近一次已知市值；行已按 day 升序，逐日滚动即前向填充
+      final lastValue = <int, int>{};
       final kinds = <int, AssetKind>{};
+      final points = <NetValuePoint>[];
+      DateTime? cursor; // 下一个待铺点的自然日
+
+      int signedSum() => lastValue.entries.fold<int>(0, (sum, e) {
+            final signed =
+                kinds[e.key] == AssetKind.liability ? -e.value : e.value;
+            return sum + signed;
+          });
+
+      // 把 [cursor, day) 的空白天用当前合计铺满（今天除外，今天由 UI 补点）
+      void fillUntil(DateTime day) {
+        while (cursor != null && cursor!.isBefore(day)) {
+          final key = _dayKey(cursor!);
+          if (key != todayKey) points.add((key, signedSum()));
+          cursor = cursor!.add(const Duration(days: 1));
+        }
+      }
+
+      String? currentDay;
       for (final row in rows) {
         final snap = row.readTable(_db.assetSnapshots);
         final asset = row.readTable(_db.assets);
         kinds[snap.assetId] = asset.kind;
-        byDay.putIfAbsent(snap.day, () => {})[snap.assetId] = snap.valueCents;
+        if (snap.day != currentDay) {
+          final day = DateTime.parse(snap.day);
+          if (cursor == null) {
+            cursor = day; // 首个快照日：从这里开始铺点
+          } else {
+            fillUntil(day); // 快照日之间的空白天沿用前值
+          }
+          currentDay = snap.day;
+        }
+        lastValue[snap.assetId] = snap.valueCents;
       }
-      return [
-        for (final entry in byDay.entries)
-          if (entry.key != todayKey)
-            (
-              entry.key,
-              entry.value.entries.fold<int>(0, (sum, e) {
-                final signed =
-                    kinds[e.key] == AssetKind.liability ? -e.value : e.value;
-                return sum + signed;
-              }),
-            ),
-      ];
+      // 末个快照日之后铺到昨天为止
+      fillUntil(todayDate);
+      return points;
     });
   }
 

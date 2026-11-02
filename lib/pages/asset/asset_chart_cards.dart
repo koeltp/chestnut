@@ -16,7 +16,8 @@ import '../../widgets/pie_chart_card.dart';
 import '../../widgets/section_card.dart';
 
 /// 净值曲线卡：历史快照聚合点 + 今天实时净值点（纯资产快照口径）。
-/// 四档粒度切换（日/月/年/全部），点数不足 2 时的空态提示用户更新市值积累曲线。
+/// 四档粒度切换（日/月/年/全部），无数据点时才显示空态；
+/// 单点画居中孤点，两点起连线成"势"。
 class NetTrendCard extends StatefulWidget {
   const NetTrendCard({super.key, required this.currentNetCents});
 
@@ -203,10 +204,10 @@ class _NetTrendCardState extends State<NetTrendCard> {
     return nice * mag;
   }
 
-  /// 单点无法画趋势：给一个引导性空态而不是孤零零一个点
+  /// 无点才给空态；单点画居中孤点（首日录入也有反馈），两点起连线
   Widget _chart(List<NetValuePoint> history, bool masked) {
     final points = _displayPoints(history);
-    if (points.length < 2) {
+    if (points.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -249,8 +250,9 @@ class _NetTrendCardState extends State<NetTrendCard> {
       LineChartData(
         minY: minY,
         maxY: maxY,
-        minX: 0,
-        maxX: (points.length - 1).toDouble(),
+        // 单点时垫出 x 轴左右各一格：孤点居中，也避免 minX==maxX 除零
+        minX: points.length == 1 ? -1.0 : 0,
+        maxX: points.length == 1 ? 1.0 : (points.length - 1).toDouble(),
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
@@ -286,7 +288,8 @@ class _NetTrendCardState extends State<NetTrendCard> {
                     idx == 0 ||
                     idx == points.length - 1 ||
                     idx % labelStep == 0;
-                if (!show || idx >= points.length) {
+                // 单点时轴上有 ±1 的越界刻度值，直接不画
+                if (!show || idx < 0 || idx >= points.length) {
                   return const SizedBox.shrink();
                 }
                 return Padding(
