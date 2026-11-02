@@ -48,6 +48,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 更新包安装：完成通知点击后经 FileProvider 把 apk 交给系统安装器 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- 高德定位 SDK 鉴权（地图 SDK 由代码注入 Key，定位 SDK 读此处） -->
         <meta-data
             android:name="com.amap.api.v2.apikey"

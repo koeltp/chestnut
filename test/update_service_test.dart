@@ -338,7 +338,7 @@ void main() {
       handlers['start'] = (_) => 42;
       handlers['cleanup'] = (_) => null;
       final svc = service();
-      await svc.startDownload(info());
+      await svc.startDownload(info(sha256: 'deadbeef', fileSize: 100));
       expect(cleanupCount, 1, reason: '下载前应清理历史残留');
       expect(startArgs, hasLength(1));
       final args = startArgs.single as Map<Object?, Object?>;
@@ -346,6 +346,8 @@ void main() {
       expect((args['url'] as String).contains('t='), isTrue,
           reason: 'CDN 缓存穿透时间戳必须带上');
       expect(args['title'], '栗子记账 v9.9.9');
+      expect(args['sha256'], 'deadbeef', reason: '校验参数透传给原生 Worker');
+      expect(args['fileSize'], 100);
 
       // 凭据已落库：能查到进行中快照
       handlers['query'] = (_) => {

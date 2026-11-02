@@ -7,12 +7,12 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.workDataOf
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -73,16 +73,18 @@ class MainActivity : FlutterFragmentActivity() {
         val fileName = call.argument<String>("fileName")
             ?: throw IllegalArgumentException("fileName 必填")
         val title = call.argument<String>("title") ?: "栗子记账更新包"
+        val sha256 = call.argument<String>("sha256")
+        val fileSize = call.argument<Number>("fileSize")?.toInt() ?: -1
 
         ensureNotificationPermission()
+        val inputData = Data.Builder()
+            .putString(UpdateDownloadWorker.KEY_URL, url)
+            .putString(UpdateDownloadWorker.KEY_FILE_NAME, fileName)
+            .putString(UpdateDownloadWorker.KEY_TITLE, title)
+        if (sha256 != null) inputData.putString(UpdateDownloadWorker.KEY_SHA256, sha256)
+        if (fileSize > 0) inputData.putInt(UpdateDownloadWorker.KEY_FILE_SIZE, fileSize)
         val request = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
-            .setInputData(
-                workDataOf(
-                    UpdateDownloadWorker.KEY_URL to url,
-                    UpdateDownloadWorker.KEY_FILE_NAME to fileName,
-                    UpdateDownloadWorker.KEY_TITLE to title,
-                ),
-            )
+            .setInputData(inputData.build())
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)

@@ -237,6 +237,8 @@ class UpdateService {
         url: url,
         fileName: fileName,
         title: '栗子记账 v${info.versionName}',
+        sha256: info.sha256,
+        fileSize: info.fileSize,
       );
     } on PlatformException {
       throw const UpdateException('无法开始下载，请稍后再试');

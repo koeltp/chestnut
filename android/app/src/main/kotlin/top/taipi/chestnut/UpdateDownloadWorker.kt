@@ -17,6 +17,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -52,7 +53,10 @@ class UpdateDownloadWorker(
         const val KEY_RECEIVED = "received"
         const val KEY_TOTAL = "total"
         const val KEY_FILE_URI = "fileUri"
+        const val KEY_SHA256 = "sha256"
+        const val KEY_FILE_SIZE = "fileSize"
         const val ACTION_CANCEL = "top.taipi.chestnut.action.CANCEL_UPDATE_DOWNLOAD"
+        const val ACTION_INSTALL = "top.taipi.chestnut.action.INSTALL_UPDATE"
 
         private const val CHANNEL_ID = "update_download"
         const val FGS_NOTIFICATION_ID = 1001
@@ -76,6 +80,7 @@ class UpdateDownloadWorker(
 
         return try {
             val file = downloadToFile(url, fileName, title)
+            verifyFile(file)
             notifyDone(title)
             Result.success(
                 workDataOf(
@@ -228,22 +233,47 @@ class UpdateDownloadWorker(
             .build()
     }
 
+    /** 校验不通过删掉文件抛异常 → Result.retry() 从头重下，最多 MAX_ATTEMPTS 次 */
+    private fun verifyFile(file: File) {
+        val expectedSize = inputData.getInt(KEY_FILE_SIZE, -1)
+        if (expectedSize > 0 && file.length() != expectedSize.toLong()) {
+            file.delete()
+            throw IOException("文件大小不符（${file.length()} / $expectedSize）")
+        }
+        val expectedSha = inputData.getString(KEY_SHA256)
+        if (!expectedSha.isNullOrEmpty()) {
+            val actual = file.inputStream().use { input ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    digest.update(buf, 0, n)
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
+            }
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                file.delete()
+                throw IOException("SHA-256 校验失败（$actual）")
+            }
+        }
+    }
+
+    /** 下载完成通知：点击直接拉系统安装器（Receiver），拉不起再回应用 */
     private fun notifyDone(title: String) {
-        val contentIntent = PendingIntent.getActivity(
+        val installIntent = PendingIntent.getBroadcast(
             appContext,
             0,
-            Intent(appContext, MainActivity::class.java).setFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK,
-            ),
+            Intent(appContext, UpdateDownloadReceiver::class.java).setAction(ACTION_INSTALL),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
-            .setContentText("下载完成，点击进入应用安装")
+            .setContentText("下载完成，点击安装")
             .setAutoCancel(true)
             .setOngoing(false)
-            .setContentIntent(contentIntent)
+            .setContentIntent(installIntent)
             .build()
         notificationManager().notify(FINAL_NOTIFICATION_ID, notification)
     }

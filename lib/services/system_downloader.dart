@@ -53,16 +53,21 @@ class SystemDownloader {
 
   final MethodChannel _channel;
 
-  /// 入队下载，返回 downloadId；失败抛 [PlatformException]
+  /// 入队下载，返回 downloadId；失败抛 [PlatformException]。
+  /// [sha256]/[fileSize] 供原生 Worker 下载完成后原地校验，缺省跳过。
   Future<int> start({
     required String url,
     required String fileName,
     required String title,
+    String? sha256,
+    int? fileSize,
   }) async {
     final id = await _channel.invokeMethod<int>('start', {
       'url': url,
       'fileName': fileName,
       'title': title,
+      'sha256': ?sha256,
+      'fileSize': ?fileSize,
     });
     if (id == null) {
       throw PlatformException(code: 'DOWNLOAD_ERROR', message: '入队失败');
