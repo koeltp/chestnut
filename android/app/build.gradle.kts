@@ -79,6 +79,15 @@ kotlin {
     }
 }
 
+dependencies {
+    // 应用内自更新下载：自有下载器（OkHttp + Range 断点续传）跑在
+    // WorkManager 前台 Worker 里。替代系统 DownloadManager——
+    // 实测 vivo ROM 上系统下载器任务会假死在排队态。
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.core:core-ktx:1.15.0")
+}
+
 flutter {
     source = "../.."
 }

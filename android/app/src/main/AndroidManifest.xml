@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 联网：高德 Web 接口（附近 POI/逆地理/输入提示）与地图瓦片必需。
          debug 构建会由 Flutter 自动注入此权限，但 release 不会——必须
          显式声明，否则正式包所有 HTTP 请求都会因无权限而失败 -->
@@ -13,6 +14,13 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <!-- 应用内更新：下载完 APK 后拉起系统安装器，需用户确认"允许此来源" -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- 应用内自更新下载：前台服务（dataSync 类型）承载自有下载器 Worker。
+         WorkManager 停止调度时前台服务照常保活下载，App 被杀/退后台不中断 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- Android 13+ 通知需要运行时授权（下载进度/完成通知）；
+         start() 时按需弹系统授权框，拒绝只影响通知可见性，不影响下载 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
@@ -44,6 +52,16 @@
         <meta-data
             android:name="com.amap.api.v2.apikey"
             android:value="c547548d14c20b2111af15003717c5bf" />
+        <!-- WorkManager 前台服务：覆盖声明 dataSync 类型（Android 14+ 强制要求），
+             WorkManager 自身清单已注册该服务，这里只补 FGS 类型 -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge"/>
+        <!-- 下载进度通知上的"取消"按钮：不导出，仅本 App 可触发 -->
+        <receiver
+            android:name=".UpdateDownloadReceiver"
+            android:exported="false"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

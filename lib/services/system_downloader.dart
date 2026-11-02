@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 
-/// 系统 DownloadManager 的状态码（对齐 android.app.DownloadManager 常量）
+/// 下载状态码（沿用 DownloadManager 常量，原生 WorkManager 侧按此映射）
 sealed class SystemDownloadStatus {
   static const pending = 1;
   static const running = 2;
@@ -40,11 +40,12 @@ class SystemDownloadSnapshot {
       status == SystemDownloadStatus.paused;
 }
 
-/// Android 系统 DownloadManager 的 Dart 封装。
+/// 原生下载器的 Dart 封装（通道实现在 MainActivity.kt + UpdateDownloadWorker.kt）。
 ///
-/// 下载由系统进程执行：App 退后台、被冻结甚至被杀都不中断，
-/// 断网重连与断点续传由系统自理——这是应用内自更新改走它的根本原因。
-/// [channel] 仅供测试注入；生产用默认通道（原生侧实现在 MainActivity.kt）。
+/// 下载由 WorkManager 前台 Worker 执行（OkHttp + Range 断点续传）：App 退后台、
+/// 被冻结甚至被杀都不中断，进度经通知栏展示、可点击回应用。类名保留 "System"
+/// 是历史遗留（曾走系统 DownloadManager，因 vivo ROM 任务假死而更换）。
+/// [channel] 仅供测试注入；生产用默认通道。
 class SystemDownloader {
   SystemDownloader({MethodChannel? channel})
       : _channel = channel ??

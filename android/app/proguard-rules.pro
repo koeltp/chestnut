@@ -10,3 +10,9 @@
 -keep class com.loc.** {*;}
 -dontwarn com.amap.api.**
 -dontwarn com.autonavi.**
+
+# ---------- 应用内更新下载（WorkManager） ----------
+# Worker 类名会被持久化进 WorkManager 数据库，升级安装后按名反射恢复；
+# 混淆改名会导致历史下载任务无法恢复
+-keep class top.taipi.chestnut.UpdateDownloadWorker { *; }
+-keep class top.taipi.chestnut.UpdateDownloadReceiver { *; }

@@ -18,7 +18,7 @@ Future<UpdateDialogResult?> showUpdateDialog(
 ) {
   return showDialog<UpdateDialogResult>(
     context: context,
-    // 强更不可点遮罩关闭；弱更随时可关——下载已交给系统 DownloadManager，
+    // 强更不可点遮罩关闭；弱更随时可关——下载已交给前台下载 Worker，
     // 关弹窗 = 转后台继续下，回来看进度/安装即可
     barrierDismissible: !info.forceUpdate,
     builder: (_) => _UpdateDialog(info: info),
@@ -45,8 +45,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   var _total = -1;
   String? _error;
 
-  /// 进度轮询器：下载已托管给系统 DownloadManager，
-  /// 弹窗只负责每 500ms 问一次系统"下到哪了"
+  /// 进度轮询器：下载已托管给原生前台 Worker，
+  /// 弹窗只负责每 500ms 问一次"下到哪了"
   Timer? _pollTimer;
 
   UpdateInfo get _info => widget.info;
@@ -93,7 +93,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     }
   }
 
-  /// 发起下载：任务交给系统下载器，本地只记录凭据并开始轮询进度。
+  /// 发起下载：任务交给原生下载器，本地只记录凭据并开始轮询进度。
   /// 失败就地转错误态（可重试）
   Future<void> _startDownload() async {
     setState(() {
@@ -202,7 +202,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     });
   }
 
-  /// "后台下载"：关弹窗继续下（系统托管），通知栏可见进度，
+  /// "后台下载"：关弹窗继续下（前台 Worker 托管），通知栏可见进度，
   /// 下次打开更新弹窗自动恢复进度显示
   void _backgroundDownload() {
     _pollTimer?.cancel();

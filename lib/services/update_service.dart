@@ -139,10 +139,12 @@ class _PendingDownload {
   final String fileName;
 }
 
-/// 应用内自更新服务：检查清单 → 系统下载器下载 APK → 校验 → 拉起安装器。
+/// 应用内自更新服务：检查清单 → 前台 Worker 下载 APK → 校验 → 拉起安装器。
 ///
-/// 下载改走 Android 系统 DownloadManager（原生通道见 MainActivity.kt）：
-/// 切后台/进程冻结/杀 App 都不中断，断点续传由系统自理；
+/// 下载走 WorkManager 前台 Worker（原生通道见 MainActivity.kt +
+/// UpdateDownloadWorker.kt，OkHttp + Range 断点续传）：切后台/进程冻结/
+/// 杀 App 都不中断，通知栏可看进度、可取消。曾用系统 DownloadManager，
+/// 实测 vivo ROM 上任务假死在排队态而更换。
 /// 下载凭据（downloadId + 版本信息）持久化在 prefs，重启后可重新接管。
 /// 清单与安装包经 Cloudflare Worker 反代（chestnut.taipi.top）分发；
 /// 任何失败都只提示、绝不阻塞记账主流程。
@@ -210,7 +212,7 @@ class UpdateService {
     return latest.versionCode > currentCode ? latest : null;
   }
 
-  /// 把更新包下载任务交给系统 DownloadManager。
+  /// 把更新包下载任务交给原生前台 Worker（WorkManager）。
   /// 先清空更新目录的历史残留，再入队并把下载凭据落 prefs；
   /// 通道异常统一转 [UpdateException]（message 可直接展示）
   Future<void> startDownload(UpdateInfo info) async {
@@ -260,9 +262,9 @@ class UpdateService {
     }
   }
 
-  /// 下载完成后的收尾：定位系统落盘的 APK → 完整性校验 → 返回文件。
-  /// 校验失败删除残包并清记录（重试会整体重下，系统下载器对同名目标
-  /// 不会续传校验失败的文件）；成功返回文件并清记录
+  /// 下载完成后的收尾：定位落盘的 APK → 完整性校验 → 返回文件。
+  /// 校验失败删除残包并清记录（重试会整体重下：残包已删，无法续传）；
+  /// 成功返回文件并清记录
   Future<File> consumeDownloadedApk() async {
     final record = await _readRecord();
     if (record == null) throw const UpdateException('没有可用的下载记录');
