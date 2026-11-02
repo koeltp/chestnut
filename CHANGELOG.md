@@ -2,6 +2,17 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.12] - 2026-11-02
+
+### 修复
+
+- 更新下载在部分机型（如 vivo）上一直卡在"排队中"不动的问题：改由应用自带的下载器执行，不再依赖系统下载服务
+- 更新通知更实用：下载中可看实时进度、可一键取消，点通知回到应用；下载完成后点击通知即可安装
+
+### 内部
+
+- [内部] 更新下载从系统 DownloadManager 迁移到 WorkManager 前台 Worker（OkHttp + Range 断点续传，sha256/fileSize 校验逻辑不变）
+
 ## [1.2.11] - 2026-11-02
 
 ### 修复
