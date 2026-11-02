@@ -16,3 +16,11 @@
 # 混淆改名会导致历史下载任务无法恢复
 -keep class top.taipi.chestnut.UpdateDownloadWorker { *; }
 -keep class top.taipi.chestnut.UpdateDownloadReceiver { *; }
+
+# WorkManager 内置 Room 数据库（WorkDatabase）在初始化时按名反射实例化
+# 生成的 *_Impl 类；R8 会裁掉未显式引用的构造器，导致启动即崩
+# （NoSuchMethodException: WorkDatabase_Impl.<init>，仅 release 包出现）
+-keep class * extends androidx.room.RoomDatabase {
+    <init>();
+}
+-keep class androidx.room.RoomDatabase { <init>(); }
