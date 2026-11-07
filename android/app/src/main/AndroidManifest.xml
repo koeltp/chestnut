@@ -55,14 +55,6 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- 裁剪页：uCrop 2.2.11（JitPack）的库清单不再声明 UCropActivity，
-             image_cropper 插件清单也只注册了它的 fork 变体 CmUCropActivity，
-             而委托代码用 UCrop.getIntent() 显式指向本类——不注册则启动失败，
-             部分 ROM 会立即回 RESULT_CANCELED 引发插件双回复崩溃 -->
-        <activity
-            android:name="com.yalantis.ucrop.UCropActivity"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
         <!-- 更新包安装：完成通知点击后经 FileProvider 把 apk 交给系统安装器 -->
         <provider
             android:name="androidx.core.content.FileProvider"

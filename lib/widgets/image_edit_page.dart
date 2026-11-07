@@ -6,9 +6,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:image_cropper/image_cropper.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../theme/app_colors.dart';
 import '../utils/show_toast.dart';
@@ -61,6 +58,21 @@ class _ImageEditPageState extends State<ImageEditPage> {
 
   /// 异步操作（变换/烘焙/裁剪）进行中：遮罩转圈并禁点工具
   bool _busy = false;
+
+  // ---------- 裁剪状态（编辑器内置，纯 Flutter） ----------
+
+  /// 裁剪模式：画布上叠加可拖拽裁剪框，标注暂不参与、确认时一并烘焙
+  bool _cropMode = false;
+
+  /// 裁剪框（归一化 0-1，画布与标注同坐标系）
+  Rect? _cropRect;
+
+  /// 正在拖拽的裁剪框部位：0-3 四角（TL/TR/BR/BL）、4-7 四边（T/R/B/L）、8 整体平移
+  int? _cropZone;
+
+  /// 拖拽起点时的裁剪框与手指位置（平移/缩放基准）
+  Rect? _cropDragOrig;
+  Offset? _cropDragStart;
 
   @override
   void initState() {
@@ -143,68 +155,133 @@ class _ImageEditPageState extends State<ImageEditPage> {
     }
   }
 
-  /// 裁剪：先烘焙标注，再把当前位图交给原生 uCrop（手感最好），
-  /// 结果读回作为新位图。工具顺序保证此时标注已并入位图，不会错位
-  Future<void> _crop() async {
-    if (_busy || _bytes == null) return;
+  // ---------- 裁剪（编辑器内置） ----------
+
+  /// 进入裁剪模式：框初始为全图；标注不参与框选，确认时才烘焙
+  void _startCrop() {
+    if (_busy || _base == null) return;
+    setState(() {
+      _cropMode = true;
+      _cropRect = const Rect.fromLTRB(0, 0, 1, 1);
+    });
+  }
+
+  /// 退出裁剪模式，标注原样保留
+  void _cancelCrop() {
+    setState(() {
+      _cropMode = false;
+      _cropRect = null;
+      _cropZone = null;
+      _cropDragOrig = null;
+      _cropDragStart = null;
+    });
+  }
+
+  /// 应用裁剪：先把标注烘焙进位图（保证一起被裁），再按裁剪框
+  /// 从位图原像素上切出新图。亮度校验对裁剪放宽为"非全黑"——
+  /// 裁到画面暗部属合法操作，均值变暗不该被拦
+  Future<void> _applyCrop() async {
+    if (_busy) return;
+    final rect = _cropRect;
+    if (rect == null || _base == null) return;
     _setBusy(true);
     try {
       await _bakeStrokes();
-      final tempDir = await getTemporaryDirectory();
-      final srcFile = File(p.join(tempDir.path,
-          'chestnut_edit_${DateTime.now().millisecondsSinceEpoch}.jpg'));
-      await srcFile.writeAsBytes(_bytes!, flush: true);
-      final result = await ImageCropper().cropImage(
-        sourcePath: srcFile.path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: '裁剪',
-            toolbarColor: AppColors.textPrimary,
-            toolbarWidgetColor: Colors.white,
-            backgroundColor: Colors.black,
-            activeControlsWidgetColor: AppColors.primary,
-            lockAspectRatio: false,
-            initAspectRatio: CropAspectRatioPreset.original,
-            aspectRatioPresets: const [
-              CropAspectRatioPreset.original,
-              CropAspectRatioPreset.square,
-              CropAspectRatioPreset.ratio4x3,
-              CropAspectRatioPreset.ratio16x9,
-            ],
-          ),
-          IOSUiSettings(
-            title: '裁剪',
-            aspectRatioPresets: const [
-              CropAspectRatioPreset.original,
-              CropAspectRatioPreset.square,
-              CropAspectRatioPreset.ratio4x3,
-              CropAspectRatioPreset.ratio16x9,
-            ],
-          ),
-        ],
-      );
-      // 源临时文件无论成败都清理；结果文件读完也清理
-      final resultPath = result?.path;
-      try {
-        if (resultPath != null) {
-          final cropped = await File(resultPath).readAsBytes();
-          final codec = await ui.instantiateImageCodec(cropped);
-          final frame = await codec.getNextFrame();
-          await _swapBase(frame.image);
-          _modified = true;
-        }
-      } finally {
-        await _safeDelete(srcFile.path);
-        if (resultPath != null && resultPath != srcFile.path) {
-          await _safeDelete(resultPath);
-        }
+      final src = _base!;
+      final left = (rect.left * src.width).round().clamp(0, src.width - 2);
+      final top = (rect.top * src.height).round().clamp(0, src.height - 2);
+      final right =
+          (rect.right * src.width).round().clamp(left + 1, src.width);
+      final bottom =
+          (rect.bottom * src.height).round().clamp(top + 1, src.height);
+      final w = right - left;
+      final h = bottom - top;
+      if (w < 24 || h < 24) {
+        if (mounted) showAppToast(context, '裁剪区域太小');
+        return;
       }
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawImage(
+          src, Offset(-left.toDouble(), -top.toDouble()), Paint());
+      final cropped = await recorder.endRecording().toImage(w, h);
+      await _swapBase(cropped, stableLum: false);
+      _modified = true;
+      setState(() {
+        _cropMode = false;
+        _cropRect = null;
+      });
     } catch (e, st) {
       debugPrint('chestnut_edit: crop failed: $e\n$st');
       if (mounted) showAppToast(context, '裁剪失败，请重试');
     } finally {
       _setBusy(false);
     }
+  }
+
+  /// 裁剪框命中判定（屏幕像素容差）：四角 > 四边 > 框内
+  int? _cropHitZone(Offset n, Size size) {
+    final r = _cropRect;
+    if (r == null) return null;
+    final p = Offset(n.dx * size.width, n.dy * size.height);
+    final tl = Offset(r.left * size.width, r.top * size.height);
+    final tr = Offset(r.right * size.width, r.top * size.height);
+    final br = Offset(r.right * size.width, r.bottom * size.height);
+    final bl = Offset(r.left * size.width, r.bottom * size.height);
+    const cornerR = 30.0;
+    if ((p - tl).distance <= cornerR) return 0;
+    if ((p - tr).distance <= cornerR) return 1;
+    if ((p - br).distance <= cornerR) return 2;
+    if ((p - bl).distance <= cornerR) return 3;
+    const edgeBand = 18.0;
+    if (p.dy >= r.top * size.height - edgeBand &&
+        p.dy <= r.bottom * size.height + edgeBand) {
+      if ((p.dx - r.left * size.width).abs() <= edgeBand) return 7;
+      if ((p.dx - r.right * size.width).abs() <= edgeBand) return 5;
+    }
+    if (p.dx >= r.left * size.width - edgeBand &&
+        p.dx <= r.right * size.width + edgeBand) {
+      if ((p.dy - r.top * size.height).abs() <= edgeBand) return 4;
+      if ((p.dy - r.bottom * size.height).abs() <= edgeBand) return 6;
+    }
+    if (r.contains(n)) return 8;
+    return null;
+  }
+
+  /// 按部位更新裁剪框。min 为框的最小归一化尺寸，防止缩成一点
+  Rect _updatedCropRect(int zone, Rect o, Offset pos) {
+    const min = 0.05;
+    var l = o.left, t = o.top, r = o.right, b = o.bottom;
+    switch (zone) {
+      case 0:
+        l = math.min(pos.dx, r - min);
+        t = math.min(pos.dy, b - min);
+      case 1:
+        r = math.max(pos.dx, l + min);
+        t = math.min(pos.dy, b - min);
+      case 2:
+        r = math.max(pos.dx, l + min);
+        b = math.max(pos.dy, t + min);
+      case 3:
+        l = math.min(pos.dx, r - min);
+        b = math.max(pos.dy, t + min);
+      case 4:
+        t = math.min(pos.dy, b - min);
+      case 5:
+        r = math.max(pos.dx, l + min);
+      case 6:
+        b = math.max(pos.dy, t + min);
+      case 7:
+        l = math.min(pos.dx, r - min);
+      case 8:
+        final dx = pos.dx - _cropDragStart!.dx;
+        final dy = pos.dy - _cropDragStart!.dy;
+        l = (o.left + dx).clamp(0.0, 1.0 - o.width);
+        t = (o.top + dy).clamp(0.0, 1.0 - o.height);
+        r = l + o.width;
+        b = t + o.height;
+    }
+    return Rect.fromLTRB(
+        l.clamp(0.0, 1.0), t.clamp(0.0, 1.0), r.clamp(0.0, 1.0), b.clamp(0.0, 1.0));
   }
 
   // ---------- 标注操作（画笔 / 箭头 / 马赛克 / 文字） ----------
@@ -379,7 +456,8 @@ class _ImageEditPageState extends State<ImageEditPage> {
   /// 状态不变并抛出（调用方 toast），不会出现"黑图已上屏、纹理
   /// 还是旧的"的错位状态。旧纹理等新帧渲染完成后再释放——全尺寸
   /// 位图每张十几 MB，不释放连续几次操作就会 OOM
-  Future<void> _swapBase(ui.Image img, {VoidCallback? onCommitted}) async {
+  Future<void> _swapBase(ui.Image img,
+      {VoidCallback? onCommitted, bool stableLum = true}) async {
     final oldBase = _base;
     final oldPix = _pixelated;
     try {
@@ -387,9 +465,9 @@ class _ImageEditPageState extends State<ImageEditPage> {
       final pix = await _buildPixelated(img);
       // 亮度突降校验：Impeller 黑图 bug 的输出是"底图全黑 + 矢量
       // 标注正常"，红色箭头/文字的亮度差会骗过单色探测，用均值
-      // 亮度兜底——烘焙/旋转不该让画面整体明显变暗（裁剪到暗部
-      // 属合法场景但极少，被拦截时重试即可）
-      if (_baseMeanLum > 24 && pix.meanLum < _baseMeanLum * 0.45) {
+      // 亮度兜底——烘焙/旋转不该让画面整体明显变暗。裁剪会合法地
+      // 改变均值（裁到暗部），传 stableLum: false 只做单色探测
+      if (stableLum && _baseMeanLum > 24 && pix.meanLum < _baseMeanLum * 0.45) {
         throw Exception('位图亮度校验未通过（系统图形栈疑似输出异常）');
       }
       if (!mounted) {
@@ -511,6 +589,11 @@ class _ImageEditPageState extends State<ImageEditPage> {
   }
 
   Future<void> _onBack() async {
+    // 裁剪模式按返回 = 退出裁剪（标注未动，无需确认）
+    if (_cropMode) {
+      _cancelCrop();
+      return;
+    }
     if (!_modified) {
       Navigator.of(context).pop();
       return;
@@ -569,8 +652,8 @@ class _ImageEditPageState extends State<ImageEditPage> {
                     ? const Center(
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : _buildCanvas(base)),
-                _buildPalette(),
-                _buildToolbar(),
+                if (!_cropMode) _buildPalette(),
+                _cropMode ? _buildCropBar() : _buildToolbar(),
               ],
             ),
           ),
@@ -636,7 +719,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
             child: Builder(
               builder: (canvasContext) => GestureDetector(
               // 文字模式：点空白=新增文字，点已有文字=编辑
-              onTapUp: _tool == _Tool.text && !_busy
+              onTapUp: _tool == _Tool.text && !_busy && !_cropMode
                   ? (d) {
                       final box =
                           canvasContext.findRenderObject()! as RenderBox;
@@ -654,7 +737,9 @@ class _ImageEditPageState extends State<ImageEditPage> {
               // 与当前工具无关——"看到对象就能操作"；未命中时绘制工具
               // 在按下瞬间创建笔迹（onPanStart 有 ~18px 拖动激活阈值，
               // 会让起点落后于指尖），文字模式空白处留给 onTapUp 新增
-              onPanDown: !_busy && (_isDrawingTool || _tool == _Tool.text)
+              onPanDown: !_busy &&
+                      !_cropMode &&
+                      (_isDrawingTool || _tool == _Tool.text)
                   ? (d) {
                       final box =
                           canvasContext.findRenderObject()! as RenderBox;
@@ -692,7 +777,9 @@ class _ImageEditPageState extends State<ImageEditPage> {
                       });
                     }
                   : null,
-              onPanUpdate: !_busy && (_isDrawingTool || _tool == _Tool.text)
+              onPanUpdate: !_busy &&
+                      !_cropMode &&
+                      (_isDrawingTool || _tool == _Tool.text)
                   ? (d) {
                       final box =
                           canvasContext.findRenderObject()! as RenderBox;
@@ -763,7 +850,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
                       });
                     }
                   : null,
-              onPanEnd: !_busy && (_isDrawingTool || _tool == _Tool.text)
+              onPanEnd: !_busy && !_cropMode && (_isDrawingTool || _tool == _Tool.text)
                   ? (_) => setState(() {
                         _dragTextIndex = null;
                         _dragArrowIndex = null;
@@ -786,7 +873,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
                   : null,
               // 手势未成为拖动（如轻点后抬起）时收尾：新建的箭头残笔
               // 撤掉，画笔/马赛克的单点保留为"点一下=一个点"
-              onPanCancel: !_busy && (_isDrawingTool || _tool == _Tool.text)
+              onPanCancel: !_busy && !_cropMode && (_isDrawingTool || _tool == _Tool.text)
                   ? () => setState(() {
                         if (_strokeCreatedThisGesture) {
                           if (_tool == _Tool.arrow &&
@@ -803,13 +890,56 @@ class _ImageEditPageState extends State<ImageEditPage> {
                         _dragTextIndex = null;
                       })
                   : null,
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: _EditPainter(
-                  base: base,
-                  strokes: List.of(_strokes),
-                  pixelated: _pixelated,
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: _EditPainter(
+                      base: base,
+                      strokes: List.of(_strokes),
+                      pixelated: _pixelated,
+                    ),
+                  ),
+                  // 裁剪模式：遮罩 + 可拖拽裁剪框，盖在标注层之上
+                  if (_cropMode && _cropRect != null)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: (d) {
+                        final box =
+                            canvasContext.findRenderObject()! as RenderBox;
+                        final pos = _normalize(
+                            box.globalToLocal(d.globalPosition), box.size);
+                        final zone = _cropHitZone(pos, box.size);
+                        setState(() {
+                          _cropZone = zone;
+                          _cropDragOrig = _cropRect;
+                          _cropDragStart = pos;
+                        });
+                      },
+                      onPanUpdate: (d) {
+                        final box =
+                            canvasContext.findRenderObject()! as RenderBox;
+                        final pos = _normalize(
+                            box.globalToLocal(d.globalPosition), box.size);
+                        final zone = _cropZone;
+                        final orig = _cropDragOrig;
+                        if (zone == null || orig == null) return;
+                        setState(() {
+                          _cropRect = _updatedCropRect(zone, orig, pos);
+                        });
+                      },
+                      onPanEnd: (_) => setState(() {
+                        _cropZone = null;
+                        _cropDragOrig = null;
+                        _cropDragStart = null;
+                      }),
+                      child: CustomPaint(
+                        size: Size.infinite,
+                        painter: _CropPainter(_cropRect!),
+                      ),
+                    ),
+                ],
               ),
               ),
             ),
@@ -859,6 +989,42 @@ class _ImageEditPageState extends State<ImageEditPage> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// 裁剪模式的确认栏：取消 / 完成（主色胶囊，全 App 主按钮语言）
+  Widget _buildCropBar() {
+    return Container(
+      decoration: const BoxDecoration(color: Color(0xFF141414)),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: _busy ? null : _cancelCrop,
+                child: const Text('取消',
+                    style: TextStyle(color: Colors.white70, fontSize: 15)),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _busy ? null : _applyCrop,
+                style: TextButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  shape: const StadiumBorder(),
+                ),
+                child: const Text('完成',
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -920,7 +1086,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
           children: [
             action(Icons.rotate_right, '旋转', _rotate),
             action(Icons.flip, '镜像', _flip),
-            action(Icons.crop, '裁剪', _crop),
+            action(Icons.crop, '裁剪', _startCrop),
             tool(_Tool.pen, Icons.edit, '画笔'),
             tool(_Tool.arrow, Icons.north_east, '箭头'),
             tool(_Tool.mosaic, Icons.grain, '马赛克'),
@@ -1095,11 +1261,56 @@ class _EditPainter extends CustomPainter {
       !identical(old.strokes, strokes);
 }
 
-Future<void> _safeDelete(String path) async {
-  try {
-    final f = File(path);
-    if (await f.exists()) await f.delete();
-  } catch (_) {
-    // 临时文件清理失败忽略
+/// 裁剪模式叠加层：框外半透明遮罩 + 白色边框 + 三分线 + 角部手柄。
+/// rect 为归一化坐标，paint 时换算回画布像素（与标注同坐标系）
+class _CropPainter extends CustomPainter {
+  _CropPainter(this.rect);
+
+  final Rect rect;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = Rect.fromLTRB(rect.left * size.width, rect.top * size.height,
+        rect.right * size.width, rect.bottom * size.height);
+    // 四块遮罩：上、下、左、右
+    final mask = Paint()..color = Colors.black.withValues(alpha: 0.55);
+    canvas.drawRect(Rect.fromLTRB(0, 0, size.width, r.top), mask);
+    canvas.drawRect(Rect.fromLTRB(0, r.bottom, size.width, size.height), mask);
+    canvas.drawRect(Rect.fromLTRB(0, r.top, r.left, r.bottom), mask);
+    canvas.drawRect(Rect.fromLTRB(r.right, r.top, size.width, r.bottom), mask);
+    // 三分线
+    final third = Paint()
+      ..color = Colors.white.withValues(alpha: 0.25)
+      ..strokeWidth = 1;
+    for (var i = 1; i <= 2; i++) {
+      final x = r.left + r.width * i / 3;
+      final y = r.top + r.height * i / 3;
+      canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), third);
+      canvas.drawLine(Offset(r.left, y), Offset(r.right, y), third);
+    }
+    // 边框 + 四角 L 形手柄
+    final border = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawRect(r, border);
+    final handle = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    const len = 22.0;
+    void corner(Offset c, int sx, int sy) {
+      canvas.drawLine(c, Offset(c.dx + sx * len, c.dy), handle);
+      canvas.drawLine(c, Offset(c.dx, c.dy + sy * len), handle);
+    }
+
+    corner(r.topLeft, 1, 1);
+    corner(r.topRight, -1, 1);
+    corner(r.bottomRight, -1, -1);
+    corner(r.bottomLeft, 1, -1);
   }
+
+  @override
+  bool shouldRepaint(covariant _CropPainter old) => old.rect != rect;
 }
