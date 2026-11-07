@@ -54,6 +54,15 @@ dependencies:
   photo_view: ^0.15.0
   simple_icons: ^16.23.0
   flutter_svg: ^2.3.0
+  image_cropper: ^13.0.0
+
+# 本地补丁版：uCrop 结果被部分 ROM（vivo）双重投递时，插件原实现对已
+# 回复的 result 再次 reply 导致 IllegalStateException 崩溃（上游 issue
+# #189 多年未修）。补丁见 third_party/image_cropper/.../ImageCropperDelegate.java，
+# 升级该插件时需重新评估是否仍需覆盖
+dependency_overrides:
+  image_cropper:
+    path: third_party/image_cropper
 
 dev_dependencies:
   flutter_test:

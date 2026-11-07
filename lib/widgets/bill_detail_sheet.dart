@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:map_launcher/map_launcher.dart';
@@ -18,6 +19,7 @@ import '../utils/show_toast.dart';
 import 'category_icons.dart';
 import 'confirm_dialog.dart';
 import 'detail_widgets.dart';
+import 'image_edit_page.dart';
 import 'photo_viewer_page.dart';
 
 /// 账单详情底部弹窗：点击明细条目时展示完整信息，代替"直接进编辑页"
@@ -177,9 +179,38 @@ class _DetailBodyState extends State<_DetailBody> {
           initialIndex: index,
           // Hero 过渡以被点那张为准：缩略图飞出放大，关闭时飞回
           openHeroTag: img.localPath,
+          confirmText: '关闭',
+          onEdit: (path) {
+            Navigator.of(context).pop();
+            unawaited(_editImage(path));
+          },
         ),
       ),
     );
+  }
+
+  /// 编辑一张已入库图片："删旧存新"替换 + 立即触发上传，
+  /// 记录变化由图片流订阅自动刷新缩略图与本地文件缓存
+  Future<void> _editImage(String path) async {
+    final matches = _images.where((i) => i.localPath == path).toList();
+    if (matches.isEmpty) return;
+    final edited = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(
+        builder: (_) => ImageEditPage(sourcePath: path),
+      ),
+    );
+    if (edited == null || !mounted) return;
+    final created = await widget.imageRepo
+        .replaceImage(matches.first, edited, client: widget.cloud.createClient());
+    if (!mounted) return;
+    if (created == null) {
+      showAppToast(context, '保存编辑失败，请重试');
+      return;
+    }
+    final client = widget.cloud.createClient();
+    if (client != null) {
+      unawaited(widget.imageRepo.uploadOne(created, client));
+    }
   }
 
   /// 手动重传（"未上传"角标点击）：结果 toast，状态变化由流刷新缩略图

@@ -24,3 +24,10 @@
     <init>();
 }
 -keep class androidx.room.RoomDatabase { <init>(); }
+
+# ---------- 图片裁剪（image_cropper / uCrop，本地补丁版 third_party） ----------
+# 插件委托经 MethodChannel 按名调用，uCrop 内部有反射与 JNI；
+# uCropActivity 由 Manifest 注册但结果回调类被混淆会拉不起裁剪页
+-keep class vn.hunghd.flutter.plugins.imagecropper.** {*;}
+-keep class com.yalantis.ucrop.** {*;}
+-dontwarn com.yalantis.ucrop.**

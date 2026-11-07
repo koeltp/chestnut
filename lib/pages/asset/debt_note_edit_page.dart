@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,6 +20,7 @@ import '../../utils/show_toast.dart';
 import '../../widgets/app_segmented.dart';
 import '../../widgets/asset_pick_sheet.dart';
 import '../../widgets/form_rows.dart';
+import '../../widgets/image_edit_page.dart';
 import '../../widgets/photo_viewer_page.dart';
 import '../../widgets/section_card.dart';
 
@@ -158,6 +160,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
           : await picker.pickMultiImage();
       if (!mounted) return;
       final provider = context.read<DebtNoteProvider>();
+      final firstNewIndex = _stagedPhotos.length;
       for (final xfile in picked) {
         if (xfile == null) continue;
         final bytes = await xfile.readAsBytes();
@@ -165,6 +168,11 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
         _stagedPhotos.add(path);
       }
       setState(() {});
+      // 选图/拍照后统一落预览页：底栏「编辑」必经可见（微信式动线），
+      // 多选时停在新图第一张，可左右滑逐张编辑
+      if (_stagedPhotos.length > firstNewIndex && mounted) {
+        _preview(_existingPhotos.length + firstNewIndex);
+      }
     } catch (_) {
       if (mounted) showAppToast(context, '添加照片失败，请重试');
     } finally {
@@ -186,7 +194,9 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
     });
   }
 
-  /// 全屏预览：从被点的那张进入，左右滑可看本借条其余照片
+  /// 全屏预览：从被点的那张进入，左右滑可看本借条其余照片；
+  /// 左上角编辑按钮进入编辑器，返回的新图按"暂存图换文件 /
+  /// 已有照片删旧存新"落地
   void _preview(int index) {
     final paths = [
       ..._existingPhotos.map((e) => e.localPath),
@@ -194,9 +204,59 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
     ];
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => PhotoViewerPage(paths: paths, initialIndex: index),
+        builder: (_) => PhotoViewerPage(
+          paths: paths,
+          initialIndex: index,
+          onEdit: (path) {
+            Navigator.of(context).pop();
+            unawaited(_editImage(path));
+          },
+        ),
       ),
     );
+  }
+
+  /// 编辑一张照片：编辑器返回新图字节后分两种落地方式：
+  /// · 暂存照片：新字节重新压缩暂存，原位替换路径，旧暂存文件删除；
+  /// · 已有照片：仓储层"删旧存新"立即替换（记录/文件/云端对象），
+  ///   新记录继承原 sort，并触发上传；本地快照原位换新
+  Future<void> _editImage(String path) async {
+    final edited = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(
+        builder: (_) => ImageEditPage(sourcePath: path),
+      ),
+    );
+    if (edited == null || !mounted) return;
+    try {
+      final existingIndex =
+          _existingPhotos.indexWhere((e) => e.localPath == path);
+      if (existingIndex >= 0) {
+        final repo = context.read<DebtNoteRepository>();
+        final client = context.read<CloudStorageProvider>().createClient();
+        final created = await repo.replacePhoto(
+          _existingPhotos[existingIndex],
+          edited,
+          client: client,
+        );
+        if (!mounted) return;
+        if (created == null) throw Exception('替换失败');
+        if (client != null) unawaited(repo.uploadOne(created, client));
+        setState(() {
+          _existingPhotos[existingIndex] = created;
+          _existingFileFutures.remove(created.id);
+        });
+      } else {
+        final stagedIndex = _stagedPhotos.indexOf(path);
+        if (stagedIndex < 0) return;
+        final provider = context.read<DebtNoteProvider>();
+        final newPath = await provider.stagePhoto(edited);
+        if (!mounted) return;
+        setState(() => _stagedPhotos[stagedIndex] = newPath);
+        unawaited(provider.discardStagedPhoto(path));
+      }
+    } catch (_) {
+      if (mounted) showAppToast(context, '保存编辑失败，请重试');
+    }
   }
 
   /// 已有照片云端回源：本地优先，缓存缺失且 objectKey 可用时拉回落盘

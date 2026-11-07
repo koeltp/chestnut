@@ -319,6 +319,46 @@ class DebtNoteRepository {
     }
   }
 
+  /// 用编辑后的新照片替换一张已入库照片（图片编辑"删旧存新"）：
+  /// 新图走压缩暂存 → 按借款日期转正 → 写新行（sort 继承原图），
+  /// 旧行/旧本地文件/云端对象走 [deletePhoto] 统一清理。
+  /// 返回新记录（pending，由调用方触发上传）；暂存失败返回 null
+  Future<DebtNoteImage?> replacePhoto(
+    DebtNoteImage old,
+    Uint8List bytes, {
+    S3CompatibleClient? client,
+  }) async {
+    final note = await (_db.select(_db.debtNotes)
+          ..where((n) => n.id.equals(old.noteId)))
+        .getSingle();
+    final stagedPath = await photos.stage(bytes);
+    final src = File(stagedPath);
+    if (!await src.exists()) return null;
+    final name = photos.finalFileName(note.borrowedAt, old.noteId);
+    final dest =
+        p.join((await photos.monthDir(note.borrowedAt)).path, name);
+    try {
+      await src.rename(dest);
+    } on FileSystemException {
+      await src.copy(dest);
+      await src.delete();
+    }
+    final id = await _db.into(_db.debtNoteImages).insert(
+          DebtNoteImagesCompanion.insert(
+            noteId: old.noteId,
+            objectKey: photos.objectKeyFor(note.borrowedAt, name),
+            localPath: dest,
+            uploadState: BillImageUploadState.pending,
+            sort: Value(old.sort),
+          ),
+        );
+    final created = await (_db.select(_db.debtNoteImages)
+          ..where((i) => i.id.equals(id)))
+        .getSingle();
+    await deletePhoto(old, client: client);
+    return created;
+  }
+
   // ---------- 上传与云端回源 ----------
 
   /// 手动/保存后触发上传一批照片（记借条保存后异步触发）。

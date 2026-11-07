@@ -237,6 +237,50 @@ class BillImageRepository {
     }
   }
 
+  // ---------- 替换（图片编辑） ----------
+
+  /// 用编辑后的新图替换一张已入库图片：新图走压缩暂存 → 转正 →
+  /// 写新行（sort 继承原图保持展示顺序），旧行/旧本地文件/云端对象
+  /// 走 [deleteImage] 统一清理。云端对象不可变，编辑即"删旧存新"，
+  /// 多端同步天然一致；先存新后删旧，中途失败旧图无损。
+  /// 返回新记录（pending，由调用方触发上传）；暂存失败返回 null
+  Future<BillImage?> replaceImage(
+    BillImage old,
+    Uint8List bytes, {
+    S3CompatibleClient? client,
+  }) async {
+    final bill = await (_db.select(_db.bills)
+          ..where((b) => b.id.equals(old.billId)))
+        .getSingle();
+    final stagedPath = await photos.stage(bytes);
+    final src = File(stagedPath);
+    if (!await src.exists()) return null;
+    final fileName = photos.finalFileName(bill.date, old.billId);
+    final dest = p.join((await photos.monthDir(bill.date)).path, fileName);
+    try {
+      // 同一分区内 rename 是原子操作，比 copy+delete 快且不留中间态
+      await src.rename(dest);
+    } on FileSystemException {
+      // 跨分区 rename 失败（极罕见）退回复制
+      await src.copy(dest);
+      await src.delete();
+    }
+    final id = await _db.into(_db.billImages).insert(
+          BillImagesCompanion.insert(
+            billId: old.billId,
+            objectKey: photos.objectKeyFor(bill.date, fileName),
+            localPath: dest,
+            uploadState: BillImageUploadState.pending,
+            sort: Value(old.sort),
+          ),
+        );
+    final created = await (_db.select(_db.billImages)
+          ..where((i) => i.id.equals(id)))
+        .getSingle();
+    await deleteImage(old, client: client);
+    return created;
+  }
+
   /// 删除账单的级联图片清理（删除账单时调用）：删全部记录 + 本地
   /// 文件 + 云端对象
   Future<void> deleteImagesOfBill(

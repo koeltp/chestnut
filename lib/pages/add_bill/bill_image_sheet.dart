@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
 import '../../data/repositories/bill_image_repository.dart';
+import '../../providers/cloud_storage_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/show_toast.dart';
+import '../../widgets/image_edit_page.dart';
 import '../../widgets/photo_viewer_page.dart';
 
 /// 账单图片面板（bottom sheet，与标签面板同款心智）
@@ -107,6 +112,7 @@ class _BillImageSheetState extends State<BillImageSheet> {
       final picked = source == ImageSource.camera
           ? [await picker.pickImage(source: ImageSource.camera)]
           : await picker.pickMultiImage();
+      final firstNewIndex = _staged.length;
       for (final xfile in picked) {
         if (xfile == null) continue;
         final bytes = await xfile.readAsBytes();
@@ -114,6 +120,12 @@ class _BillImageSheetState extends State<BillImageSheet> {
         _staged.add(path);
       }
       _notify();
+      // 选图/拍照后统一落预览页：底栏「编辑」必经可见（微信式动线）。
+      // 多选时停在新图第一张，可左右滑到其余新图逐张编辑；
+      // 批量添加的代价只是一次「完成」点击
+      if (_staged.length > firstNewIndex && mounted) {
+        _preview(_existing.length + firstNewIndex, _staged[firstNewIndex]);
+      }
     } catch (_) {
       if (mounted) showAppToast(context, '添加图片失败，请重试');
     } finally {
@@ -133,7 +145,9 @@ class _BillImageSheetState extends State<BillImageSheet> {
     _notify();
   }
 
-  /// 全屏预览：从被点的那张进入，左右滑可看面板内其余图片
+  /// 全屏预览：从被点的那张进入，左右滑可看面板内其余图片；
+  /// 左上角编辑按钮进入编辑器，返回的新图按"暂存图换文件 /
+  /// 已入库图删旧存新"落地
   void _preview(int index, String openHeroTag) {
     // 与网格一致的混排顺序：已入库图在前、暂存图在后
     final paths = [
@@ -146,9 +160,53 @@ class _BillImageSheetState extends State<BillImageSheet> {
           paths: paths,
           initialIndex: index,
           openHeroTag: openHeroTag,
+          onEdit: (path) {
+            Navigator.of(context).pop();
+            _editImage(path);
+          },
         ),
       ),
     );
+  }
+
+  /// 编辑一张图：编辑器返回新图字节后分两种落地方式：
+  /// · 暂存图：新字节重新压缩暂存，原位替换路径，旧暂存文件删除；
+  /// · 已入库图：仓储层"删旧存新"替换（记录/本地文件/云端对象），
+  ///   新记录继承原 sort，并立即触发上传
+  Future<void> _editImage(String path) async {
+    final edited = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(
+        builder: (_) => ImageEditPage(sourcePath: path),
+      ),
+    );
+    if (edited == null || !mounted) return;
+    try {
+      final existingIndex =
+          _existing.indexWhere((e) => e.localPath == path);
+      if (existingIndex >= 0) {
+        final client =
+            context.read<CloudStorageProvider>().createClient();
+        final created = await widget.repo.replaceImage(
+          _existing[existingIndex],
+          edited,
+          client: client,
+        );
+        if (created == null) throw Exception('替换失败');
+        if (client != null) {
+          unawaited(widget.repo.uploadOne(created, client));
+        }
+        setState(() => _existing[existingIndex] = created);
+      } else {
+        final stagedIndex = _staged.indexOf(path);
+        if (stagedIndex < 0) return;
+        final newPath = await widget.repo.photos.stage(edited);
+        setState(() => _staged[stagedIndex] = newPath);
+        await widget.repo.photos.discard(path);
+      }
+      _notify();
+    } catch (_) {
+      if (mounted) showAppToast(context, '保存编辑失败，请重试');
+    }
   }
 
   @override
