@@ -43,21 +43,34 @@ class AssetProvider extends ChangeNotifier {
     }
   }
 
+  /// 流只建一次、生命周期内复用：旧写法每次 build 调 activeStream()
+  /// 都新建一条查询流，StreamBuilder 收到初始数据→重建→又新建流，
+  /// 形成无限循环把主线程拖死（资产页转场灰屏、滑动输入超时 ANR）。
+  late final Stream<List<Asset>> _activeStream = _repo.watchActive();
+  late final Stream<List<Asset>> _archivedStream = _repo.watchArchived();
+  late final Stream<Map<int, Asset>> _assetsMapStream = _repo.watchAll().map(
+    (list) => {for (final a in list) a.id: a},
+  );
+  late final Stream<AssetSummary> _summaryStream = _repo.watchSummary();
+
   /// 未归档资产流（资产区/负债区列表）
-  Stream<List<Asset>> activeStream() => _repo.watchActive();
+  Stream<List<Asset>> activeStream() => _activeStream;
 
   /// 已归档资产流（列表底部折叠区）
-  Stream<List<Asset>> archivedStream() => _repo.watchArchived();
+  Stream<List<Asset>> archivedStream() => _archivedStream;
 
   /// id → 资产映射（含已归档）：账单条目"金额下方账户小字"按 id 查名
-  Stream<Map<int, Asset>> assetsMapStream() =>
-      _repo.watchAll().map((list) => {for (final a in list) a.id: a});
+  Stream<Map<int, Asset>> assetsMapStream() => _assetsMapStream;
 
   /// 汇总流：资产/负债合计、净值、分类构成
-  Stream<AssetSummary> summaryStream() => _repo.watchSummary();
+  Stream<AssetSummary> summaryStream() => _summaryStream;
 
   /// 历史净值序列（不含今天的快照聚合点）
-  Stream<List<NetValuePoint>> netHistoryStream() => _repo.watchNetHistory();
+  ///
+  /// [from] 传档位起点做范围限查：日/月/年档只取窗口内的行，
+  /// 传 null 取全量（"全部"档）。各档位数据源不同，不做缓存共用。
+  Stream<List<NetValuePoint>> netHistoryStream({DateTime? from}) =>
+      _repo.watchNetHistory(from: from);
 
   /// 新增资产（同时落初始快照）
   Future<void> addAsset({
@@ -128,8 +141,7 @@ class AssetProvider extends ChangeNotifier {
       _repo.setArchived(asset, archived: archived);
 
   /// 关联账单笔数（删除确认框提示用）
-  Future<int> relatedBillCount(int assetId) =>
-      _repo.relatedBillCount(assetId);
+  Future<int> relatedBillCount(int assetId) => _repo.relatedBillCount(assetId);
 
   /// 彻底删除资产：快照连删，关联账单解除关联但保留
   Future<void> deleteAsset(Asset asset) => _repo.deleteAsset(asset);

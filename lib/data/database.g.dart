@@ -4048,6 +4048,275 @@ class AssetSnapshotsCompanion extends UpdateCompanion<AssetSnapshot> {
   }
 }
 
+class $NetValueDaysTable extends NetValueDays
+    with TableInfo<$NetValueDaysTable, NetValueDay> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NetValueDaysTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _dayMeta = const VerificationMeta('day');
+  @override
+  late final GeneratedColumn<String> day = GeneratedColumn<String>(
+    'day',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _netCentsMeta = const VerificationMeta(
+    'netCents',
+  );
+  @override
+  late final GeneratedColumn<int> netCents = GeneratedColumn<int>(
+    'net_cents',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [day, netCents, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'net_value_days';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NetValueDay> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('day')) {
+      context.handle(
+        _dayMeta,
+        day.isAcceptableOrUnknown(data['day']!, _dayMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dayMeta);
+    }
+    if (data.containsKey('net_cents')) {
+      context.handle(
+        _netCentsMeta,
+        netCents.isAcceptableOrUnknown(data['net_cents']!, _netCentsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_netCentsMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {day};
+  @override
+  NetValueDay map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NetValueDay(
+      day: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}day'],
+      )!,
+      netCents: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}net_cents'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $NetValueDaysTable createAlias(String alias) {
+    return $NetValueDaysTable(attachedDatabase, alias);
+  }
+}
+
+class NetValueDay extends DataClass implements Insertable<NetValueDay> {
+  /// 日期 `yyyy-MM-dd`，天然唯一（主键即幂等键）
+  final String day;
+
+  /// 当日净值，单位：分（可为负）
+  final int netCents;
+
+  /// 最近一次重算时间（毫秒时间戳，排查脏数据用）
+  final int updatedAt;
+  const NetValueDay({
+    required this.day,
+    required this.netCents,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['day'] = Variable<String>(day);
+    map['net_cents'] = Variable<int>(netCents);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  NetValueDaysCompanion toCompanion(bool nullToAbsent) {
+    return NetValueDaysCompanion(
+      day: Value(day),
+      netCents: Value(netCents),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory NetValueDay.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NetValueDay(
+      day: serializer.fromJson<String>(json['day']),
+      netCents: serializer.fromJson<int>(json['netCents']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'day': serializer.toJson<String>(day),
+      'netCents': serializer.toJson<int>(netCents),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  NetValueDay copyWith({String? day, int? netCents, int? updatedAt}) =>
+      NetValueDay(
+        day: day ?? this.day,
+        netCents: netCents ?? this.netCents,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  NetValueDay copyWithCompanion(NetValueDaysCompanion data) {
+    return NetValueDay(
+      day: data.day.present ? data.day.value : this.day,
+      netCents: data.netCents.present ? data.netCents.value : this.netCents,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NetValueDay(')
+          ..write('day: $day, ')
+          ..write('netCents: $netCents, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(day, netCents, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NetValueDay &&
+          other.day == this.day &&
+          other.netCents == this.netCents &&
+          other.updatedAt == this.updatedAt);
+}
+
+class NetValueDaysCompanion extends UpdateCompanion<NetValueDay> {
+  final Value<String> day;
+  final Value<int> netCents;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const NetValueDaysCompanion({
+    this.day = const Value.absent(),
+    this.netCents = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NetValueDaysCompanion.insert({
+    required String day,
+    required int netCents,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : day = Value(day),
+       netCents = Value(netCents),
+       updatedAt = Value(updatedAt);
+  static Insertable<NetValueDay> custom({
+    Expression<String>? day,
+    Expression<int>? netCents,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (day != null) 'day': day,
+      if (netCents != null) 'net_cents': netCents,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NetValueDaysCompanion copyWith({
+    Value<String>? day,
+    Value<int>? netCents,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return NetValueDaysCompanion(
+      day: day ?? this.day,
+      netCents: netCents ?? this.netCents,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (day.present) {
+      map['day'] = Variable<String>(day.value);
+    }
+    if (netCents.present) {
+      map['net_cents'] = Variable<int>(netCents.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NetValueDaysCompanion(')
+          ..write('day: $day, ')
+          ..write('netCents: $netCents, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DebtNotesTable extends DebtNotes
     with TableInfo<$DebtNotesTable, DebtNote> {
   @override
@@ -5223,6 +5492,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BillImagesTable billImages = $BillImagesTable(this);
   late final $AssetsTable assets = $AssetsTable(this);
   late final $AssetSnapshotsTable assetSnapshots = $AssetSnapshotsTable(this);
+  late final $NetValueDaysTable netValueDays = $NetValueDaysTable(this);
   late final $DebtNotesTable debtNotes = $DebtNotesTable(this);
   late final $DebtNoteImagesTable debtNoteImages = $DebtNoteImagesTable(this);
   late final Index billsDateCreated = Index(
@@ -5262,6 +5532,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     billImages,
     assets,
     assetSnapshots,
+    netValueDays,
     debtNotes,
     debtNoteImages,
     billsDateCreated,
@@ -5273,28 +5544,26 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   ];
 }
 
-typedef $$CategoriesTableCreateCompanionBuilder =
-    CategoriesCompanion Function({
-      Value<int> id,
-      required String name,
-      required int iconCode,
-      required int colorValue,
-      required BillType type,
-      Value<int?> parentId,
-      Value<int> sortOrder,
-      Value<bool> isFallback,
-    });
-typedef $$CategoriesTableUpdateCompanionBuilder =
-    CategoriesCompanion Function({
-      Value<int> id,
-      Value<String> name,
-      Value<int> iconCode,
-      Value<int> colorValue,
-      Value<BillType> type,
-      Value<int?> parentId,
-      Value<int> sortOrder,
-      Value<bool> isFallback,
-    });
+typedef $$CategoriesTableCreateCompanionBuilder = CategoriesCompanion Function({
+  Value<int> id,
+  required String name,
+  required int iconCode,
+  required int colorValue,
+  required BillType type,
+  Value<int?> parentId,
+  Value<int> sortOrder,
+  Value<bool> isFallback,
+});
+typedef $$CategoriesTableUpdateCompanionBuilder = CategoriesCompanion Function({
+  Value<int> id,
+  Value<String> name,
+  Value<int> iconCode,
+  Value<int> colorValue,
+  Value<BillType> type,
+  Value<int?> parentId,
+  Value<int> sortOrder,
+  Value<bool> isFallback,
+});
 
 class $$CategoriesTableFilterComposer
     extends Composer<_$AppDatabase, $CategoriesTable> {
@@ -5523,44 +5792,42 @@ typedef $$CategoriesTableProcessedTableManager =
       Category,
       PrefetchHooks Function()
     >;
-typedef $$BillsTableCreateCompanionBuilder =
-    BillsCompanion Function({
-      Value<int> id,
-      required BillType type,
-      required int amountCents,
-      Value<int?> discountCents,
-      Value<int?> categoryId,
-      Value<String?> note,
-      required DateTime date,
-      Value<int?> timeMinute,
-      Value<String?> location,
-      Value<String?> locationFull,
-      Value<double?> lat,
-      Value<double?> lng,
-      Value<DateTime> createdAt,
-      Value<int?> importBatchId,
-      Value<int?> assetId,
-      Value<int?> toAssetId,
-    });
-typedef $$BillsTableUpdateCompanionBuilder =
-    BillsCompanion Function({
-      Value<int> id,
-      Value<BillType> type,
-      Value<int> amountCents,
-      Value<int?> discountCents,
-      Value<int?> categoryId,
-      Value<String?> note,
-      Value<DateTime> date,
-      Value<int?> timeMinute,
-      Value<String?> location,
-      Value<String?> locationFull,
-      Value<double?> lat,
-      Value<double?> lng,
-      Value<DateTime> createdAt,
-      Value<int?> importBatchId,
-      Value<int?> assetId,
-      Value<int?> toAssetId,
-    });
+typedef $$BillsTableCreateCompanionBuilder = BillsCompanion Function({
+  Value<int> id,
+  required BillType type,
+  required int amountCents,
+  Value<int?> discountCents,
+  Value<int?> categoryId,
+  Value<String?> note,
+  required DateTime date,
+  Value<int?> timeMinute,
+  Value<String?> location,
+  Value<String?> locationFull,
+  Value<double?> lat,
+  Value<double?> lng,
+  Value<DateTime> createdAt,
+  Value<int?> importBatchId,
+  Value<int?> assetId,
+  Value<int?> toAssetId,
+});
+typedef $$BillsTableUpdateCompanionBuilder = BillsCompanion Function({
+  Value<int> id,
+  Value<BillType> type,
+  Value<int> amountCents,
+  Value<int?> discountCents,
+  Value<int?> categoryId,
+  Value<String?> note,
+  Value<DateTime> date,
+  Value<int?> timeMinute,
+  Value<String?> location,
+  Value<String?> locationFull,
+  Value<double?> lat,
+  Value<double?> lng,
+  Value<DateTime> createdAt,
+  Value<int?> importBatchId,
+  Value<int?> assetId,
+  Value<int?> toAssetId,
+});
 
 class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
   $$BillsTableFilterComposer({
@@ -5932,20 +6199,18 @@ typedef $$BillsTableProcessedTableManager =
       Bill,
       PrefetchHooks Function()
     >;
-typedef $$BudgetsTableCreateCompanionBuilder =
-    BudgetsCompanion Function({
-      Value<int> id,
-      required String month,
-      required int amountCents,
-      Value<int> categoryId,
-    });
-typedef $$BudgetsTableUpdateCompanionBuilder =
-    BudgetsCompanion Function({
-      Value<int> id,
-      Value<String> month,
-      Value<int> amountCents,
-      Value<int> categoryId,
-    });
+typedef $$BudgetsTableCreateCompanionBuilder = BudgetsCompanion Function({
+  Value<int> id,
+  required String month,
+  required int amountCents,
+  Value<int> categoryId,
+});
+typedef $$BudgetsTableUpdateCompanionBuilder = BudgetsCompanion Function({
+  Value<int> id,
+  Value<String> month,
+  Value<int> amountCents,
+  Value<int> categoryId,
+});
 
 class $$BudgetsTableFilterComposer
     extends Composer<_$AppDatabase, $BudgetsTable> {
@@ -6105,22 +6370,20 @@ typedef $$BudgetsTableProcessedTableManager =
       Budget,
       PrefetchHooks Function()
     >;
-typedef $$TagsTableCreateCompanionBuilder =
-    TagsCompanion Function({
-      Value<int> id,
-      required String name,
-      required int color,
-      Value<int> sortOrder,
-      Value<DateTime> createdAt,
-    });
-typedef $$TagsTableUpdateCompanionBuilder =
-    TagsCompanion Function({
-      Value<int> id,
-      Value<String> name,
-      Value<int> color,
-      Value<int> sortOrder,
-      Value<DateTime> createdAt,
-    });
+typedef $$TagsTableCreateCompanionBuilder = TagsCompanion Function({
+  Value<int> id,
+  required String name,
+  required int color,
+  Value<int> sortOrder,
+  Value<DateTime> createdAt,
+});
+typedef $$TagsTableUpdateCompanionBuilder = TagsCompanion Function({
+  Value<int> id,
+  Value<String> name,
+  Value<int> color,
+  Value<int> sortOrder,
+  Value<DateTime> createdAt,
+});
 
 class $$TagsTableFilterComposer extends Composer<_$AppDatabase, $TagsTable> {
   $$TagsTableFilterComposer({
@@ -6291,18 +6554,16 @@ typedef $$TagsTableProcessedTableManager =
       Tag,
       PrefetchHooks Function()
     >;
-typedef $$BillTagsTableCreateCompanionBuilder =
-    BillTagsCompanion Function({
-      required int billId,
-      required int tagId,
-      Value<int> rowid,
-    });
-typedef $$BillTagsTableUpdateCompanionBuilder =
-    BillTagsCompanion Function({
-      Value<int> billId,
-      Value<int> tagId,
-      Value<int> rowid,
-    });
+typedef $$BillTagsTableCreateCompanionBuilder = BillTagsCompanion Function({
+  required int billId,
+  required int tagId,
+  Value<int> rowid,
+});
+typedef $$BillTagsTableUpdateCompanionBuilder = BillTagsCompanion Function({
+  Value<int> billId,
+  Value<int> tagId,
+  Value<int> rowid,
+});
 
 class $$BillTagsTableFilterComposer
     extends Composer<_$AppDatabase, $BillTagsTable> {
@@ -6386,13 +6647,11 @@ class $$BillTagsTableTableManager
               $$BillTagsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$BillTagsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> billId = const Value.absent(),
-                Value<int> tagId = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) =>
-                  BillTagsCompanion(billId: billId, tagId: tagId, rowid: rowid),
+          updateCompanionCallback: ({
+            Value<int> billId = const Value.absent(),
+            Value<int> tagId = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) => BillTagsCompanion(billId: billId, tagId: tagId, rowid: rowid),
           createCompanionCallback:
               ({
                 required int billId,
@@ -6425,26 +6684,24 @@ typedef $$BillTagsTableProcessedTableManager =
       BillTag,
       PrefetchHooks Function()
     >;
-typedef $$BillImagesTableCreateCompanionBuilder =
-    BillImagesCompanion Function({
-      Value<int> id,
-      required int billId,
-      required String objectKey,
-      required String localPath,
-      required BillImageUploadState uploadState,
-      Value<DateTime> createdAt,
-      Value<int> sort,
-    });
-typedef $$BillImagesTableUpdateCompanionBuilder =
-    BillImagesCompanion Function({
-      Value<int> id,
-      Value<int> billId,
-      Value<String> objectKey,
-      Value<String> localPath,
-      Value<BillImageUploadState> uploadState,
-      Value<DateTime> createdAt,
-      Value<int> sort,
-    });
+typedef $$BillImagesTableCreateCompanionBuilder = BillImagesCompanion Function({
+  Value<int> id,
+  required int billId,
+  required String objectKey,
+  required String localPath,
+  required BillImageUploadState uploadState,
+  Value<DateTime> createdAt,
+  Value<int> sort,
+});
+typedef $$BillImagesTableUpdateCompanionBuilder = BillImagesCompanion Function({
+  Value<int> id,
+  Value<int> billId,
+  Value<String> objectKey,
+  Value<String> localPath,
+  Value<BillImageUploadState> uploadState,
+  Value<DateTime> createdAt,
+  Value<int> sort,
+});
 
 class $$BillImagesTableFilterComposer
     extends Composer<_$AppDatabase, $BillImagesTable> {
@@ -6662,42 +6919,40 @@ typedef $$BillImagesTableProcessedTableManager =
       BillImage,
       PrefetchHooks Function()
     >;
-typedef $$AssetsTableCreateCompanionBuilder =
-    AssetsCompanion Function({
-      Value<int> id,
-      required String name,
-      required AssetKind kind,
-      required String category,
-      Value<String?> institution,
-      required int valueCents,
-      Value<String?> note,
-      Value<int> sortOrder,
-      Value<bool> archived,
-      Value<bool> includeInNet,
-      Value<int?> creditLimitCents,
-      Value<int?> billDay,
-      Value<int?> repayDay,
-      Value<DateTime> createdAt,
-      Value<DateTime> updatedAt,
-    });
-typedef $$AssetsTableUpdateCompanionBuilder =
-    AssetsCompanion Function({
-      Value<int> id,
-      Value<String> name,
-      Value<AssetKind> kind,
-      Value<String> category,
-      Value<String?> institution,
-      Value<int> valueCents,
-      Value<String?> note,
-      Value<int> sortOrder,
-      Value<bool> archived,
-      Value<bool> includeInNet,
-      Value<int?> creditLimitCents,
-      Value<int?> billDay,
-      Value<int?> repayDay,
-      Value<DateTime> createdAt,
-      Value<DateTime> updatedAt,
-    });
+typedef $$AssetsTableCreateCompanionBuilder = AssetsCompanion Function({
+  Value<int> id,
+  required String name,
+  required AssetKind kind,
+  required String category,
+  Value<String?> institution,
+  required int valueCents,
+  Value<String?> note,
+  Value<int> sortOrder,
+  Value<bool> archived,
+  Value<bool> includeInNet,
+  Value<int?> creditLimitCents,
+  Value<int?> billDay,
+  Value<int?> repayDay,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+typedef $$AssetsTableUpdateCompanionBuilder = AssetsCompanion Function({
+  Value<int> id,
+  Value<String> name,
+  Value<AssetKind> kind,
+  Value<String> category,
+  Value<String?> institution,
+  Value<int> valueCents,
+  Value<String?> note,
+  Value<int> sortOrder,
+  Value<bool> archived,
+  Value<bool> includeInNet,
+  Value<int?> creditLimitCents,
+  Value<int?> billDay,
+  Value<int?> repayDay,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
 
 class $$AssetsTableFilterComposer
     extends Composer<_$AppDatabase, $AssetsTable> {
@@ -7247,34 +7502,194 @@ typedef $$AssetSnapshotsTableProcessedTableManager =
       AssetSnapshot,
       PrefetchHooks Function()
     >;
-typedef $$DebtNotesTableCreateCompanionBuilder =
-    DebtNotesCompanion Function({
-      Value<int> id,
-      required DebtDirection direction,
-      required String personName,
-      required int amountCents,
-      Value<String?> note,
-      Value<int?> relatedAssetId,
-      required DateTime borrowedAt,
-      Value<DateTime?> repayDueAt,
-      Value<bool> includeInTotal,
-      Value<DateTime> createdAt,
-      Value<DateTime> updatedAt,
+typedef $$NetValueDaysTableCreateCompanionBuilder =
+    NetValueDaysCompanion Function({
+      required String day,
+      required int netCents,
+      required int updatedAt,
+      Value<int> rowid,
     });
-typedef $$DebtNotesTableUpdateCompanionBuilder =
-    DebtNotesCompanion Function({
-      Value<int> id,
-      Value<DebtDirection> direction,
-      Value<String> personName,
-      Value<int> amountCents,
-      Value<String?> note,
-      Value<int?> relatedAssetId,
-      Value<DateTime> borrowedAt,
-      Value<DateTime?> repayDueAt,
-      Value<bool> includeInTotal,
-      Value<DateTime> createdAt,
-      Value<DateTime> updatedAt,
+typedef $$NetValueDaysTableUpdateCompanionBuilder =
+    NetValueDaysCompanion Function({
+      Value<String> day,
+      Value<int> netCents,
+      Value<int> updatedAt,
+      Value<int> rowid,
     });
+
+class $$NetValueDaysTableFilterComposer
+    extends Composer<_$AppDatabase, $NetValueDaysTable> {
+  $$NetValueDaysTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get day => $composableBuilder(
+    column: $table.day,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get netCents => $composableBuilder(
+    column: $table.netCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$NetValueDaysTableOrderingComposer
+    extends Composer<_$AppDatabase, $NetValueDaysTable> {
+  $$NetValueDaysTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get day => $composableBuilder(
+    column: $table.day,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get netCents => $composableBuilder(
+    column: $table.netCents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$NetValueDaysTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NetValueDaysTable> {
+  $$NetValueDaysTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get day =>
+      $composableBuilder(column: $table.day, builder: (column) => column);
+
+  GeneratedColumn<int> get netCents =>
+      $composableBuilder(column: $table.netCents, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$NetValueDaysTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NetValueDaysTable,
+          NetValueDay,
+          $$NetValueDaysTableFilterComposer,
+          $$NetValueDaysTableOrderingComposer,
+          $$NetValueDaysTableAnnotationComposer,
+          $$NetValueDaysTableCreateCompanionBuilder,
+          $$NetValueDaysTableUpdateCompanionBuilder,
+          (
+            NetValueDay,
+            BaseReferences<_$AppDatabase, $NetValueDaysTable, NetValueDay>,
+          ),
+          NetValueDay,
+          PrefetchHooks Function()
+        > {
+  $$NetValueDaysTableTableManager(_$AppDatabase db, $NetValueDaysTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NetValueDaysTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NetValueDaysTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NetValueDaysTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> day = const Value.absent(),
+                Value<int> netCents = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NetValueDaysCompanion(
+                day: day,
+                netCents: netCents,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String day,
+                required int netCents,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => NetValueDaysCompanion.insert(
+                day: day,
+                netCents: netCents,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$NetValueDaysTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NetValueDaysTable,
+      NetValueDay,
+      $$NetValueDaysTableFilterComposer,
+      $$NetValueDaysTableOrderingComposer,
+      $$NetValueDaysTableAnnotationComposer,
+      $$NetValueDaysTableCreateCompanionBuilder,
+      $$NetValueDaysTableUpdateCompanionBuilder,
+      (
+        NetValueDay,
+        BaseReferences<_$AppDatabase, $NetValueDaysTable, NetValueDay>,
+      ),
+      NetValueDay,
+      PrefetchHooks Function()
+    >;
+typedef $$DebtNotesTableCreateCompanionBuilder = DebtNotesCompanion Function({
+  Value<int> id,
+  required DebtDirection direction,
+  required String personName,
+  required int amountCents,
+  Value<String?> note,
+  Value<int?> relatedAssetId,
+  required DateTime borrowedAt,
+  Value<DateTime?> repayDueAt,
+  Value<bool> includeInTotal,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+typedef $$DebtNotesTableUpdateCompanionBuilder = DebtNotesCompanion Function({
+  Value<int> id,
+  Value<DebtDirection> direction,
+  Value<String> personName,
+  Value<int> amountCents,
+  Value<String?> note,
+  Value<int?> relatedAssetId,
+  Value<DateTime> borrowedAt,
+  Value<DateTime?> repayDueAt,
+  Value<bool> includeInTotal,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
 
 class $$DebtNotesTableFilterComposer
     extends Composer<_$AppDatabase, $DebtNotesTable> {
@@ -7823,6 +8238,8 @@ class $AppDatabaseManager {
       $$AssetsTableTableManager(_db, _db.assets);
   $$AssetSnapshotsTableTableManager get assetSnapshots =>
       $$AssetSnapshotsTableTableManager(_db, _db.assetSnapshots);
+  $$NetValueDaysTableTableManager get netValueDays =>
+      $$NetValueDaysTableTableManager(_db, _db.netValueDays);
   $$DebtNotesTableTableManager get debtNotes =>
       $$DebtNotesTableTableManager(_db, _db.debtNotes);
   $$DebtNoteImagesTableTableManager get debtNoteImages =>

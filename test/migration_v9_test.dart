@@ -86,10 +86,9 @@ void main() {
     // 惰性打开：任一查询触发建库/迁移
     await db.customSelect('SELECT 1').get();
 
-    // 版本已推进到 13
-    final version =
-        (await db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 13);
+    // 版本已推进到 14
+    final version = (await db.customSelect('PRAGMA user_version').get()).single;
+    expect(version.data['user_version'], 14);
 
     // 列结构：两个新列存在，category_id 变为可空
     final cols = await db.customSelect('PRAGMA table_info(bills)').get();
@@ -107,15 +106,17 @@ void main() {
     expect(old.single.toAssetId, isNull);
 
     // 可空生效：转账账单无分类可正常插入，账户列可写入
-    await db.into(db.bills).insert(
-      BillsCompanion.insert(
-        type: BillType.transfer,
-        amountCents: 1000,
-        date: DateTime(2026, 10, 10),
-        assetId: const Value(1),
-        toAssetId: const Value(1),
-      ),
-    );
+    await db
+        .into(db.bills)
+        .insert(
+          BillsCompanion.insert(
+            type: BillType.transfer,
+            amountCents: 1000,
+            date: DateTime(2026, 10, 10),
+            assetId: const Value(1),
+            toAssetId: const Value(1),
+          ),
+        );
     final after = await db.select(db.bills).get();
     expect(after, hasLength(2));
     final transfer = after.last;

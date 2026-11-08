@@ -88,15 +88,20 @@ void main() {
     int assetId,
     String day,
     int valueCents,
-  ) => db
-      .into(db.assetSnapshots)
-      .insert(
-        AssetSnapshotsCompanion.insert(
-          assetId: assetId,
-          day: day,
-          valueCents: valueCents,
-        ),
-      );
+  ) async {
+    final id = await db
+        .into(db.assetSnapshots)
+        .insert(
+          AssetSnapshotsCompanion.insert(
+            assetId: assetId,
+            day: day,
+            valueCents: valueCents,
+          ),
+        );
+    // 测试直接落快照绕过了仓储写入收口，历史日期的净值表需手动重算
+    await db.rebuildNetValueDays();
+    return id;
+  }
 
   test('新增资产：写入资产表并落一条初始快照', () async {
     await repo.insertAsset(
@@ -127,10 +132,7 @@ void main() {
     }
     final active = await repo.watchActive().first;
     expect(active, hasLength(3));
-    expect(
-      active.map((a) => a.sortOrder),
-      [0, 1, 2],
-    );
+    expect(active.map((a) => a.sortOrder), [0, 1, 2]);
   });
 
   test('新增信用卡资产：额度/出账日/还款日与净值开关一并写入', () async {
@@ -248,7 +250,9 @@ void main() {
 
     final snaps = (await repo.watchSnapshots(a.id).first)
         // 建资产时落了今天的初始快照，不在本次断言范围
-        .where((s) => s.day != DateTime.now().toIso8601String().substring(0, 10))
+        .where(
+          (s) => s.day != DateTime.now().toIso8601String().substring(0, 10),
+        )
         .toList();
     expect(snaps.map((s) => s.day), ['2026-10-11', '2026-10-10', '2026-10-09']);
     expect(snaps.first.valueCents, 300000);
@@ -344,9 +348,15 @@ void main() {
     expect(summary.netCents, 10000);
 
     // 再打开开关后立即参与
-    final idle = (await repo.watchActive().first)
-        .firstWhere((a) => a.name == '闲置卡');
-    await repo.updateInfo(idle, name: '闲置卡', category: '现金', includeInNet: true);
+    final idle = (await repo.watchActive().first).firstWhere(
+      (a) => a.name == '闲置卡',
+    );
+    await repo.updateInfo(
+      idle,
+      name: '闲置卡',
+      category: '现金',
+      includeInNet: true,
+    );
     final after = await repo.watchSummary().first;
     expect(after.assetCents, 15000);
     expect(after.assetCount, 2);
@@ -446,12 +456,10 @@ void main() {
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
 
     // 暂存走共享服务（压缩对非法图片必然失败 → 退回原图，无需真 JPEG）
-    final staged1 =
-        await PhotoStagingService(dirName: 'debt_photos')
-            .stage(Uint8List.fromList([1, 2, 3]));
-    final staged2 =
-        await PhotoStagingService(dirName: 'debt_photos')
-            .stage(Uint8List.fromList([4, 5, 6]));
+    final staged1 = await PhotoStagingService(dirName: 'debt_photos')
+        .stage(Uint8List.fromList([1, 2, 3]));
+    final staged2 = await PhotoStagingService(dirName: 'debt_photos')
+        .stage(Uint8List.fromList([4, 5, 6]));
     final note = await debtRepo.insertDebtNote(
       direction: DebtDirection.lendOut,
       personName: '老王',
@@ -462,8 +470,10 @@ void main() {
     // 转正后照片行成对出现，objectKey 按借款月归目录、文件名带借条 ID
     var photos = await debtRepo.getPhotosByNoteId(note.id);
     expect(photos, hasLength(2));
-    expect(photos[0].objectKey,
-        startsWith('chestnut/debt_photos/202610/20261001_${note.id}_'));
+    expect(
+      photos[0].objectKey,
+      startsWith('chestnut/debt_photos/202610/20261001_${note.id}_'),
+    );
     expect(photos[0].uploadState, BillImageUploadState.pending);
 
     // 上传成功：假客户端收到 PUT，状态转 done
@@ -495,9 +505,8 @@ void main() {
     });
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
 
-    final staged =
-        await PhotoStagingService(dirName: 'debt_photos')
-            .stage(Uint8List.fromList([1, 2, 3]));
+    final staged = await PhotoStagingService(dirName: 'debt_photos')
+        .stage(Uint8List.fromList([1, 2, 3]));
     final note = await debtRepo.insertDebtNote(
       direction: DebtDirection.borrowIn,
       personName: '老李',
@@ -530,9 +539,8 @@ void main() {
     });
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
 
-    final s1 =
-        await PhotoStagingService(dirName: 'debt_photos')
-            .stage(Uint8List.fromList([1]));
+    final s1 = await PhotoStagingService(dirName: 'debt_photos')
+        .stage(Uint8List.fromList([1]));
     final note = await debtRepo.insertDebtNote(
       direction: DebtDirection.lendOut,
       personName: '老王',
@@ -543,9 +551,8 @@ void main() {
     final before = await debtRepo.getPhotosByNoteId(note.id);
 
     // 删旧图 + 加新图一次保存：旧记录/文件/云端对象清掉，新图 pending
-    final s2 =
-        await PhotoStagingService(dirName: 'debt_photos')
-            .stage(Uint8List.fromList([2, 3]));
+    final s2 = await PhotoStagingService(dirName: 'debt_photos')
+        .stage(Uint8List.fromList([2, 3]));
     final client = _FakeS3();
     await debtRepo.updateDebtNote(
       note,
@@ -575,7 +582,9 @@ void main() {
       ('其他', AssetKind.liability, '旧负其他'),
     ];
     for (final (category, kind, name) in legacy) {
-      await db.into(db.assets).insert(
+      await db
+          .into(db.assets)
+          .insert(
             AssetsCompanion.insert(
               name: name,
               kind: kind,
@@ -652,16 +661,15 @@ void main() {
     // 触发打开：onUpgrade(6→11) 走幂等路径，不抛 duplicate column
     await halfDb.customSelect('SELECT 1').get();
 
-    // 版本已推进到 13
+    // 版本已推进到 14
     final version =
         (await halfDb.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 13);
+    expect(version.data['user_version'], 14);
 
     // 缺失的三列已补齐、debt_notes 已建
-    final cols =
-        (await halfDb.customSelect('PRAGMA table_info(assets)').get())
-            .map((r) => r.data['name'] as String)
-            .toList();
+    final cols = (await halfDb.customSelect('PRAGMA table_info(assets)').get())
+        .map((r) => r.data['name'] as String)
+        .toList();
     for (final name in [
       'credit_limit_cents',
       'bill_day',
@@ -670,12 +678,13 @@ void main() {
     ]) {
       expect(cols, contains(name));
     }
-    final tables = (await halfDb
-            .customSelect(
-              "SELECT name FROM sqlite_master WHERE type = 'table'",
-            )
-            .get())
-        .map((r) => r.data['name'] as String);
+    final tables =
+        (await halfDb
+                .customSelect(
+                  "SELECT name FROM sqlite_master WHERE type = 'table'",
+                )
+                .get())
+            .map((r) => r.data['name'] as String);
     expect(tables, contains('debt_notes'));
     expect(tables, contains('debt_note_images'));
 
@@ -770,16 +779,18 @@ void main() {
 
     final version =
         (await v7Db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 13);
+    expect(version.data['user_version'], 14);
 
     // v11：institution 列回填——账户名恰为机构名的命中，带后缀的不硬猜，
     // 投资组按券商/平台名单回填
     final instRows =
         (await v7Db.customSelect('SELECT name, institution FROM assets').get())
-            .map((r) => MapEntry<String, String?>(
-                  r.data['name'] as String,
-                  r.data['institution'] as String?,
-                ))
+            .map(
+              (r) => MapEntry<String, String?>(
+                r.data['name'] as String,
+                r.data['institution'] as String?,
+              ),
+            )
             .toList();
     final instByName = {for (final e in instRows) e.key: e.value};
     expect(instByName['招商银行'], '招商银行');
@@ -845,9 +856,8 @@ void main() {
     addTearDown(db.close);
     await db.customSelect('SELECT 1').get();
 
-    final version =
-        (await db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 13);
+    final version = (await db.customSelect('PRAGMA user_version').get()).single;
+    expect(version.data['user_version'], 14);
 
     // institution 列已补齐、bank 列已删、机构值已搬入
     final cols = (await db.customSelect('PRAGMA table_info(assets)').get())
@@ -881,7 +891,9 @@ void main() {
     await insertAssetWithSnapshot(target.id, '2026-10-09', 10000);
 
     // 三笔账单：普通支出挂待删卡、转账 待删卡→保留卡、支出挂保留卡
-    await db.into(db.bills).insert(
+    await db
+        .into(db.bills)
+        .insert(
           BillsCompanion.insert(
             type: BillType.expense,
             amountCents: 100,
@@ -889,7 +901,9 @@ void main() {
             assetId: Value(target.id),
           ),
         );
-    await db.into(db.bills).insert(
+    await db
+        .into(db.bills)
+        .insert(
           BillsCompanion.insert(
             type: BillType.transfer,
             amountCents: 100,
@@ -898,7 +912,9 @@ void main() {
             toAssetId: Value(other.id),
           ),
         );
-    await db.into(db.bills).insert(
+    await db
+        .into(db.bills)
+        .insert(
           BillsCompanion.insert(
             type: BillType.expense,
             amountCents: 100,
@@ -914,8 +930,9 @@ void main() {
 
     // 资产行与快照已清，账单一笔不少
     expect(
-      await countOf('SELECT COUNT(*) AS c FROM assets WHERE id = ?',
-          [Variable(target.id)]),
+      await countOf('SELECT COUNT(*) AS c FROM assets WHERE id = ?', [
+        Variable(target.id),
+      ]),
       0,
     );
     expect(
@@ -935,8 +952,9 @@ void main() {
       0,
     );
     expect(
-      await countOf('SELECT COUNT(*) AS c FROM bills WHERE asset_id = ?',
-          [Variable(other.id)]),
+      await countOf('SELECT COUNT(*) AS c FROM bills WHERE asset_id = ?', [
+        Variable(other.id),
+      ]),
       1,
     );
   });
@@ -957,12 +975,12 @@ class _FakePathProvider extends PathProviderPlatform {
 /// [failPut] 模拟上传失败路径
 class _FakeS3 extends S3CompatibleClient {
   _FakeS3({this.failPut = false})
-      : super(
-          endpoint: 'https://fake.example.com',
-          bucket: 'chestnut-test',
-          accessKeyId: 'test',
-          secretAccessKey: 'test',
-        );
+    : super(
+        endpoint: 'https://fake.example.com',
+        bucket: 'chestnut-test',
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
+      );
 
   final bool failPut;
 

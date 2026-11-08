@@ -77,3 +77,27 @@ class AssetSnapshots extends Table {
   /// 快照时间：同一天多次更新时用于取"当天最后一条"
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
+/// 每日净值表（净值曲线唯一数据源）
+///
+/// 一行一天、按日稠密存储：空白天也落一行，值是前向填充后的水位
+/// （"没录 = 还是上次那个数"）。曲线读取退化成一次按日期范围的有序
+/// 扫表，不再 join 快照表 + 在 Dart 侧逐日铺点——那张表历史量上来后
+/// 每次重建都要重算上千天，是资产页卡死/ANR 的主因。
+///
+/// 只写昨天及以前：今天的净值随资产表实时变化，由 UI 用汇总快照净值
+/// 补末点，保证曲线末点与卡片数字始终一致。写入口径见
+/// AppDatabase.rebuildNetValueDays。
+class NetValueDays extends Table {
+  /// 日期 `yyyy-MM-dd`，天然唯一（主键即幂等键）
+  TextColumn get day => text()();
+
+  /// 当日净值，单位：分（可为负）
+  IntColumn get netCents => integer()();
+
+  /// 最近一次重算时间（毫秒时间戳，排查脏数据用）
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {day};
+}

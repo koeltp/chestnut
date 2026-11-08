@@ -116,9 +116,9 @@ class AssetRepository {
   /// 监听全部资产（含已归档）：账单条目"金额下方账户小字"按 id 查名用，
   /// 归档账户照常显示名字，只有删除后才兜底"已删除账户"
   Stream<List<Asset>> watchAll() {
-    return (_db.select(_db.assets)
-          ..orderBy([(a) => OrderingTerm.asc(a.id)]))
-        .watch();
+    return (_db.select(
+      _db.assets,
+    )..orderBy([(a) => OrderingTerm.asc(a.id)])).watch();
   }
 
   /// 监听资产页汇总（净值卡/负债率卡/借入借出卡共用一份数据源）
@@ -177,70 +177,26 @@ class AssetRepository {
   /// 监听历史净值序列（不含今天：当天净值随资产表实时变化，由 UI 以
   /// 当前值补上最后一点，保证曲线末点与卡片数字始终一致）
   ///
-  /// 聚合口径（前向填充）：每项资产取"最近一条 ≤ 当天"的快照参与合计，
-  /// 净值 = Σ资产 − Σ负债；首条快照起到昨天，每个自然日都有输出点。
-  /// 无快照的空白天沿用前值（"没录 = 还是上次那个数"），不再归零——
-  /// 消费/重估日落的是真实快照，闲置日水位本来就不该变。
-  /// 已归档资产的历史快照保留参与聚合，避免曲线回溯断层。
-  /// 注意：借条无快照，曲线为纯资产快照口径。
-  Stream<List<NetValuePoint>> watchNetHistory() {
-    final query =
-        _db.select(_db.assetSnapshots).join([
-          innerJoin(
-            _db.assets,
-            _db.assets.id.equalsExp(_db.assetSnapshots.assetId),
-          ),
-        ])
-          ..orderBy([
-            OrderingTerm.asc(_db.assetSnapshots.day),
-            OrderingTerm.asc(_db.assetSnapshots.createdAt),
-            OrderingTerm.asc(_db.assetSnapshots.id),
-          ]);
-    return query.watch().map((rows) {
-      final todayKey = _dayKey(DateTime.now());
-      final todayDate = DateTime.parse(todayKey);
-      // assetId -> 最近一次已知市值；行已按 day 升序，逐日滚动即前向填充
-      final lastValue = <int, int>{};
-      final kinds = <int, AssetKind>{};
-      final points = <NetValuePoint>[];
-      DateTime? cursor; // 下一个待铺点的自然日
-
-      int signedSum() => lastValue.entries.fold<int>(0, (sum, e) {
-            final signed =
-                kinds[e.key] == AssetKind.liability ? -e.value : e.value;
-            return sum + signed;
-          });
-
-      // 把 [cursor, day) 的空白天用当前合计铺满（今天除外，今天由 UI 补点）
-      void fillUntil(DateTime day) {
-        while (cursor != null && cursor!.isBefore(day)) {
-          final key = _dayKey(cursor!);
-          if (key != todayKey) points.add((key, signedSum()));
-          cursor = cursor!.add(const Duration(days: 1));
-        }
-      }
-
-      String? currentDay;
-      for (final row in rows) {
-        final snap = row.readTable(_db.assetSnapshots);
-        final asset = row.readTable(_db.assets);
-        kinds[snap.assetId] = asset.kind;
-        if (snap.day != currentDay) {
-          final day = DateTime.parse(snap.day);
-          if (cursor == null) {
-            cursor = day; // 首个快照日：从这里开始铺点
-          } else {
-            fillUntil(day); // 快照日之间的空白天沿用前值
-          }
-          currentDay = snap.day;
-        }
-        lastValue[snap.assetId] = snap.valueCents;
-      }
-      // 末个快照日之后铺到昨天为止
-      fillUntil(todayDate);
-      return points;
-    });
+  /// 直接读每日净值表（按日稠密、已前向填充），[from] 传档位起点做
+  /// 范围限查：日/月/年档只取窗口内的行，避免每次重建都扫全量历史；
+  /// 传 null 取全量（"全部"档）。
+  /// 表口径与旧版聚合逐点一致：每项资产取"最近一条 ≤ 当天"的快照，
+  /// 净值 = Σ资产 − Σ负债，空白天沿用前值；归档/未计入账户的历史
+  /// 快照照常参与，避免归档造成回溯断层。注意：借条无快照，曲线为
+  /// 纯资产快照口径。
+  Stream<List<NetValuePoint>> watchNetHistory({DateTime? from}) {
+    final query = _db.select(_db.netValueDays)
+      ..orderBy([(t) => OrderingTerm.asc(t.day)]);
+    if (from != null) {
+      query.where((t) => t.day.isBiggerOrEqualValue(_dayKey(from)));
+    }
+    return query.watch().map(
+      (rows) => [for (final r in rows) (r.day, r.netCents)],
+    );
   }
+
+  /// 启动时补齐每日净值表（昨天及以前），隔天打开也能立刻接上曲线
+  Future<void> ensureNetDaysCurrent() => _db.ensureNetValueDaysCurrent();
 
   /// 新增资产：落初始快照，让净值曲线从创建当天就有该项资产
   Future<void> insertAsset({
@@ -258,11 +214,12 @@ class AssetRepository {
     return _db.transaction(() async {
       // 取同类型里 sortOrder 最大的记录：必须 limit(1) 收窄到一行，
       // getSingleOrNull 只容忍 0/1 行，同类型已有两条以上时多行会炸
-      final maxOrder = await (_db.select(_db.assets)
-            ..where((a) => a.kind.equals(kind.index))
-            ..orderBy([(a) => OrderingTerm.desc(a.sortOrder)])
-            ..limit(1))
-          .getSingleOrNull();
+      final maxOrder =
+          await (_db.select(_db.assets)
+                ..where((a) => a.kind.equals(kind.index))
+                ..orderBy([(a) => OrderingTerm.desc(a.sortOrder)])
+                ..limit(1))
+              .getSingleOrNull();
       final id = await _db
           .into(_db.assets)
           .insert(
@@ -346,8 +303,7 @@ class AssetRepository {
     final query = _db.selectOnly(_db.bills)
       ..addColumns([count])
       ..where(
-        _db.bills.assetId.equals(assetId) |
-            _db.bills.toAssetId.equals(assetId),
+        _db.bills.assetId.equals(assetId) | _db.bills.toAssetId.equals(assetId),
       );
     return query.map((row) => row.read(count) ?? 0).getSingle();
   }
@@ -358,23 +314,28 @@ class AssetRepository {
   /// 不关联账户的纯记账）——账单是账本主体，删账户绝不动账单
   Future<void> deleteAsset(Asset asset) async {
     await _db.transaction(() async {
+      // 删前记下该资产最早快照日：删完后从这天起重算每日净值，
+      // 曲线里的历史贡献随之抹除（否则会残留已删账户的水位）
+      final earliest =
+          await (_db.select(_db.assetSnapshots)
+                ..where((s) => s.assetId.equals(asset.id))
+                ..orderBy([(s) => OrderingTerm.asc(s.day)])
+                ..limit(1))
+              .getSingleOrNull();
       // 先解除账单引用再删资产行，避免外键约束拒绝删除
-      await (_db.update(_db.bills)
-              ..where(
-                (b) =>
-                    b.assetId.equals(asset.id) |
-                    b.toAssetId.equals(asset.id),
-              ))
+      await (_db.update(_db.bills)..where(
+            (b) => b.assetId.equals(asset.id) | b.toAssetId.equals(asset.id),
+          ))
           .write(
-            const BillsCompanion(
-              assetId: Value(null),
-              toAssetId: Value(null),
-            ),
+            const BillsCompanion(assetId: Value(null), toAssetId: Value(null)),
           );
-      await (_db.delete(_db.assetSnapshots)
-            ..where((s) => s.assetId.equals(asset.id)))
-          .go();
+      await (_db.delete(
+        _db.assetSnapshots,
+      )..where((s) => s.assetId.equals(asset.id))).go();
       await (_db.delete(_db.assets)..where((a) => a.id.equals(asset.id))).go();
+      if (earliest != null) {
+        await _db.rebuildNetValueDays(fromDay: earliest.day);
+      }
     });
   }
 
@@ -405,37 +366,43 @@ class AssetRepository {
           ]))
         .watch()
         .map((rows) {
-      // 倒序遍历首见即该日最后一条；map 保插入序，天然保持日期倒序
-      final byDay = <String, AssetSnapshot>{};
-      for (final s in rows) {
-        byDay[s.day] ??= s;
-      }
-      return byDay.values.toList();
-    });
+          // 倒序遍历首见即该日最后一条；map 保插入序，天然保持日期倒序
+          final byDay = <String, AssetSnapshot>{};
+          for (final s in rows) {
+            byDay[s.day] ??= s;
+          }
+          return byDay.values.toList();
+        });
   }
 
   /// 修正某日市值：删该日全部旧快照 + 落一条新值（成为该日代表）。
   /// 误输市值（如多打一个 0）后的修正入口
   Future<void> updateSnapshotValue(int assetId, String day, int valueCents) {
     return _db.transaction(() async {
-      await (_db.delete(_db.assetSnapshots)
-            ..where((s) => s.assetId.equals(assetId) & s.day.equals(day)))
-          .go();
-      await _db.into(_db.assetSnapshots).insert(
+      await (_db.delete(
+        _db.assetSnapshots,
+      )..where((s) => s.assetId.equals(assetId) & s.day.equals(day))).go();
+      await _db
+          .into(_db.assetSnapshots)
+          .insert(
             AssetSnapshotsCompanion.insert(
               assetId: assetId,
               day: day,
               valueCents: valueCents,
             ),
           );
+      // 该日水位变了，其后的前向填充全要跟着改：从该日重算到昨天
+      await _db.rebuildNetValueDays(fromDay: day);
     });
   }
 
   /// 删除某日快照（该日全部行）：净值曲线该日不再计入该资产
-  Future<void> deleteSnapshotDay(int assetId, String day) {
-    return (_db.delete(_db.assetSnapshots)
-          ..where((s) => s.assetId.equals(assetId) & s.day.equals(day)))
-        .go();
+  Future<void> deleteSnapshotDay(int assetId, String day) async {
+    await (_db.delete(
+      _db.assetSnapshots,
+    )..where((s) => s.assetId.equals(assetId) & s.day.equals(day))).go();
+    // 删掉该日后该资产沿用更早的水位：同样从该日重算
+    await _db.rebuildNetValueDays(fromDay: day);
   }
 
   // ---------- 记账联动账户（余额直改模型） ----------
@@ -459,9 +426,9 @@ class AssetRepository {
     required int amountCents,
     bool enforceBalance = false,
   }) async {
-    final account = await (_db.select(_db.assets)
-          ..where((a) => a.id.equals(assetId)))
-        .getSingleOrNull();
+    final account = await (_db.select(
+      _db.assets,
+    )..where((a) => a.id.equals(assetId))).getSingleOrNull();
     if (account == null) return;
     final delta = account.kind == AssetKind.asset
         ? (isOutflow ? -amountCents : amountCents)

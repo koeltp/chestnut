@@ -29,6 +29,12 @@ class _GroupListSectionState extends State<GroupListSection> {
   /// 已展开的组名集合（组名即分类体系主键）
   final Set<String> _expanded = {};
 
+  /// 流只建一次：build 里新建流会让每次重建都重跑查询，形成
+  /// "收到数据→重建→再新建流"的无限循环
+  late final Stream<List<Asset>> _assetsStream = context
+      .read<AssetProvider>()
+      .activeStream();
+
   void _toggle(String groupName) {
     setState(() {
       if (!_expanded.remove(groupName)) _expanded.add(groupName);
@@ -38,7 +44,7 @@ class _GroupListSectionState extends State<GroupListSection> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Asset>>(
-      stream: context.read<AssetProvider>().activeStream(),
+      stream: _assetsStream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox.shrink();
         final list = snapshot.data!;
@@ -138,7 +144,9 @@ class _GroupRow extends StatelessWidget {
                 const SizedBox(width: AppDimens.gapMd),
                 Text(
                   fmtAssetAmount(
-                      group.kind == AssetKind.liability ? -total : total, masked),
+                    group.kind == AssetKind.liability ? -total : total,
+                    masked,
+                  ),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -184,8 +192,7 @@ class _AssetRow extends StatelessWidget {
     final masked = context.watch<AssetProvider>().masked;
     final isLiability = asset.kind == AssetKind.liability;
     final subtitle = _subtitleOf(asset);
-    final display =
-        '¥${MoneyUtil.centsToYuanGroupedTrimmed(asset.valueCents)}';
+    final display = '¥${MoneyUtil.centsToYuanGroupedTrimmed(asset.valueCents)}';
     return InkWell(
       // 点行进账户流水页；总资产卡整卡可点进编辑页
       onTap: () => Navigator.of(context).push(

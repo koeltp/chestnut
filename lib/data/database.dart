@@ -11,6 +11,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../models/enums.dart';
 import '../models/institutions.dart';
+import 'net_value_agg.dart';
 import 'tables/assets.dart';
 import 'tables/bill_images.dart';
 import 'tables/bills.dart';
@@ -26,7 +27,7 @@ part 'database.g.dart';
 ///
 /// 开发期历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 13;
+const int kSchemaVersion = 14;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -47,18 +48,21 @@ const String kDowngradeDetectedKey = 'db_downgrade_detected';
 /// 应用数据库
 ///
 /// 单例式入口：负责建库、迁移与首次预置默认分类。
-@DriftDatabase(tables: [
-  Categories,
-  Bills,
-  Budgets,
-  Tags,
-  BillTags,
-  BillImages,
-  Assets,
-  AssetSnapshots,
-  DebtNotes,
-  DebtNoteImages,
-])
+@DriftDatabase(
+  tables: [
+    Categories,
+    Bills,
+    Budgets,
+    Tags,
+    BillTags,
+    BillImages,
+    Assets,
+    AssetSnapshots,
+    NetValueDays,
+    DebtNotes,
+    DebtNoteImages,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection(kSchemaVersion));
 
@@ -210,16 +214,16 @@ class AppDatabase extends _$AppDatabase {
         // 避免把用户自定义名称误判为机构
         if (from < 11) {
           await _ensureColumn(m, assets, assets.institution);
-          final placeholders = List.filled(kAllInstitutionNames.length, '?')
-              .join(',');
+          final placeholders = List.filled(
+            kAllInstitutionNames.length,
+            '?',
+          ).join(',');
           await customUpdate(
             "UPDATE assets SET institution = name "
             "WHERE category IN ('信用卡', '银行卡', '股票', '基金', '黄金', "
             "'外汇', '期货', '债券', '固定收益', '加密货币', '其它理财') "
             "AND name IN ($placeholders)",
-            variables: [
-              for (final n in kAllInstitutionNames) Variable(n),
-            ],
+            variables: [for (final n in kAllInstitutionNames) Variable(n)],
           );
         }
         // 开发期 v11 中间版曾给 assets 加过 bank 列，之后列改名 institution，
@@ -255,9 +259,98 @@ class AppDatabase extends _$AppDatabase {
           await _ensureColumn(m, categories, categories.isFallback);
           await _seedFallbackCategories();
         }
+        // 每日净值表：净值曲线改为读这张按日稠密的表，不再每次重建
+        // join 快照表逐日聚合。建表后用旧算法一次性回填历史（只到今天
+        // 之前），迁移事务内完成，升级完成即可直接读
+        if (from < 14) {
+          await m.createTable(netValueDays);
+          await rebuildNetValueDays();
+        }
       }
     },
   );
+
+  /// 重算每日净值表区间 [fromDay, 昨天]
+  ///
+  /// [fromDay] 为空时从最早快照日全量回填；聚合口径见 [buildNetValueDays]。
+  /// 只写昨天及以前：今天的净值随资产表实时变化，由 UI 用汇总快照净值
+  /// 补末点，曲线末点因此始终与卡片数字一致。
+  /// 历史快照被修正/删除、资产被彻底删除后，从受影响那天起重算即可
+  /// 覆盖后续所有被前向填充的天。
+  Future<void> rebuildNetValueDays({String? fromDay}) async {
+    // 极老/最小骨架库可能还没有快照表（迁移测试手工建库），直接跳过
+    if (!await _tableExists('asset_snapshots')) return;
+    final rows = await customSelect(
+      'SELECT s.day AS day, s.asset_id AS asset_id, '
+      's.value_cents AS value_cents, a.kind AS kind '
+      'FROM asset_snapshots s '
+      'INNER JOIN assets a ON a.id = s.asset_id '
+      'ORDER BY s.day ASC, s.created_at ASC, s.id ASC',
+    ).get();
+    if (rows.isEmpty) return;
+    final toDay = netDayKey(DateTime.now().subtract(const Duration(days: 1)));
+    final start = fromDay ?? (rows.first.data['day'] as String);
+    if (start.compareTo(toDay) > 0) return;
+    final points = buildNetValueDays(
+      rows: [
+        for (final r in rows)
+          NetSnapshotRow(
+            day: r.data['day'] as String,
+            assetId: r.data['asset_id'] as int,
+            valueCents: r.data['value_cents'] as int,
+            kind: AssetKind.values[r.data['kind'] as int],
+          ),
+      ],
+      fromDay: start,
+      toDay: toDay,
+    );
+    // 整段重写而不是逐行 upsert：删快照/删资产后，原区间里有些天本就不该
+    // 再有点（首条快照日之前的空白），只 upsert 会残留脏行
+    await (delete(netValueDays)..where(
+          (t) =>
+              t.day.isBiggerOrEqualValue(start) &
+              t.day.isSmallerOrEqualValue(toDay),
+        ))
+        .go();
+    if (points.isEmpty) return;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    await batch((b) {
+      for (final p in points) {
+        b.insert(
+          netValueDays,
+          NetValueDaysCompanion.insert(
+            day: p.$1,
+            netCents: p.$2,
+            updatedAt: stamp,
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  /// 启动时补齐每日净值表：空表全量回填，否则从末行次日补到昨天
+  ///
+  /// 正常情况下只差一天（昨天），扫一次快照表成本很低；补完曲线
+  /// 就能立刻接上，不必等用户改一次资产才出现新点。
+  Future<void> ensureNetValueDaysCurrent() async {
+    if (!await _tableExists('asset_snapshots')) return;
+    final toDay = netDayKey(DateTime.now().subtract(const Duration(days: 1)));
+    final last =
+        await (select(netValueDays)
+              ..orderBy([(t) => OrderingTerm.desc(t.day)])
+              ..limit(1))
+            .getSingleOrNull();
+    if (last == null) {
+      await rebuildNetValueDays();
+      return;
+    }
+    if (last.day.compareTo(toDay) >= 0) return;
+    final next = netDayKey(
+      DateTime.parse(last.day).add(const Duration(days: 1)),
+    );
+    await rebuildNetValueDays(fromDay: next);
+  }
 
   /// 预置默认分类（收支各一套，部分一级分类带子分类）
   Future<void> _seedDefaultCategories() async {
@@ -301,10 +394,11 @@ class AppDatabase extends _$AppDatabase {
   /// 幂等：已标记的分类跳过，半迁移中断后重跑不重复插入
   Future<void> _seedFallbackCategories() async {
     for (final type in BillType.values) {
-      final roots = await (select(categories)
-            ..where((c) => c.type.equalsValue(type))
-            ..where((c) => c.parentId.isNull()))
-          .get();
+      final roots =
+          await (select(categories)
+                ..where((c) => c.type.equalsValue(type))
+                ..where((c) => c.parentId.isNull()))
+              .get();
       final byName = roots.where((c) => c.name.trim() == '其他').toList();
       if (byName.isNotEmpty) {
         for (final c in byName.where((c) => !c.isFallback)) {
@@ -446,7 +540,11 @@ Future<void> _backupBeforeOpen(File file, int schemaVersion) async {
 
 /// 按 [prefix] 清理历史备份，只保留最近 [keep] 份
 /// （文件名含时间戳，字典序即时间序）。公开供钱迹导入留底复用。
-void pruneBackupsByPrefix(Directory dir, {required String prefix, int keep = 2}) {
+void pruneBackupsByPrefix(
+  Directory dir, {
+  required String prefix,
+  int keep = 2,
+}) {
   final files =
       dir
           .listSync()
@@ -491,8 +589,20 @@ class _CategorySeed {
 
 const _defaultCategories = <_CategorySeed>[
   // 支出分类：名称与图标均与编辑页图标库一一对应，子分类按高频排序
-  _CategorySeed(   '餐饮',    Icons.restaurant,    0xFFFF9F43,    BillType.expense,    0,
-    children: [      _CategorySeed(        '早餐',        Icons.free_breakfast,        0xFFFF9F43,        BillType.expense,        0,      ),
+  _CategorySeed(
+    '餐饮',
+    Icons.restaurant,
+    0xFFFF9F43,
+    BillType.expense,
+    0,
+    children: [
+      _CategorySeed(
+        '早餐',
+        Icons.free_breakfast,
+        0xFFFF9F43,
+        BillType.expense,
+        0,
+      ),
       _CategorySeed('午餐', Icons.rice_bowl, 0xFFFF9F43, BillType.expense, 1),
       _CategorySeed('晚餐', Icons.ramen_dining, 0xFFFF9F43, BillType.expense, 2),
       _CategorySeed(
@@ -743,13 +853,25 @@ const _defaultCategories = <_CategorySeed>[
   // 兜底组：归不进前述分类的支出放这里，常驻末位（无子分类）；
   // 分类删除迁移与钱迹导入的承接分类，禁删。
   // 捐赠类支出不预置（1.2.3 撤销），用户可经图标库"公益"组自建
-  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.expense, 9,
-      isFallback: true),
+  _CategorySeed(
+    '其他',
+    Icons.more_horiz,
+    0xFFA8A8A8,
+    BillType.expense,
+    9,
+    isFallback: true,
+  ),
   // 收入分类
   _CategorySeed('工资', Icons.work, 0xFF4E9E5F, BillType.income, 0),
   _CategorySeed('奖金', Icons.emoji_events, 0xFFF39C12, BillType.income, 1),
   _CategorySeed('理财', Icons.trending_up, 0xFF27AE60, BillType.income, 2),
   _CategorySeed('红包', Icons.currency_yen, 0xFFE74C3C, BillType.income, 3),
-  _CategorySeed('其他', Icons.more_horiz, 0xFFA8A8A8, BillType.income, 4,
-      isFallback: true),
+  _CategorySeed(
+    '其他',
+    Icons.more_horiz,
+    0xFFA8A8A8,
+    BillType.income,
+    4,
+    isFallback: true,
+  ),
 ];

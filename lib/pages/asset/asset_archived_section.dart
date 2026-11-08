@@ -10,13 +10,24 @@ import '../../widgets/section_card.dart';
 import 'asset_delete.dart';
 
 /// 已归档折叠区：归档资产不参与净值，可在此恢复
-class ArchivedSection extends StatelessWidget {
+class ArchivedSection extends StatefulWidget {
   const ArchivedSection({super.key});
+
+  @override
+  State<ArchivedSection> createState() => _ArchivedSectionState();
+}
+
+class _ArchivedSectionState extends State<ArchivedSection> {
+  /// 流只建一次：build 里新建流会让每次重建都重跑查询，形成
+  /// "收到数据→重建→再新建流"的无限循环
+  late final Stream<List<Asset>> _archivedStream = context
+      .read<AssetProvider>()
+      .archivedStream();
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Asset>>(
-      stream: context.read<AssetProvider>().archivedStream(),
+      stream: _archivedStream,
       builder: (context, snapshot) {
         final list = snapshot.data;
         if (list == null || list.isEmpty) return const SizedBox.shrink();
@@ -31,9 +42,8 @@ class ArchivedSection extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   tilePadding: const EdgeInsets.symmetric(horizontal: 16),
                   childrenPadding: const EdgeInsets.only(bottom: 4),
@@ -90,7 +100,10 @@ class _ArchivedRow extends StatelessWidget {
               asset.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textPrimary,
+              ),
             ),
           ),
           TextButton(

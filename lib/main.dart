@@ -41,7 +41,11 @@ const String kPrivacyAgreedKey = 'privacy_policy_agreed';
 /// 必须在任何地图组件创建前调用，否则地图白屏且不合规。
 void _declareAmapPrivacyAgreed() {
   AMapInitializer.updatePrivacyAgree(
-    const AMapPrivacyStatement(hasContains: true, hasShow: true, hasAgree: true),
+    const AMapPrivacyStatement(
+      hasContains: true,
+      hasShow: true,
+      hasAgree: true,
+    ),
   );
 }
 
@@ -133,7 +137,8 @@ class _LockGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final needLock = context.watch<SettingsProvider>().passcodeEnabled &&
+    final needLock =
+        context.watch<SettingsProvider>().passcodeEnabled &&
         context.watch<LockProvider>().locked;
     return Stack(
       children: [
@@ -186,8 +191,7 @@ class _ProvidersApp extends StatelessWidget {
           create: (ctx) => DebtNoteRepository(ctx.read<AppDatabase>()),
         ),
         Provider<AssetFlowViewRepository>(
-          create: (ctx) =>
-              AssetFlowViewRepository(ctx.read<AppDatabase>()),
+          create: (ctx) => AssetFlowViewRepository(ctx.read<AppDatabase>()),
         ),
         // 图片云存储配置：未配置/未启用时 App 内不出现任何图片入口。
         // 必须注册在 BillProvider 之前——MultiProvider 列表前面的包住
@@ -213,8 +217,7 @@ class _ProvidersApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider<AssetProvider>(
-          create: (ctx) =>
-              AssetProvider(ctx.read<AssetRepository>(), prefs),
+          create: (ctx) => AssetProvider(ctx.read<AssetRepository>(), prefs),
         ),
         ChangeNotifierProvider<DebtNoteProvider>(
           create: (ctx) => DebtNoteProvider(ctx.read<DebtNoteRepository>()),
@@ -251,8 +254,7 @@ class _StartupGate extends StatefulWidget {
 }
 
 class _StartupGateState extends State<_StartupGate> {
-  late bool _agreed =
-      widget.prefs.getBool(kPrivacyAgreedKey) ?? false;
+  late bool _agreed = widget.prefs.getBool(kPrivacyAgreedKey) ?? false;
 
   /// 补传进行中标记：冷启动与回前台的多次触发互斥，避免并发重复上传
   bool _uploadingImages = false;
@@ -264,7 +266,10 @@ class _StartupGateState extends State<_StartupGate> {
     super.initState();
     // 启动静默补传（仅同意隐私政策后，与其他联网行为同口径）：
     // 扫描 uploadState != done 的图片记录逐张补传，失败留在下次启动重试
-    if (_agreed) unawaited(_uploadPendingImages());
+    if (_agreed) {
+      unawaited(_uploadPendingImages());
+      unawaited(_syncNetDays());
+    }
     // 回前台也触发补传：App 只是切到后台未死时（如记账后切微信再切回），
     // 冷启动补传不会发生，回到前台时同样静默补一次
     _lifecycleListener = AppLifecycleListener(
@@ -299,16 +304,29 @@ class _StartupGateState extends State<_StartupGate> {
     }
   }
 
+  /// 启动补齐每日净值表（只写昨天及以前）：隔天打开后净值曲线立刻
+  /// 接上昨天，不必等用户改一次资产才出现新点。失败只影响曲线末点，
+  /// 不阻塞启动
+  Future<void> _syncNetDays() async {
+    final repo = context.read<AssetRepository>();
+    try {
+      await repo.ensureNetDaysCurrent();
+    } catch (_) {
+      // 补日失败忽略：下次启动或改资产时仍会再补
+    }
+  }
+
   Future<void> _agree() async {
     await widget.prefs.setBool(kPrivacyAgreedKey, true);
     _declareAmapPrivacyAgreed();
-    if (mounted) setState(() => _agreed = true);
+    if (mounted) {
+      setState(() => _agreed = true);
+      unawaited(_syncNetDays());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return _agreed
-        ? const MainPage()
-        : PrivacyConsentPage(onAgree: _agree);
+    return _agreed ? const MainPage() : PrivacyConsentPage(onAgree: _agree);
   }
 }
