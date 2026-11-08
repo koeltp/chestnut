@@ -80,13 +80,14 @@ jobs:
           storeFile=../chestnut-release.jks
           EOF
 
-      - name: 构建 Gradle 网络环境（切回官方源 + 清除本地代理）
+      - name: 构建 Gradle 网络环境（保留镜像源 + 清除本地代理）
         run: |
-          sed -i 's#mirrors.cloud.tencent.com/gradle#services.gradle.org/distributions#' \
-            android/gradle/wrapper/gradle-wrapper.properties
+          # 官方 services.gradle.org 会 302 到 GitHub Release 资产服务，
+          # runner 上该链路偶发 504（实测连续重试均失败），保留腾讯云镜像
+          # 直供（HTTP 200），不再切官方源
           # 本地 gradle.properties 显式配置 127.0.0.1 代理（Gradle JVM 不读
           # 系统代理），runner 上该端口无服务，所有 Gradle 请求都会
-          # Connection refused——CI 直连官方源，清除代理行
+          # Connection refused——CI 直连下载源，清除代理行
           sed -i '/systemProp.http.proxyHost/d;/systemProp.http.proxyPort/d;/systemProp.https.proxyHost/d;/systemProp.https.proxyPort/d;/systemProp.http.nonProxyHosts/d' \
             android/gradle.properties
 
