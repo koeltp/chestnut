@@ -15,8 +15,9 @@ import '../../widgets/category_avatar.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/loading_placeholder.dart';
 import '../../widgets/month_switcher.dart';
-import '../stats/stats_page.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/stream_cache_mixin.dart';
+import '../stats/stats_page.dart';
 
 /// 预算页：月度总预算与分类预算的查看、设置
 ///
@@ -28,56 +29,43 @@ class BudgetPage extends StatefulWidget {
   const BudgetPage({super.key});
 
   @override
-  State<BudgetPage> createState() => _BudgetPageState();
+  State<BudgetPage> createState() => BudgetPageState();
 }
 
-class _BudgetPageState extends State<BudgetPage> {
+/// 公开 State：主框架 Tab 同点调 [resetToTop] 实现"滚回顶 / 重置月份"
+class BudgetPageState extends State<BudgetPage> with StreamCacheMixin<BudgetPage> {
   DateTime _month = DateTime.now();
 
-  // ---- 流/Future 缓存：build 里每次新建都会让 StreamBuilder 重订阅 ----
+  late final ScrollController _scrollController = ScrollController();
 
-  /// 四条按月份变化的流：月份不变时复用同一实例，避免切预算模式等
-  /// 父级重建时反复取消/重订阅 drift 查询
-  Stream<Budget?>? _budgetStream;
-  Stream<MonthSummary>? _summaryStream;
-  Stream<List<CategorySummary>>? _categorySummaryStream;
-  Stream<List<Budget>>? _categoryBudgetsStream;
-  DateTime? _streamMonth;
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// 外部（主框架 Tab 再点）调用：滚动位置不在顶 → 滚回顶；
+  /// 已在顶 → 切回当月
+  void resetToTop() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.offset > 0) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      final now = DateTime.now();
+      if (_month.year != now.year || _month.month != now.month) {
+        setState(() => _month = now);
+      }
+    }
+  }
 
   /// 支出分类流：页面生命周期内分类表不变，只订阅一次
   late final Stream<List<Category>> _categoriesStream = context
       .read<CategoryProvider>()
       .categoriesStream(BillType.expense);
-
-  /// 近 6 月预算历史：同一个月内复用同一 Future，避免每次 build 重跑
-  /// 12 次查询
-  Future<List<_HistoryRow>>? _historyFuture;
-  DateTime? _historyMonth;
-
-  /// 月份变化才换流；其余重建沿用同一实例
-  void _ensureStreams(BudgetProvider provider) {
-    if (_streamMonth?.year == _month.year &&
-        _streamMonth?.month == _month.month) {
-      return;
-    }
-    _streamMonth = _month;
-    _budgetStream = provider.budgetStream(_month);
-    _summaryStream = provider.summaryStream(_month);
-    _categorySummaryStream = provider.categorySummaryStream(_month);
-    _categoryBudgetsStream = provider.categoryBudgetsStream(_month);
-  }
-
-  /// 月份变化才重新加载历史；同月复用同一 Future
-  Future<List<_HistoryRow>> _ensureHistory() {
-    if (_historyMonth?.year == _month.year &&
-        _historyMonth?.month == _month.month &&
-        _historyFuture != null) {
-      return _historyFuture!;
-    }
-    _historyMonth = _month;
-    _historyFuture = _loadHistory();
-    return _historyFuture!;
-  }
 
   @override
   void initState() {
@@ -198,7 +186,9 @@ class _BudgetPageState extends State<BudgetPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.read<BudgetProvider>();
-    _ensureStreams(provider);
+    final mk = '${_month.year}-${_month.month}';
+    final budgetStream = ensureStream<Budget?>('budget-$mk', () => provider.budgetStream(_month));
+    final summaryStream = ensureStream<MonthSummary>('summary-$mk', () => provider.summaryStream(_month));
     return SafeArea(
       child: Column(
         children: [
@@ -220,7 +210,7 @@ class _BudgetPageState extends State<BudgetPage> {
           ),
           Expanded(
             child: StreamBuilder<Budget?>(
-              stream: _budgetStream,
+              stream: budgetStream,
               builder: (context, budgetSnapshot) {
                 // 首屏数据未到：统一占位，避免直接按"未设预算 + 0 支出"
                 // 渲染后金额再跳变
@@ -230,13 +220,14 @@ class _BudgetPageState extends State<BudgetPage> {
                 final budget = budgetSnapshot.data;
                 final hasBudget = budget != null && budget.amountCents > 0;
                 return StreamBuilder<MonthSummary>(
-                  stream: _summaryStream,
+                  stream: summaryStream,
                   builder: (context, summarySnapshot) {
                     if (!summarySnapshot.hasData) {
                       return const LoadingPlaceholder();
                     }
                     final summary = summarySnapshot.data!;
                     return ListView(
+                      controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(
                         AppDimens.pagePadding,
                         AppDimens.gapSection,
@@ -415,6 +406,13 @@ class _BudgetPageState extends State<BudgetPage> {
   /// [totalBudgetCents] 为当月总预算（未设为 null）：标题右侧显示
   /// "已分配"总和，超过总预算时整段转橙色警示
   Widget _buildCategoryBudgetSection({required int? totalBudgetCents}) {
+    final mk = '${_month.year}-${_month.month}';
+    final catSummaryStream = ensureStream<List<CategorySummary>>(
+      'catSummary-$mk', () => context.read<BudgetProvider>().categorySummaryStream(_month),
+    );
+    final catBudgetsStream = ensureStream<List<Budget>>(
+      'catBudgets-$mk', () => context.read<BudgetProvider>().categoryBudgetsStream(_month),
+    );
     return SectionCard(
       padding: const EdgeInsets.only(bottom: 4),
       child: StreamBuilder<List<Category>>(
@@ -424,14 +422,14 @@ class _BudgetPageState extends State<BudgetPage> {
               .where((c) => c.parentId == null)
               .toList();
           return StreamBuilder<List<CategorySummary>>(
-            stream: _categorySummaryStream,
+            stream: catSummaryStream,
             builder: (context, spentSnapshot) {
               final spentMap = {
                 for (final s in spentSnapshot.data ?? const <CategorySummary>[])
                   s.categoryId: s.totalCents,
               };
               return StreamBuilder<List<Budget>>(
-                stream: _categoryBudgetsStream,
+                stream: catBudgetsStream,
                 builder: (context, budgetSnapshot) {
                   final budgetMap = {
                     for (final b in budgetSnapshot.data ?? const <Budget>[])
@@ -745,7 +743,7 @@ class _BudgetPageState extends State<BudgetPage> {
           FutureBuilder<List<_HistoryRow>>(
             // 月份切换时重新加载（key 变化避免 FutureBuilder 缓存旧结果）
             key: ValueKey(_month),
-            future: _ensureHistory(),
+            future: ensureFuture<List<_HistoryRow>>('history-${_month.year}-${_month.month}', () => _loadHistory()),
             builder: (context, snapshot) {
               final rows = snapshot.data;
               if (rows == null) {

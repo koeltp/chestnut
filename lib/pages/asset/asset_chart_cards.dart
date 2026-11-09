@@ -1,3 +1,5 @@
+import 'dart:math' show max;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
@@ -16,8 +18,8 @@ import 'net_trend_data.dart';
 import 'net_trend_full_page.dart';
 
 /// 净值曲线卡：历史快照聚合点 + 今天实时净值点（纯资产快照口径）。
-/// 四档粒度切换（日/月/年/全部），无数据点时才显示空态；
-/// 单点画居中孤点，两点起连线成"势"。卡片内固定铺满不滚动，
+/// 四档粒度切换（日/月/季/年）；单点画居中孤点，两点起连线成"势"。
+/// 窗口规则与全屏页一致（点间距 20dp），只是固定贴右端、不可横滑。
 /// 看历史细节点右上角放大进全屏页。
 class NetTrendCard extends StatefulWidget {
   const NetTrendCard({super.key, required this.currentNetCents});
@@ -29,35 +31,15 @@ class NetTrendCard extends StatefulWidget {
 }
 
 class _NetTrendCardState extends State<NetTrendCard> {
-  /// 默认"日"档：首屏看最近 15 天，其余档位用户主动切换
+  /// 默认"日"档，其余档位用户主动切换
   NetTrendRange _range = NetTrendRange.day;
-
-  /// 历史流按档位限查、且只订阅一次：日=15 天、月=12 个月、年=12 年、
-  /// 全部=全量。build 里新建流会让每次重建都重跑一次查询，历史多时
-  /// 会把主线程拖死（实测 4000+ 行会触发输入超时 ANR）
-  late Stream<List<NetValuePoint>> _netStream = _streamOf(_range);
-
-  /// 当前档位需要的起点：只取显示的窗口，多一天都不用
-  Stream<List<NetValuePoint>> _streamOf(NetTrendRange range) {
-    final now = DateTime.now();
-    final from = switch (range) {
-      NetTrendRange.day => now.subtract(const Duration(days: 14)),
-      NetTrendRange.month => DateTime(now.year, now.month - 11, 1),
-      NetTrendRange.year => DateTime(now.year - 11, 1, 1),
-      NetTrendRange.all => null,
-    };
-    return context.read<AssetProvider>().netHistoryStream(from: from);
-  }
 
   void _selectRange(NetTrendRange range) {
     if (range == _range) return;
-    setState(() {
-      _range = range;
-      _netStream = _streamOf(range);
-    });
+    setState(() => _range = range);
   }
 
-  /// 放大：进横屏全屏页，默认全部档，单指横滑看历史
+  /// 放大：进横屏全屏页，单指横滑可一直翻到最早的数据
   void _openFullPage() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -70,72 +52,144 @@ class _NetTrendCardState extends State<NetTrendCard> {
   @override
   Widget build(BuildContext context) {
     final masked = context.watch<AssetProvider>().masked;
-    return StreamBuilder<List<NetValuePoint>>(
-      stream: _netStream,
-      builder: (context, snapshot) {
-        final history = snapshot.data ?? const <NetValuePoint>[];
-        return SectionCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  const Text(
-                    '净值走势',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Spacer(),
-                  // 档位切换与放大入口都收进标题行，不额外占卡片高度
-                  NetTrendRangeSwitch(value: _range, onChanged: _selectRange),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _openFullPage,
-                    child: Padding(
-                      // 图标放到 22dp，同时给足可点热区（约 40×34）
-                      padding: const EdgeInsets.only(
-                        left: 14,
-                        top: 6,
-                        right: 6,
-                        bottom: 6,
-                      ),
-                      child: SvgPicture.asset(
-                        'assets/images/icon_fullscreen.svg',
-                        width: 22,
-                        height: 22,
-                        colorFilter: const ColorFilter.mode(
-                          AppColors.textSecondary,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              const Text(
+                '净值走势',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
               ),
-              const SizedBox(height: AppDimens.gapSm),
-              SizedBox(
-                height: 180,
-                // 历史点还没到：显示转圈而不是"没数据"的空态文案
-                child: snapshot.hasData
-                    ? NetTrendChart(
-                        range: _range,
-                        history: history,
-                        currentNetCents: widget.currentNetCents,
-                        masked: masked,
-                      )
-                    : const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
+              const Spacer(),
+              // 档位切换与放大入口都收进标题行，不额外占卡片高度
+              NetTrendRangeSwitch(value: _range, onChanged: _selectRange),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _openFullPage,
+                child: Padding(
+                  // 图标放到 22dp，同时给足可点热区（约 40×34）
+                  padding: const EdgeInsets.only(
+                    left: 14,
+                    top: 6,
+                    right: 6,
+                    bottom: 6,
+                  ),
+                  child: SvgPicture.asset(
+                    'assets/images/icon_fullscreen.svg',
+                    width: 22,
+                    height: 22,
+                    colorFilter: const ColorFilter.mode(
+                      AppColors.textSecondary,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: AppDimens.gapSm),
+          SizedBox(
+            height: 180,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // 与图表同一套几何：左轴按当前净值标签的实测宽度预留；
+                // 这里只需要估算查询点数，图表内部会按真实标签再算一次
+                final leftPad = masked
+                    ? 0.0
+                    : netTrendTextSize(
+                            netTrendAxisLabel(
+                              widget.currentNetCents.toDouble(),
+                            ),
+                            textScaler: MediaQuery.textScalerOf(context),
+                          ).width +
+                          kTrendAxisPadding;
+                final plotWidth = max(1.0, constraints.maxWidth - leftPad);
+                return _CardTrendChart(
+                  range: _range,
+                  // 一屏能画几个点，就只查几个点
+                  windowPoints: netTrendWindowCapacity(plotWidth),
+                  currentNetCents: widget.currentNetCents,
+                  masked: masked,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 卡片的数据容器：窗口点数 N 由宽度算出，再按 N 反推查询起点。
+/// 卡片常驻资产页、数据一变就会重查，所以只取一屏的量（20 年、
+/// N=12 时实测：日 2.6ms、月 1.3ms、季 2.6ms、年 7.3ms；全量则要 27ms+）。
+/// 窗口外的更早数据不进卡片，统一去全屏页横滑查看。
+class _CardTrendChart extends StatefulWidget {
+  const _CardTrendChart({
+    required this.range,
+    required this.windowPoints,
+    required this.currentNetCents,
+    required this.masked,
+  });
+
+  final NetTrendRange range;
+  final int windowPoints;
+  final int currentNetCents;
+  final bool masked;
+
+  @override
+  State<_CardTrendChart> createState() => _CardTrendChartState();
+}
+
+class _CardTrendChartState extends State<_CardTrendChart> {
+  late Stream<List<NetValuePoint>> _stream = _streamOf();
+
+  Stream<List<NetValuePoint>> _streamOf() =>
+      context.read<AssetProvider>().netHistoryStream(
+        from: netTrendWindowFrom(
+          range: widget.range,
+          points: widget.windowPoints,
+        ),
+      );
+
+  @override
+  void didUpdateWidget(covariant _CardTrendChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 切档或屏幕宽度变了（旋转/分屏）才重查；窗口点数相同就复用
+    if (oldWidget.range != widget.range ||
+        oldWidget.windowPoints != widget.windowPoints) {
+      _stream = _streamOf();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<NetValuePoint>>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          // 历史点还没到：显示转圈而不是"没数据"的空态文案
+          return const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        return NetTrendChart(
+          range: widget.range,
+          history: snapshot.data!,
+          currentNetCents: widget.currentNetCents,
+          masked: widget.masked,
+          // 卡片背景色：被裁掉更早数据时左边缘渐隐，暗示可进全屏看
+          leadingFadeColor: Colors.white,
         );
       },
     );

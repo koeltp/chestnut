@@ -15,6 +15,14 @@ class BillRepository {
   /// 记账联动引擎（AssetRepository 无状态仅持 _db，就地构造零成本）
   late final _assetRepo = AssetRepository(_db);
 
+  /// 账单默认排序：日期倒序 → 时刻倒序（未填时刻沉底）→ 创建时间倒序。
+  /// 被 6 处账单查询共用：改一处即全局一致
+  late final _defaultBillOrdering = [
+    (b) => OrderingTerm.desc(b.date),
+    (b) => OrderingTerm.desc(b.timeMinute),
+    (b) => OrderingTerm.desc(b.createdAt),
+  ];
+
   /// 查询某月的全部账单（按日期倒序；同日按发生时刻倒序，未填时刻沉底，
   /// 时刻相同再按创建时间倒序）
   Stream<List<Bill>> watchBillsInMonth(DateTime month) {
@@ -31,11 +39,19 @@ class BillRepository {
 
   /// 查询全部账单（排序规则同 [watchBillsInMonth]）
   Stream<List<Bill>> watchAllBills() {
-    return (_db.select(_db.bills)..orderBy([
-          (b) => OrderingTerm.desc(b.date),
-          (b) => OrderingTerm.desc(b.timeMinute),
-          (b) => OrderingTerm.desc(b.createdAt),
-        ]))
+    return (_db.select(_db.bills)..orderBy(_defaultBillOrdering)).watch();
+  }
+
+  /// 首页全部模式分页查询：按时间倒序取最近的 [limit] 条账单。
+  /// 排序规则与其他查询一致（日期倒序 → 时刻倒序 → 创建时间倒序）。
+  /// 单表查询，无 join，性能远好于全表 select + Dart 层过滤。
+  ///
+  /// "加载更多"= 调大 limit 重新查，而不是 offset 翻页：借条是与账单
+  /// 混排的，offset 只落在账单上会让每页的借条重复出现、跨页排序错乱。
+  Stream<List<Bill>> watchRecentBills(int limit) {
+    return (_db.select(_db.bills)
+          ..orderBy(_defaultBillOrdering)
+          ..limit(limit))
         .watch();
   }
 
@@ -141,20 +157,8 @@ class BillRepository {
 
     return (_db.select(_db.bills)
           ..where((b) => expr)
-          ..orderBy([
-            (b) => OrderingTerm.desc(b.date),
-            (b) => OrderingTerm.desc(b.timeMinute),
-            (b) => OrderingTerm.desc(b.createdAt),
-          ]))
+          ..orderBy(_defaultBillOrdering))
         .watch();
-  }
-
-  /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；
-  /// 账单被删时发 null，弹窗据此自动关闭
-  Stream<Bill?> watchBillById(int id) {
-    return (_db.select(
-      _db.bills,
-    )..where((b) => b.id.equals(id))).watchSingleOrNull();
   }
 
   /// 某账户的流水（账户明细页）：关联为付款方或收款方的账单都要，
@@ -165,11 +169,7 @@ class BillRepository {
           ..where(
             (b) => b.assetId.equals(assetId) | b.toAssetId.equals(assetId),
           )
-          ..orderBy([
-            (b) => OrderingTerm.desc(b.date),
-            (b) => OrderingTerm.desc(b.timeMinute),
-            (b) => OrderingTerm.desc(b.createdAt),
-          ]))
+          ..orderBy(_defaultBillOrdering))
         .watch();
   }
 
@@ -187,11 +187,7 @@ class BillRepository {
                 b.categoryId.equals(categoryId) |
                 b.categoryId.isInQuery(subIds),
           )
-          ..orderBy([
-            (b) => OrderingTerm.desc(b.date),
-            (b) => OrderingTerm.desc(b.timeMinute),
-            (b) => OrderingTerm.desc(b.createdAt),
-          ]))
+          ..orderBy(_defaultBillOrdering))
         .watch();
   }
 
@@ -206,11 +202,7 @@ class BillRepository {
                 b.date.isBiggerOrEqualValue(start) &
                 b.date.isSmallerThanValue(end),
           )
-          ..orderBy([
-            (b) => OrderingTerm.desc(b.date),
-            (b) => OrderingTerm.desc(b.timeMinute),
-            (b) => OrderingTerm.desc(b.createdAt),
-          ]))
+          ..orderBy(_defaultBillOrdering))
         .watch();
   }
 
@@ -448,7 +440,4 @@ class BillRepository {
     }
     return rows;
   });
-
-  /// 查询全部账单（CSV 导出用）
-  Future<List<Bill>> getAllBills() => _db.select(_db.bills).get();
 }

@@ -20,40 +20,23 @@ class NetTrendFullPage extends StatefulWidget {
 }
 
 class _NetTrendFullPageState extends State<NetTrendFullPage> {
-  /// 全屏默认「全部」：横屏宽幅 + 90 点窗口才有历史可拖动
-  NetTrendRange _range = NetTrendRange.all;
+  /// 全屏默认「季」：横屏宽幅 + 宽窗口才有历史可拖动
+  NetTrendRange _range = NetTrendRange.quarter;
 
-  /// 每档的可视窗口点数：日 90 天、月 24 个月、年 8 年、全部 90 天；
-  /// 窗口外的历史靠单指横滑平移查看
-  int get _windowSize => switch (_range) {
-    NetTrendRange.day => 90,
-    NetTrendRange.month => 24,
-    NetTrendRange.year => 8,
-    NetTrendRange.all => 90,
-  };
-
-  /// 历史流按档位限查、且只在初始化与切档时重建：
-  /// 日取近 1 年、月取近 3 年、年取近 12 年、全部取全量，
-  /// 都比可视窗口长，横滑才有更早的数据可看
-  late Stream<List<NetValuePoint>> _netStream = _streamOf(_range);
-
-  Stream<List<NetValuePoint>> _streamOf(NetTrendRange range) {
-    final now = DateTime.now();
-    final from = switch (range) {
-      NetTrendRange.day => now.subtract(const Duration(days: 364)),
-      NetTrendRange.month => DateTime(now.year, now.month - 35, 1),
-      NetTrendRange.year => DateTime(now.year - 11, 1, 1),
-      NetTrendRange.all => null,
-    };
-    return context.read<AssetProvider>().netHistoryStream(from: from);
-  }
+  /// 历史流四档共用，全程只订阅一次。
+  ///
+  /// 档位只决定聚合粒度，不决定"能看多远"：可视窗口由图表按绘图区
+  /// 宽度 ÷ 20dp 反推，更早的数据靠单指横滑到达，左边界永远是数据
+  /// 起点。20 年（7252 行）实测：全量首帧约 30ms、四档聚合 ≤10ms，
+  /// 不需要按档位限查——限查只会让"滑不到最早"看起来像 bug。
+  late final Stream<List<NetValuePoint>> _netStream = context
+      .read<AssetProvider>()
+      .netHistoryStream();
 
   void _selectRange(NetTrendRange range) {
     if (range == _range) return;
-    setState(() {
-      _range = range;
-      _netStream = _streamOf(range);
-    });
+    // 数据流四档共用，切档不重查，只换聚合粒度与标签格式
+    setState(() => _range = range);
   }
 
   @override
@@ -102,7 +85,7 @@ class _NetTrendFullPageState extends State<NetTrendFullPage> {
                     history: history,
                     currentNetCents: widget.currentNetCents,
                     masked: masked,
-                    panWindow: _windowSize,
+                    pannable: true,
                   ),
                 ),
                 // 四个档位都按窗口横滑，历史不足一个窗口时自然拖不动

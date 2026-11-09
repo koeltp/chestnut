@@ -1,5 +1,6 @@
 import 'package:chestnut/data/database.dart';
 import 'package:chestnut/data/flow_entry.dart';
+import 'package:chestnut/data/repositories/asset_flow_view_repository.dart';
 import 'package:chestnut/data/repositories/bill_repository.dart';
 import 'package:chestnut/data/repositories/debt_note_repository.dart';
 import 'package:chestnut/models/enums.dart';
@@ -75,17 +76,16 @@ void main() {
   });
 
   test('同日排序：按发生时刻倒序，未填时刻沉底', () async {
-    Future<void> insert(int cents, int? minute, String note) =>
-        repo.addBill(
-          BillsCompanion.insert(
-            categoryId: Value(categoryId),
-            type: BillType.expense,
-            amountCents: cents,
-            date: DateTime(2026, 9, 2),
-            note: Value(note),
-            timeMinute: Value(minute),
-          ),
-        );
+    Future<void> insert(int cents, int? minute, String note) => repo.addBill(
+      BillsCompanion.insert(
+        categoryId: Value(categoryId),
+        type: BillType.expense,
+        amountCents: cents,
+        date: DateTime(2026, 9, 2),
+        note: Value(note),
+        timeMinute: Value(minute),
+      ),
+    );
 
     // 插入顺序故意与期望顺序相反，排除巧合通过
     await insert(100, null, '未填时刻');
@@ -123,5 +123,31 @@ void main() {
     expect(entries[0].bill?.timeMinute, 1200); // 20:00 账单
     expect(entries[1].debt, isNotNull); // 14:30 借条
     expect(entries[2].bill?.timeMinute, isNull); // setUp 里未填时刻的沉底
+  });
+
+  test('全部模式取最近 N 条账单：倒序且按条数截断', () async {
+    final recent = await repo.watchRecentBills(1).first;
+    expect(recent, hasLength(1));
+    // 最新的是 2026-10-01（不是插入顺序靠后的那笔以外的巧合）
+    expect(recent.first.date, DateTime(2026, 10, 1));
+  });
+
+  test('全部模式分页：limit 只截账单，借条不重复且整体仍全局倒序', () async {
+    final debts = DebtNoteRepository(db);
+    final flowRepo = AssetFlowViewRepository(db);
+    await debts.insertDebtNote(
+      direction: DebtDirection.lendOut,
+      personName: '李四',
+      amountCents: 3000,
+      borrowedAt: DateTime(2026, 9, 5, 10),
+    );
+
+    // limit=1：只取最近 1 笔账单（10-01），借条仍参与混排且只出现一次
+    final view = await flowRepo.watchHomeFlowPaged(limit: 1).first;
+    expect(view.entries.where((e) => e.bill != null), hasLength(1));
+    expect(view.entries.where((e) => e.debt != null), hasLength(1));
+    // 全局倒序：10-01 账单在 09-05 借条之上
+    expect(view.entries.first.bill?.date, DateTime(2026, 10, 1));
+    expect(view.entries.last.debt?.borrowedAt, DateTime(2026, 9, 5, 10));
   });
 }

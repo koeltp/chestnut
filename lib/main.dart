@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:amap_map/amap_map.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:x_amap_base/x_amap_base.dart';
 import 'package:flutter/services.dart';
@@ -51,6 +52,8 @@ void _declareAmapPrivacyAgreed() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 全局错误兜底：默认红色崩溃条换成白底卡片 + 友好提示 + 重启按钮
+  ErrorWidget.builder = (details) => _AppErrorScreen(details: details);
   // 固定竖屏，记账场景无横屏需求（不需等待生效，不阻塞启动）
   unawaited(
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
@@ -328,5 +331,85 @@ class _StartupGateState extends State<_StartupGate> {
   @override
   Widget build(BuildContext context) {
     return _agreed ? const MainPage() : PrivacyConsentPage(onAgree: _agree);
+  }
+}
+
+// =========================================================================
+// 全局错误兜底屏幕：替换 Flutter 默认红色崩溃条。
+// 应用启动早期、构建期出现的未捕获错误（如 Provider 未注入、数据库
+// 损坏后某处仍尝试访问）都由 ErrorWidget.builder 指向这里
+
+/// 全局错误兜底屏幕：白底卡片 + 友好提示 + 重启按钮
+class _AppErrorScreen extends StatelessWidget {
+  const _AppErrorScreen({required this.details});
+
+  final FlutterErrorDetails details;
+
+  @override
+  Widget build(BuildContext context) {
+    // debug 模式下显示完整堆栈便于定位；release 模式下隐藏堆栈
+    final isDebug = kDebugMode;
+    return Material(
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.sentiment_dissatisfied_outlined,
+                    size: 44,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  '抱歉出错了',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '可以重启 App 恢复正常使用',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+                if (isDebug) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        details.exceptionAsString(),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

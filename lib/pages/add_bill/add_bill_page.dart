@@ -26,6 +26,7 @@ import '../../widgets/asset_pick_sheet.dart';
 import '../../widgets/number_keyboard.dart';
 import '../../widgets/tag_picker_sheet.dart';
 import 'add_bill_draft.dart';
+import 'add_bill_validation.dart';
 import 'bill_image_sheet.dart';
 import 'category_section.dart';
 import 'location_picker_page.dart';

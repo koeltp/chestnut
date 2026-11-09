@@ -143,9 +143,15 @@ void main() {
     });
   });
 
-  test('净值走势基线：3 年日级净值查询 + 四档聚合', () async {
-    final repo = AssetRepository(db);
-    // 环节 0：全量净值流首帧（"全部"档的数据源，1095 行）
+  test('净值走势基线：20 年（约 7300 行）全量取数', () async {
+    // 独立内存库：不能复用上面那份（会把 3 年基线污染成 20 年）
+    final big = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(big.close);
+    await big.customSelect('SELECT 1').get();
+    await _seedNetDays(big, years: 20);
+    final repo = AssetRepository(big);
+
+    // 环节 0：全量流首帧（四档都 from=null 时的数据源）
     final sw = Stopwatch()..start();
     final history = await repo.watchNetHistory().first;
     sw.stop();
@@ -155,26 +161,119 @@ void main() {
       '${sw.elapsedMicroseconds / 1000} ms',
     );
 
+    // 环节 1：Dart 侧四档聚合（全屏全量口径）
     const currentNet = 6400000;
     for (final range in NetTrendRange.values) {
-      bench('netTrendPoints ${netTrendRangeLabel(range)}·卡片窗口', () {
-        netTrendPoints(
-          range: range,
-          history: history,
-          currentNetCents: currentNet,
-        );
-      });
       bench('netTrendPoints ${netTrendRangeLabel(range)}·全屏全量+纵轴', () {
         final pts = netTrendPoints(
           range: range,
           history: history,
           currentNetCents: currentNet,
-          fullHistory: true,
         );
         netTrendYRange(pts);
       });
     }
+
+    // 环节 2：对照——把"每期最后一条"下推到 SQL 的成本
+    for (final (label, key) in [
+      ('月', "substr(day, 1, 7)"),
+      (
+        '季',
+        "substr(day, 1, 4) || '-' || ((CAST(substr(day, 6, 2) AS INTEGER) - 1) / 3)",
+      ),
+      ('年', "substr(day, 1, 4)"),
+    ]) {
+      final q = Stopwatch()..start();
+      final rows = await big
+          .customSelect(
+            'SELECT day, net_cents FROM net_value_days '
+            'WHERE day IN (SELECT MAX(day) FROM net_value_days GROUP BY $key) '
+            'ORDER BY day',
+          )
+          .get();
+      q.stop();
+      // ignore: avoid_print
+      print(
+        '  [perf] SQL 下推·$label（${rows.length} 行）: '
+        '${q.elapsedMicroseconds / 1000} ms',
+      );
+    }
   });
+
+  test('净值卡片：全量 vs 按窗口点数 N 查（N=12/20）', () async {
+    final big = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(big.close);
+    await big.customSelect('SELECT 1').get();
+    await _seedNetDays(big, years: 20);
+    final repo = AssetRepository(big);
+    const currentNet = 6400000;
+
+    // A：卡片走全量流，再聚合、由窗口裁
+    final aq = Stopwatch()..start();
+    final all = await repo.watchNetHistory().first;
+    aq.stop();
+    final aa = Stopwatch()..start();
+    for (final range in NetTrendRange.values) {
+      final pts = netTrendPoints(
+        range: range,
+        history: all,
+        currentNetCents: currentNet,
+      );
+      netTrendYRange(pts);
+    }
+    aa.stop();
+    // ignore: avoid_print
+    print(
+      '  [perf] A 卡片全量：查询 ${all.length} 行 ${aq.elapsedMicroseconds / 1000} ms'
+      ' + 四档聚合 ${aa.elapsedMicroseconds / 1000} ms',
+    );
+
+    // B：先算窗口点数 N，再按 N 反推每档查询起点
+    for (final n in [12, 20]) {
+      for (final range in NetTrendRange.values) {
+        final from = netTrendWindowFrom(range: range, points: n);
+        final q = Stopwatch()..start();
+        final rows = await repo.watchNetHistory(from: from).first;
+        q.stop();
+        final a = Stopwatch()..start();
+        final pts = netTrendPoints(
+          range: range,
+          history: rows,
+          currentNetCents: currentNet,
+        );
+        netTrendYRange(pts);
+        a.stop();
+        // ignore: avoid_print
+        print(
+          '  [perf] B N=$n ${netTrendRangeLabel(range)}：'
+          '查询 ${rows.length} 行 ${q.elapsedMicroseconds / 1000} ms'
+          ' + 聚合 ${a.elapsedMicroseconds / 1000} ms（${pts.length} 点）',
+        );
+      }
+    }
+  });
+}
+
+/// 造 [years] 年逐日净值（到昨天为止），用于 20 年量级的走势基线
+Future<void> _seedNetDays(AppDatabase db, {required int years}) async {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  var day = DateTime(now.year - years + 1, 1, 1);
+  final fmt = DateFormat('yyyy-MM-dd');
+  final rows = <NetValueDaysCompanion>[];
+  var i = 0;
+  while (day.isBefore(today)) {
+    rows.add(
+      NetValueDaysCompanion.insert(
+        day: fmt.format(day),
+        netCents: 5000000 + (i % 200) * 1000,
+        updatedAt: 0,
+      ),
+    );
+    day = day.add(const Duration(days: 1));
+    i++;
+  }
+  await db.batch((b) => b.insertAllOnConflictUpdate(db.netValueDays, rows));
 }
 
 /// 造 5 万笔账单：2023-01-01 起每天 40 笔（约 1250 天），分类在预置

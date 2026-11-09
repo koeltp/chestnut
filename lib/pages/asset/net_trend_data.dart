@@ -1,33 +1,118 @@
-import 'dart:math' show ln10, log, pow;
+import 'dart:math' show ln10, log, max, min, pow;
+import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/repositories/asset_repository.dart';
 
-/// 走势档位：日/月/年对应时间窗口，"全部"在卡片里抽稀到每年一个点
-enum NetTrendRange { day, month, year, all }
+/// 走势档位：日/月/季/年 — 分别给日级波动、月级走势、季度级全历史、年级水位
+/// 四个观察视角。枚举名与展示文案保持词义一致（quarter ↔ 季）。
+enum NetTrendRange { day, month, quarter, year }
 
 /// 档位胶囊文案
 String netTrendRangeLabel(NetTrendRange range) => switch (range) {
   NetTrendRange.day => '日',
   NetTrendRange.month => '月',
+  NetTrendRange.quarter => '季',
   NetTrendRange.year => '年',
-  NetTrendRange.all => '全部',
 };
 
+/// 横轴点间距（逻辑像素）：一屏能显示多少个点由绘图区宽度 ÷ 它反推。
+const double kTrendPointSpacing = 20;
+
+/// 轴标签字号（逻辑像素）：标签宽高、间距、轴留白全部由它推导，
+/// 不在各处分别写死；系统字号放大时它们同比放大。
+const double kTrendAxisFontSize = 10;
+
+/// 相邻刻度标签之间的最小空隙：跟字号走。
+const double kTrendLabelGap = kTrendAxisFontSize * 0.8;
+
+/// 轴标签与绘图区之间的留白：跟字号走。
+const double kTrendAxisPadding = kTrendAxisFontSize * 0.6;
+
+/// 按实际字体与系统缩放量一段轴文字的尺寸。
+/// 左轴宽、底部预留高、刻度槽位都由它算出来，不再用 38/22/40 这类估值。
+Size netTrendTextSize(String text, {required TextScaler textScaler}) {
+  final painter = TextPainter(
+    text: TextSpan(
+      text: text,
+      style: const TextStyle(fontSize: kTrendAxisFontSize),
+    ),
+    textDirection: ui.TextDirection.ltr,
+    textScaler: textScaler,
+  )..layout();
+  return painter.size;
+}
+
+/// 绘图区一屏最多能放几个点：只由宽度决定，与数据量无关。
+/// 卡片用它反推"该查多少点"，图表用它和总点数取小得到窗口。
+int netTrendWindowCapacity(double plotWidth) =>
+    max(2, (plotWidth / kTrendPointSpacing).floor());
+
+/// 可视窗口点数：点间距固定 [kTrendPointSpacing]，由绘图区真实宽度反推。
+/// 窗口内的点全部绘制、一个不抽——屏幕窄窗口就窄，更早的数据靠横滑平移。
+int netTrendWindowPoints({
+  required double plotWidth,
+  required int totalPoints,
+}) => min(totalPoints, netTrendWindowCapacity(plotWidth));
+
+/// 刻度步长（单位=点）：先按标签实际占位算一屏能写下几个刻度，
+/// 写不下才抽稀。步长只能取整数个点，刻度才始终落在数据点上：
+/// 例如 40 个点、只能写下 20 个刻度 → 每 2 个点标一个。
+int netTrendLabelStep({
+  required int windowPoints,
+  required double plotWidth,
+  required double labelWidth,
+  double labelGap = kTrendLabelGap,
+}) {
+  if (windowPoints <= 1) return 1;
+  // 槽位只由"标签实际宽度 + 不重叠所需空隙"决定，没有额外下限：
+  // 年档标签窄，就应当比日档多写几个，而不是被日档的舒适值挤掉
+  final slot = labelWidth + labelGap;
+  final capacity = max(2, (plotWidth / slot).floor() + 1);
+  return max(1, (windowPoints / capacity).ceil());
+}
+
+/// 卡片窗口的查询起点：由"一屏能画几个点"反推该档位要回溯到哪一天。
+/// [points] 含今天的实时点，所以历史只需 [points]-1 个聚合点。
+/// 只服务"贴右端、不可滑"的卡片——全屏要能滑到最早，必须全量。
+DateTime netTrendWindowFrom({
+  required NetTrendRange range,
+  required int points,
+  DateTime? now,
+}) {
+  final n = max(0, points - 1);
+  final t = now ?? DateTime.now();
+  return switch (range) {
+    NetTrendRange.day => DateTime(
+      t.year,
+      t.month,
+      t.day,
+    ).subtract(Duration(days: n)),
+    NetTrendRange.month => DateTime(t.year, t.month - n, 1),
+    // 本季首月 = (month-1)~/3*3+1，再往前挪 3n 个月
+    NetTrendRange.quarter => DateTime(
+      t.year,
+      ((t.month - 1) ~/ 3) * 3 + 1 - 3 * n,
+      1,
+    ),
+    NetTrendRange.year => DateTime(t.year - n, 1, 1),
+  };
+}
+
 /// 聚合出当前档位的显示点：
-/// 日 = 最近 15 天的日级快照；月/年 = 每段（自然月/自然年）最后一条快照，
-/// 取"月末/年末水位"；全部 = 每年最后一条（卡片不滚动，抽稀避免点过密）。
+/// 日 = 逐日快照；
+/// 月 = 每自然月最后一条快照（月末水位）；
+/// 年 = 每自然年最后一条快照（年末水位）；
+/// 季 = 每自然季度最后一条快照（季末水位）。
+/// 取多少历史由调用方决定：卡片按窗口点数反推查询起点，
+/// 全屏页取全量（靠横滑到达更早），这里只负责聚合。
 /// 末点统一用今天的实时净值兜底，任何档位曲线都画到"现在"。
-///
-/// [fullHistory] 为 true 时不再截断时间窗：日/月/年也取全部历史，
-/// "全部"档也不再按年抽稀，由全屏页按档位窗口横滑逐段查看；
-/// 卡片仍用截断的短窗口与每年一个点的抽稀结果。
 List<NetValuePoint> netTrendPoints({
   required NetTrendRange range,
   required List<NetValuePoint> history,
   required int currentNetCents,
-  bool fullHistory = false,
 }) {
   final now = DateTime.now();
   final today = DateFormat('yyyy-MM-dd').format(now);
@@ -37,31 +122,13 @@ List<NetValuePoint> netTrendPoints({
   final end = <NetValuePoint>[(today, currentNetCents)];
   switch (range) {
     case NetTrendRange.day:
-      if (fullHistory) return [...fresh, ...end];
-      // 含今天共 15 个自然日
-      final cutoff = DateFormat('yyyy-MM-dd')
-          .format(now.subtract(const Duration(days: 14)));
-      return [...fresh.where((p) => p.$1.compareTo(cutoff) >= 0), ...end];
+      return [...fresh, ...end];
     case NetTrendRange.month:
-      if (fullHistory) return [..._lastPerPeriod(fresh, 7), ...end];
-      // 最近 12 个自然月（以当前月为末点往前数 11 个月）
-      final cutoff = DateFormat('yyyy-MM-dd')
-          .format(DateTime(now.year, now.month - 11, 1));
-      return [
-        ..._lastPerPeriod(fresh.where((p) => p.$1.compareTo(cutoff) >= 0), 7),
-        ...end,
-      ];
+      return _mergeEnd(_lastPerPeriod(fresh, 7), end.first, 7);
     case NetTrendRange.year:
-      if (fullHistory) return [..._lastPerPeriod(fresh, 4), ...end];
-      // 最近 12 个自然年
-      final cutoff = DateFormat('yyyy-MM-dd')
-          .format(DateTime(now.year - 11, 1, 1));
-      return [
-        ..._lastPerPeriod(fresh.where((p) => p.$1.compareTo(cutoff) >= 0), 4),
-        ...end,
-      ];
-    case NetTrendRange.all:
-      return [...(fullHistory ? fresh : _lastPerPeriod(fresh, 4)), ...end];
+      return _mergeEnd(_lastPerPeriod(fresh, 4), end.first, 4);
+    case NetTrendRange.quarter:
+      return _mergeEndQuarter(_lastPerQuarter(fresh), end.first);
   }
 }
 
@@ -76,19 +143,69 @@ List<NetValuePoint> _lastPerPeriod(Iterable<NetValuePoint> pts, int prefixLen) {
   return [for (final k in keys) map[k]!];
 }
 
-/// 横轴标签随档换格式：日 MM-dd / 月 yy-MM / 年 yyyy；
-/// "全部"档按可视点数密度在 年 / 年-月 / 月-日 之间切换
+/// 每个自然季度保留最后一条快照（季末水位）。
+/// key 格式 "YYYY-Qn"（Q1=1-3月，Q2=4-6月…），同季度后到者覆盖。
+/// 日期是 `yyyy-MM-dd` 定长文本，直接切子串算季度——逐行 DateTime.parse
+/// 在 20 年（7000+ 行）量级上实测要 200ms+，是切档卡顿的主因。
+List<NetValuePoint> _lastPerQuarter(Iterable<NetValuePoint> pts) {
+  final map = <String, NetValuePoint>{};
+  for (final p in pts) {
+    final month = int.parse(p.$1.substring(5, 7));
+    final q = ((month - 1) ~/ 3) + 1;
+    map['${p.$1.substring(0, 4)}-Q$q'] = p;
+  }
+  final keys = map.keys.toList()..sort();
+  return [for (final k in keys) map[k]!];
+}
+
+/// 把 [end] 实时净值合并到聚合结果末尾：
+/// 如果 [end] 和聚合最后一个点同年/月/日（prefixLen 匹配），用 end 替换
+/// 它（实时净值总是最新），否则追加到末尾。
+List<NetValuePoint> _mergeEnd(
+  List<NetValuePoint> aggregated,
+  NetValuePoint end,
+  int prefixLen,
+) {
+  if (aggregated.isEmpty) return [end];
+  final last = aggregated.last;
+  if (last.$1.substring(0, prefixLen) == end.$1.substring(0, prefixLen)) {
+    return [...aggregated.sublist(0, aggregated.length - 1), end];
+  }
+  return [...aggregated, end];
+}
+
+/// 季度版 merge：end 和聚合最后一个点同季度就覆盖，否则追加。
+List<NetValuePoint> _mergeEndQuarter(
+  List<NetValuePoint> aggregated,
+  NetValuePoint end,
+) {
+  if (aggregated.isEmpty) return [end];
+  final dt = DateTime.parse(end.$1);
+  final q = ((dt.month - 1) ~/ 3) + 1;
+  final key = '${dt.year}-Q$q';
+  final lastDt = DateTime.parse(aggregated.last.$1);
+  final lastQ = ((lastDt.month - 1) ~/ 3) + 1;
+  final lastKey = '${lastDt.year}-Q$lastQ';
+  if (lastKey == key) {
+    return [...aggregated.sublist(0, aggregated.length - 1), end];
+  }
+  return [...aggregated, end];
+}
+
+/// 横轴标签格式：日 MM/dd / 月 YY/MM / 年 yyyy / 季 YY/Qn（26/Q3 = 2026Q3）。
+/// 季档用季度标识避免和月档 YY/MM 格式混淆。
 String netTrendDateLabel(NetTrendRange range, String date, int visibleCount) {
   switch (range) {
     case NetTrendRange.day:
-      return date.substring(5);
+      return '${date.substring(5, 7)}/${date.substring(8)}'; // MM/dd
     case NetTrendRange.month:
-      return '${date.substring(2, 4)}-${date.substring(5, 7)}';
+      return '${date.substring(2, 4)}/${date.substring(5, 7)}'; // YY/MM
     case NetTrendRange.year:
-      return date.substring(0, 4);
-    case NetTrendRange.all:
-      // 卡片里按年抽稀（点数少）显示年份；全屏窗口覆盖几个月则显示月-日
-      return visibleCount > 30 ? date.substring(5) : date.substring(0, 4);
+      return date.substring(0, 4); // yyyy
+    case NetTrendRange.quarter:
+      // 同 _lastPerQuarter：切子串算季度，拖动时每帧都要算标签，不能解析日期
+      final q = ((int.parse(date.substring(5, 7)) - 1) ~/ 3) + 1;
+      return '${date.substring(2, 4)}/Q$q'; // YY/Qn
   }
 }
 

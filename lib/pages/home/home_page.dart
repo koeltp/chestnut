@@ -22,6 +22,7 @@ import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/debt_flow_row.dart';
 import '../../widgets/debt_note_detail_sheet.dart';
+import '../../widgets/empty_state_card.dart';
 import '../../widgets/loading_placeholder.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
@@ -35,33 +36,153 @@ class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<HomePage> createState() => HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  /// 流水/汇总流缓存：build 里每次新建流会让 StreamBuilder 反复取消
-  /// 并重订阅 drift 查询（首帧全量查询被重复执行），范围没变就复用
-  Stream<FlowView>? _flowStream;
-  Stream<MonthSummary>? _summaryStream;
-  HomePeriod? _streamPeriod;
-  DateTime? _streamMonth;
+/// 公开 State：主框架 Tab 同点调 [resetToTop] 实现"滚回顶 / 重置月份"
+class HomePageState extends State<HomePage> {
+  final ScrollController _scrollController = ScrollController();
 
-  /// 查看范围（模式 + 年月）变化时才换流；其余重建沿用同一实例
-  void _ensureStreams(BillProvider provider) {
+  /// 当前列表数据：null = 还没拿到首帧（显示 Loading）
+  ///
+  /// 页面自己持有订阅与数据，不用 StreamBuilder：
+  /// · StreamBuilder 在 stream 变化时会保留上一份 data，切月瞬间会把
+  ///   上个月的列表显示在新月份标题下（"8 月视图出现 7 月账单"）
+  /// · 缓存后的单订阅流（combineLatest）被重复订阅会抛
+  ///   "Stream has already been listened to"
+  /// 状态驱动后：空态与列表必然互斥，换范围也必然先回到 Loading。
+  FlowView? _view;
+
+  /// 当前数据对应的查询键（模式 + 月份）；键变即重新订阅
+  String? _viewKey;
+
+  /// 当前是否"全部"模式（决定分页与底部文案）
+  bool _isAllScope = false;
+  StreamSubscription<FlowView>? _viewSub;
+
+  /// 顶部汇总（同上，自己订阅）
+  MonthSummary? _summary;
+  String? _summaryKey;
+  StreamSubscription<MonthSummary>? _summarySub;
+
+  // --- 全部模式分页 ---
+
+  static const int _kPageSize = 200;
+
+  /// 已加载的最近账单条数（= 查询 LIMIT；加载更多即调大重查）
+  int _loadedBills = _kPageSize;
+
+  /// 是否还有更早的账单
+  bool _hasMore = true;
+
+  /// 正在加载下一页（防止滚动事件连发时重复调大 limit）
+  bool _loadingMore = false;
+
+  /// 是否还有更早数据（给 _FlowList 底部显示"加载中 / 到底"用）
+  bool get hasMoreData => _hasMore;
+
+  @override
+  void dispose() {
+    _viewSub?.cancel();
+    _summarySub?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// 按当前模式/月份同步订阅（build 里调用，键不变则什么都不做）
+  void _syncData(BillProvider provider) {
     final period = provider.period;
     final month = provider.selectedMonth;
-    if (_streamPeriod == period &&
-        _streamMonth?.year == month.year &&
-        _streamMonth?.month == month.month) {
-      return;
+    // "全部"与月份无关：键里不带月份，避免在全部模式下切月时白重载一次
+    final scope = period == HomePeriod.all
+        ? period.name
+        : '${period.name}-${month.year}-${month.month}';
+
+    if (_viewKey != scope) {
+      _viewSub?.cancel();
+      _viewSub = null;
+      _viewKey = scope;
+      _isAllScope = period == HomePeriod.all;
+      // 换范围先清空：宁可闪一帧 Loading，也不让旧月份的数据挂在
+      // 新标题下（这也是"空态与列表同屏"的根因）
+      _view = null;
+      _loadedBills = _kPageSize;
+      _hasMore = true;
+      _loadingMore = false;
+      _viewSub = _flowStream(
+        period,
+        month,
+      ).listen(_onView, onError: _reportFlowError);
     }
-    _streamPeriod = period;
-    _streamMonth = month;
-    _flowStream = context.read<AssetFlowViewRepository>().watchHomeFlow(
-      period,
-      month,
+
+    if (_summaryKey != scope) {
+      _summarySub?.cancel();
+      _summarySub = null;
+      _summaryKey = scope;
+      _summary = null;
+      _summarySub = provider.homeSummaryStream().listen((s) {
+        if (mounted) setState(() => _summary = s);
+      }, onError: _reportFlowError);
+    }
+  }
+
+  /// 按模式取流：全部模式取最近 [_loadedBills] 条账单 + 全部借条
+  Stream<FlowView> _flowStream(HomePeriod period, DateTime month) {
+    final repo = context.read<AssetFlowViewRepository>();
+    return period == HomePeriod.all
+        ? repo.watchHomeFlowPaged(limit: _loadedBills)
+        : repo.watchHomeFlow(period, month);
+  }
+
+  void _onView(FlowView view) {
+    if (!mounted) return;
+    setState(() {
+      _view = view;
+      _loadingMore = false;
+      if (_isAllScope) {
+        // entries 里还混着借条，不能直接看长度：只数账单，
+        // 不足 limit 即说明没有更早的账单了
+        final billCount = view.entries.where((e) => e.bill != null).length;
+        _hasMore = billCount >= _loadedBills;
+      } else {
+        _hasMore = false;
+      }
+    });
+  }
+
+  void _reportFlowError(Object error, StackTrace stack) {
+    FlutterError.reportError(
+      FlutterErrorDetails(exception: error, stack: stack, library: '首页明细'),
     );
-    _summaryStream = provider.homeSummaryStream();
+  }
+
+  /// 滚动到底部时触发：调大 limit 重新订阅。
+  /// 查询始终是"最近 N 条"，整体重排后返回，不会出现跨页重复/遗漏
+  Future<void> loadMore() async {
+    if (!_isAllScope || !_hasMore || _loadingMore) return;
+    _loadingMore = true;
+    _loadedBills += _kPageSize;
+    final provider = context.read<BillProvider>();
+    await _viewSub?.cancel();
+    _viewSub = _flowStream(
+      provider.period,
+      provider.selectedMonth,
+    ).listen(_onView, onError: _reportFlowError);
+  }
+
+  /// 外部（主框架 Tab 再点）调用：滚动位置不在顶 → 滚回顶；
+  /// 已在顶或无滚动内容（空态）→ 重置到当月默认视图
+  void resetToTop() {
+    if (_scrollController.hasClients && _scrollController.offset > 0) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      // 已在顶 / 空态无内容 / 甚至还没挂载 scrollController
+      context.read<BillProvider>().resetToDefault();
+    }
   }
 
   @override
@@ -130,63 +251,76 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // watch：月份/查看模式切换（notifyListeners）时重建，
-    // StreamBuilder 随之订阅新范围的流
+    // watch：月份/查看模式切换（notifyListeners）时重建
     final provider = context.watch<BillProvider>();
-    _ensureStreams(provider);
+    // 状态驱动：范围变化在这里换订阅，其余情况复用已有数据与订阅
+    _syncData(provider);
+
+    final period = provider.period;
+    final month = provider.selectedMonth;
     return Column(
       children: [
-        _SummaryHeader(provider: provider, summaryStream: _summaryStream!),
+        _SummaryHeader(
+          provider: provider,
+          summary: _summary ?? MonthSummary.empty,
+        ),
         Expanded(
           // 边界切月手势只在"按月显示"下有意义（年/全部没有"上下月"概念）
           child: _MonthPullSwitch(
-            enabled: provider.period == HomePeriod.month,
-            selectedMonth: provider.selectedMonth,
+            enabled: period == HomePeriod.month,
+            selectedMonth: month,
             onSwitch: provider.changeMonth,
-            child: StreamBuilder<FlowView>(
-              // 账单/借条/分类/账户/图片标记全部由视图仓储组装，
-              // 页面只订阅这一层
-              stream: _flowStream,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const LoadingPlaceholder();
-                }
-                final view = snapshot.data!;
-                if (view.entries.isEmpty) {
-                  // 空月也要能拉：包进可滚动视图（SliverFillRemaining
-                  // 占满一屏且 AlwaysScrollable 保证边界 overscroll 可用）
-                  return const CustomScrollView(
-                    physics: AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: _EmptyState(),
-                      ),
-                    ],
-                  );
-                }
-                return _FlowList(
-                  view: view,
-                  month: provider.selectedMonth,
-                  showAll: provider.period == HomePeriod.all,
-                );
-              },
-            ),
+            child: _buildFlowArea(period, month),
           ),
         ),
       ],
+    );
+  }
+
+  /// 明细区：Loading / 空态 / 列表 三选一，任何时刻只渲染一个
+  Widget _buildFlowArea(HomePeriod period, DateTime month) {
+    final view = _view;
+    if (view == null) return const LoadingPlaceholder();
+    if (view.entries.isEmpty) {
+      // 空范围也要能拉：包进可滚动视图（SliverFillRemaining 占满一屏且
+      // AlwaysScrollableScrollPhysics 保证边界 overscroll 可用）。
+      // 挂同一个 _scrollController，Tab 同点"滚回顶"与列表行为一致
+      return CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyStateCard.none(
+              periodLabel: switch (period) {
+                HomePeriod.month => null,
+                HomePeriod.year => '${month.year}年还没有记账',
+                HomePeriod.all => '还没有任何账单',
+              },
+            ),
+          ),
+        ],
+      );
+    }
+    return _FlowList(
+      view: view,
+      month: month,
+      period: period,
+      scrollController: _scrollController,
+      pagingState: period == HomePeriod.all ? this : null,
     );
   }
 }
 
 /// 顶部渐变汇总区：显示方式切换 + 支出 / 收入 / 结余
 class _SummaryHeader extends StatelessWidget {
-  const _SummaryHeader({required this.provider, required this.summaryStream});
+  const _SummaryHeader({required this.provider, required this.summary});
 
   final BillProvider provider;
 
-  /// 汇总流由页面缓存后传入：组件重建不再新建查询流
-  final Stream<MonthSummary> summaryStream;
+  /// 汇总由页面统一订阅后传入：组件不再自行订阅，避免切月时
+  /// StreamBuilder 保留上一份快照
+  final MonthSummary summary;
 
   /// 打开"显示方式"弹窗并应用选择结果（模式 + 基准月份）
   Future<void> _pickPeriod(BuildContext context) async {
@@ -217,72 +351,58 @@ class _SummaryHeader extends StatelessWidget {
             AppDimens.pagePadding,
             AppDimens.gapLg,
           ),
-          child: StreamBuilder<MonthSummary>(
-            stream: summaryStream,
-            builder: (context, snapshot) {
-              final summary = snapshot.data ?? MonthSummary.empty;
-              return Column(
+          child: Column(
+            children: [
+              Center(
+                child: MonthSwitcher(
+                  month: provider.selectedMonth,
+                  onChanged: provider.changeMonth,
+                  // 弹窗内已可选年月，顶部左右箭头不再需要
+                  showArrows: false,
+                  text: switch (period) {
+                    HomePeriod.month => null,
+                    HomePeriod.year => '${provider.selectedMonth.year}年',
+                    HomePeriod.all => '全部',
+                  },
+                  onTapText: () => _pickPeriod(context),
+                ),
+              ),
+              const SizedBox(height: AppDimens.gapLg),
+              // 上行：流量（支出/收入），下行：结果（优惠节省/结余）
+              Row(
                 children: [
-                  Center(
-                    child: MonthSwitcher(
-                      month: provider.selectedMonth,
-                      onChanged: provider.changeMonth,
-                      // 弹窗内已可选年月，顶部左右箭头不再需要
-                      showArrows: false,
-                      text: switch (period) {
-                        HomePeriod.month => null,
-                        HomePeriod.year => '${provider.selectedMonth.year}年',
-                        HomePeriod.all => '全部',
-                      },
-                      onTapText: () => _pickPeriod(context),
-                    ),
+                  _SummaryItem(
+                    label: '支出',
+                    amount: MoneyUtil.centsToYuanTrimmed(summary.expenseCents),
                   ),
-                  const SizedBox(height: AppDimens.gapLg),
-                  // 上行：流量（支出/收入），下行：结果（优惠节省/结余）
-                  Row(
-                    children: [
-                      _SummaryItem(
-                        label: '支出',
-                        amount: MoneyUtil.centsToYuanTrimmed(
-                          summary.expenseCents,
-                        ),
-                      ),
-                      _divider(),
-                      _SummaryItem(
-                        label: '收入',
-                        amount: MoneyUtil.centsToYuanTrimmed(
-                          summary.incomeCents,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppDimens.gapMd),
-                  // 两行之间贯通横线
-                  Container(height: 1, color: AppColors.onHeader(0.2)),
-                  const SizedBox(height: AppDimens.gapMd),
-                  Row(
-                    children: [
-                      // 优惠节省是"正反馈"辅助指标：字号小一档、亮度略低，
-                      // 避免与支出/收入/结余三个主指标抢视觉权重
-                      _SummaryItem(
-                        label: '优惠节省',
-                        amount: MoneyUtil.centsToYuanTrimmed(
-                          summary.discountCents,
-                        ),
-                        small: true,
-                      ),
-                      _divider(),
-                      _SummaryItem(
-                        label: '结余',
-                        amount: MoneyUtil.centsToYuanTrimmed(
-                          summary.balanceCents,
-                        ),
-                      ),
-                    ],
+                  _divider(),
+                  _SummaryItem(
+                    label: '收入',
+                    amount: MoneyUtil.centsToYuanTrimmed(summary.incomeCents),
                   ),
                 ],
-              );
-            },
+              ),
+              const SizedBox(height: AppDimens.gapMd),
+              // 两行之间贯通横线
+              Container(height: 1, color: AppColors.onHeader(0.2)),
+              const SizedBox(height: AppDimens.gapMd),
+              Row(
+                children: [
+                  // 优惠节省是"正反馈"辅助指标：字号小一档、亮度略低，
+                  // 避免与支出/收入/结余三个主指标抢视觉权重
+                  _SummaryItem(
+                    label: '优惠节省',
+                    amount: MoneyUtil.centsToYuanTrimmed(summary.discountCents),
+                    small: true,
+                  ),
+                  _divider(),
+                  _SummaryItem(
+                    label: '结余',
+                    amount: MoneyUtil.centsToYuanTrimmed(summary.balanceCents),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -344,7 +464,9 @@ class _FlowList extends StatefulWidget {
   const _FlowList({
     required this.view,
     required this.month,
-    this.showAll = false,
+    required this.period,
+    this.scrollController,
+    this.pagingState,
   });
 
   final FlowView view;
@@ -352,8 +474,15 @@ class _FlowList extends StatefulWidget {
   /// 当前查看月份：变化时列表滚回顶部（切月后从最新一天看起）
   final DateTime month;
 
-  /// "全部"模式：尾部提示文案不带"本月"
-  final bool showAll;
+  /// 当前查看范围：决定尾部"到底"提示文案（本月/本年/全部）
+  final HomePeriod period;
+
+  /// 外部传入的滚动控制器（Tab 同点滚回顶用）；null 则内部自建
+  final ScrollController? scrollController;
+
+  /// 全部模式下的分页状态：提供 loadMore / hasMoreData；
+  /// 非全部模式为 null（不需要分页）
+  final HomePageState? pagingState;
 
   @override
   State<_FlowList> createState() => _FlowListState();
@@ -364,12 +493,45 @@ class _FlowListState extends State<_FlowList> {
   /// 标签数据未纳入视图模型（仅首页行展示标签），保留本地加载
   Map<int, List<Tag>> _tagsByBill = {};
 
-  final ScrollController _controller = ScrollController();
+  late final ScrollController _controller;
+  late final bool _ownsController;
+
+  /// 分页滚动监听（全部模式）：滚到底触发 loadMore
+  void _onScroll() {
+    final paging = widget.pagingState;
+    if (paging == null) return;
+    if (!_controller.hasClients) return;
+    // 滚到距底部 < 200px 时预加载（不是精确 0，避免用户甩到底还等下一页）
+    final remaining = _controller.position.maxScrollExtent - _controller.offset;
+    if (remaining < 200) {
+      paging.loadMore();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    if (widget.scrollController != null) {
+      _controller = widget.scrollController!;
+      _ownsController = false;
+    } else {
+      _controller = ScrollController();
+      _ownsController = true;
+    }
+    // 全部模式：给 controller 加分页滚动监听
+    if (widget.pagingState != null) {
+      _controller.addListener(_onScroll);
+    }
     _loadTags();
+  }
+
+  @override
+  void dispose() {
+    if (widget.pagingState != null) {
+      _controller.removeListener(_onScroll);
+    }
+    if (_ownsController) _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -383,12 +545,13 @@ class _FlowListState extends State<_FlowList> {
     if (widget.month != oldWidget.month && _controller.hasClients) {
       _controller.jumpTo(0);
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    // pagingState 改变（理论上不会，但防御性处理）
+    if (oldWidget.pagingState != widget.pagingState) {
+      _controller.removeListener(_onScroll);
+      if (widget.pagingState != null) {
+        _controller.addListener(_onScroll);
+      }
+    }
   }
 
   /// 批量加载标签缓存（一次刷新）
@@ -435,15 +598,36 @@ class _FlowListState extends State<_FlowList> {
         AppDimens.pagePadding,
         24,
       ),
-      itemCount: dayKeys.length + 1,
+      itemCount: dayKeys.length + 1, // 尾部指示器占一项
       itemBuilder: (context, index) {
         if (index == dayKeys.length) {
-          // 列表尾部留白提示
+          // 列表尾部：全部模式显示分页状态（加载中 / 到底），
+          // 非全部模式保持原来的"本月账单到底啦"提示
+          final paging = widget.pagingState;
+          final hasMore = paging?.hasMoreData ?? false;
+          if (paging != null && hasMore) {
+            // 全部模式 + 还有数据 → 显示"加载中..."（滚到底预加载）
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppDimens.gapLg),
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          }
+          // 到底了 / 非全部模式 → 原来的提示
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: AppDimens.gapLg),
             child: Center(
               child: Text(
-                widget.showAll ? '· 全部账单到底啦 ·' : '· 本月账单到底啦 ·',
+                switch (widget.period) {
+                  HomePeriod.month => '· 本月账单到底啦 ·',
+                  HomePeriod.year => '· 本年账单到底啦 ·',
+                  HomePeriod.all => '· 全部账单到底啦 ·',
+                },
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -865,49 +1049,6 @@ class _MonthPullSwitchState extends State<_MonthPullSwitch> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 空状态引导
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 88,
-            height: 88,
-            decoration: const BoxDecoration(
-              color: AppColors.fill,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.savings_outlined,
-              size: 44,
-              color: AppColors.textSecondary.withValues(alpha: 0.45),
-            ),
-          ),
-          const SizedBox(height: AppDimens.gapLg),
-          const Text(
-            '这个月还没有记账',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            '点击下方 + 记下第一笔吧',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-          ),
-        ],
       ),
     );
   }

@@ -17,22 +17,17 @@ mixin _SaveAndBudget on _AddBillBase {
     var discountCents = MoneyUtil.yuanToCents(_draft.discountText);
     if (discountCents != null && discountCents == 0) discountCents = null;
     if (_draft.type != BillType.expense) discountCents = null;
-    if (cents == 0 && discountCents == null) {
-      showAppToast(context, '请输入正确的金额');
-      return;
-    }
-    // 转账：两账户必选且不能相同，不挂分类；其余类型维持分类必选校验
-    if (_draft.type == BillType.transfer) {
-      if (_draft.selectedAssetId == null || _draft.toAssetId == null) {
-        showAppToast(context, '请选择转出与转入账户');
-        return;
-      }
-      if (_draft.selectedAssetId == _draft.toAssetId) {
-        showAppToast(context, '转出与转入不能是同一账户');
-        return;
-      }
-    } else if (_draft.selectedCategoryId == null) {
-      showAppToast(context, '请选择分类');
+    // 校验（抽纯函数，可独立单测）
+    final error = validateBillDraft(
+      type: _draft.type,
+      amountCents: cents,
+      discountCents: discountCents,
+      selectedCategoryId: _draft.selectedCategoryId,
+      selectedAssetId: _draft.selectedAssetId,
+      toAssetId: _draft.toAssetId,
+    );
+    if (error != null) {
+      showAppToast(context, error);
       return;
     }
     final note = _draft.note.trim();

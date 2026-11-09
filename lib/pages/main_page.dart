@@ -25,15 +25,18 @@ class _MainPageState extends State<MainPage> {
   /// 上次按返回的时间：2 秒内连按两次才真正退出（防误触）
   DateTime? _lastPopAt;
 
-  /// 统计页 GlobalKey：Tab 同点时调 resetToTop
+  /// 四个页面 GlobalKey：Tab 同点时各自调 resetToTop
+  final _homeKey = GlobalKey<HomePageState>();
   final _statsKey = GlobalKey<StatsPageState>();
+  final _budgetKey = GlobalKey<BudgetPageState>();
+  final _settingsKey = GlobalKey<SettingsPageState>();
 
   /// 四个页面（IndexedStack 保持状态）
   late final _pages = <Widget>[
-    const HomePage(),
+    HomePage(key: _homeKey),
     StatsPage(key: _statsKey),
-    const BudgetPage(),
-    const SettingsPage(),
+    BudgetPage(key: _budgetKey),
+    SettingsPage(key: _settingsKey),
   ];
 
   @override
@@ -53,7 +56,19 @@ class _MainPageState extends State<MainPage> {
         showAppToast(context, '再按一次退出');
       },
       child: Scaffold(
-        body: IndexedStack(index: _index, children: _pages),
+        extendBody: false,
+        // extendBodyBehindAppBar / extendBody 默认 false，Scaffold body
+        // 不会自动避让 centerDocked FAB 的 notch 凹陷区。
+        // BottomAppBar 高 56 + FAB notch 凹陷约 72 + 余量 = 128，
+        // 所有子页面共享这一避让，不再需要每页各算
+        body: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: MediaQuery.of(context).padding.copyWith(
+                  bottom: MediaQuery.of(context).padding.bottom + 128,
+                ),
+          ),
+          child: IndexedStack(index: _index, children: _pages),
+        ),
         // 记账按钮：主题统一栗子棕圆形，突出核心动作
         floatingActionButton: FloatingActionButton(
           onPressed: _openAddBill,
@@ -114,10 +129,23 @@ class _MainPageState extends State<MainPage> {
     final color = selected ? AppColors.primary : AppColors.textSecondary;
     return Expanded(
       child: InkResponse(
-        // 同点当前 tab：统计页滚回顶/重置；其他 tab 无动作
+        // 同点当前 tab：各页面统一滚回顶 / 重置
         onTap: () {
           if (_index == tabIndex) {
-            if (tabIndex == 1) _statsKey.currentState?.resetToTop();
+            switch (tabIndex) {
+              case 0:
+                _homeKey.currentState?.resetToTop();
+                break;
+              case 1:
+                _statsKey.currentState?.resetToTop();
+                break;
+              case 2:
+                _budgetKey.currentState?.resetToTop();
+                break;
+              case 3:
+                _settingsKey.currentState?.resetToTop();
+                break;
+            }
           } else {
             setState(() => _index = tabIndex);
           }

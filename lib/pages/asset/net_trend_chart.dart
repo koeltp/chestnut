@@ -11,9 +11,10 @@ import '../../utils/money_util.dart';
 import 'net_trend_data.dart';
 
 /// 净值走势图：卡片与全屏页共用同一套绘制与样式。
-/// [panWindow] 为 null 时整段铺满、不挂任何手势（卡片，避免抢页面上下滚动）；
-/// 传点数（如 90）时按单指横滑平移可视窗口（全屏页），窗口内只渲染这些点，
-/// 不会把上百上千个点一次性画出来。
+/// [pannable] 为 false 时窗口固定贴右端、不响应横滑（卡片，避免抢页面上下滚动）；
+/// 为 true 时按单指横滑平移可视窗口（全屏页）。
+/// 窗口大小由绘图区宽度反推（点间距固定 20dp），窗口内的点全部绘制、
+/// 一个不抽——"放不下"只体现为窗口变窄、横滑看更早，而不是在窗口内抽点。
 class NetTrendChart extends StatefulWidget {
   const NetTrendChart({
     super.key,
@@ -21,18 +22,30 @@ class NetTrendChart extends StatefulWidget {
     required this.history,
     required this.currentNetCents,
     required this.masked,
-    this.panWindow,
+    this.pannable = false,
+    this.leadingFadeColor,
   });
 
   final NetTrendRange range;
   final List<NetValuePoint> history;
   final int currentNetCents;
   final bool masked;
-  final int? panWindow;
+  final bool pannable;
+
+  /// 是否在绘图区左边缘画渐隐：只在传入颜色（通常是卡片背景色）且
+  /// 确实有更早数据被窗口裁掉时出现；全屏页不传，保持干净
+  final Color? leadingFadeColor;
 
   @override
   State<NetTrendChart> createState() => _NetTrendChartState();
 }
+
+/// 数据点圆点的半径与描边：圆点可见阈值也由它们推出，不再单独写死
+const double kTrendDotRadius = 2.5;
+const double kTrendDotStroke = 1.2;
+
+/// 卡片左边缘渐隐的宽度：被窗口裁掉更早数据时，用来暗示左边还有
+const double kTrendFadeWidth = 16;
 
 class _NetTrendChartState extends State<NetTrendChart>
     with SingleTickerProviderStateMixin {
@@ -59,13 +72,11 @@ class _NetTrendChartState extends State<NetTrendChart>
   double _moved = 0;
   VelocityTracker? _velocity;
 
-  // 聚合结果与纵轴范围缓存：拖动每帧都会重建，但数据没变时不该重算
+  // 聚合结果缓存：拖动每帧都会重建，但数据没变时不该重算
   List<NetValuePoint>? _cachedPoints;
   List<NetValuePoint>? _cachedHistory;
   int _cachedEnd = -1;
   NetTrendRange? _cachedRange;
-  bool? _cachedFullHistory;
-  ({double minY, double maxY, double interval})? _cachedY;
 
   @override
   void dispose() {
@@ -110,40 +121,31 @@ class _NetTrendChartState extends State<NetTrendChart>
       ..forward();
   }
 
-  /// 聚合点与纵轴范围的缓存：只有历史/末点/档位变化才重算
-  List<NetValuePoint> _pointsFor(bool fullHistory) {
+  /// 聚合点缓存：只有历史/末点/档位变化才重算
+  List<NetValuePoint> _pointsFor() {
     final cached = _cachedPoints;
     if (cached != null &&
         _cachedHistory == widget.history &&
         _cachedEnd == widget.currentNetCents &&
-        _cachedRange == widget.range &&
-        _cachedFullHistory == fullHistory) {
+        _cachedRange == widget.range) {
       return cached;
     }
     final points = netTrendPoints(
       range: widget.range,
       history: widget.history,
       currentNetCents: widget.currentNetCents,
-      // 全屏页每个档位都取全部历史，靠窗口横滑往回看更早的数据；
-      // 卡片仍用截断的短窗口铺满
-      fullHistory: fullHistory,
     );
     _cachedPoints = points;
     _cachedHistory = widget.history;
     _cachedEnd = widget.currentNetCents;
     _cachedRange = widget.range;
-    _cachedFullHistory = fullHistory;
-    _cachedY = points.isEmpty ? null : netTrendYRange(points);
     return points;
   }
 
   @override
   Widget build(BuildContext context) {
-    final panWindow = widget.panWindow;
-    final fullHistory = panWindow != null;
-    final points = _pointsFor(fullHistory);
-    final y = _cachedY;
-    if (points.isEmpty || y == null) {
+    final points = _pointsFor();
+    if (points.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -163,71 +165,75 @@ class _NetTrendChartState extends State<NetTrendChart>
       );
     }
 
-    // 可视窗口：全屏页每档只铺 panWindow 个点，横滑查看更早的历史；
-    // 历史不足一个窗口时整段铺满，此时没有可平移的余量
-    final windowSize = (panWindow != null && points.length > panWindow)
-        ? panWindow
-        : points.length;
-    final maxOffset = points.length - windowSize;
-    _maxOffset = maxOffset;
-    final startExact = (_offsetExact ?? maxOffset.toDouble()).clamp(
-      0.0,
-      maxOffset.toDouble(),
-    );
-    final startIdx = startExact.floor();
-    // 多画窗口右侧一个点：窗口按小数平移时右边缘不会露出空白
-    final drawEnd = min(points.length - 1, startIdx + windowSize);
-    final lastX = (windowSize - 1).toDouble();
-
+    // 可视窗口大小依赖真实绘图区宽度（点间距 20dp），必须在 LayoutBuilder
+    // 里算；卡片不可平移，但窗口规则与全屏完全一致，只是固定贴右端
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 绘图区几何：左轴隐藏时不占宽度，底部横轴固定占 22；
-        // fl_chart 把首末点贴住绘图区两端，所以点间距是 plotWidth/(点数-1)
-        final leftPad = widget.masked ? 0.0 : 38.0;
+        final scaler = MediaQuery.textScalerOf(context);
+
+        // 左轴宽按"整体纵轴范围"里最宽的刻度文字实测：拖动时保持不变，
+        // 否则轴宽随窗口变化会让绘图区宽度来回抖
+        final axesY = netTrendYRange(points);
+        final leftPad = widget.masked
+            ? 0.0
+            : _widestAxisLabelWidth(axesY, scaler) + kTrendAxisPadding;
         final plotWidth = max(1.0, constraints.maxWidth - leftPad);
-        final plotHeight = max(1.0, constraints.maxHeight - 22);
+
+        // 底部预留高与刻度槽位，都取该档最宽样本的实测尺寸
+        final labelSize = netTrendTextSize(
+          _labelSample(widget.range),
+          textScaler: scaler,
+        );
+        final bottomPad = labelSize.height + kTrendAxisPadding;
+        final plotHeight = max(1.0, constraints.maxHeight - bottomPad);
+
+        // 点数由宽度反推：点间距固定 20dp，能放多少点就显示多少点。
+        // 屏幕窄窗口就窄，更早的数据靠横滑平移，而不是在窗口内按比例
+        // 取整抽稀——比例取整会让相邻点间隔在 1~2 倍之间跳动，忽疏忽密。
+        final windowSize = netTrendWindowPoints(
+          plotWidth: plotWidth,
+          totalPoints: points.length,
+        );
+        final maxOffset = points.length - windowSize;
+        _maxOffset = maxOffset;
+        final startExact = (_offsetExact ?? maxOffset.toDouble()).clamp(
+          0.0,
+          maxOffset.toDouble(),
+        );
+        final startIdx = startExact.floor();
+        // 多画窗口右侧一个点：窗口按小数平移时右边缘不会露出空白
+        final drawEnd = min(points.length - 1, startIdx + windowSize);
+        final lastX = (windowSize - 1).toDouble();
         final pointPx = windowSize <= 1
             ? plotWidth
             : plotWidth / (windowSize - 1);
         _pointPx = pointPx;
 
-        // 横轴刻度目标数：全屏按可用宽度自适应 10~12 个（每个标签约
-        // 占 80dp 宽），卡片固定 6 个，避免挤成一片
-        final labelTarget = fullHistory
-            ? (plotWidth / 80).floor().clamp(10, 12)
-            : 6;
-        final labelStep = max(1, (windowSize / labelTarget).ceil());
-        // 圆点按实际点间距显示：≥6dp 就画，更密时才隐藏，避免糊成粗线
-        final showDots = windowSize <= 1 || pointPx >= 6;
-
-        // 数据点全部绘制：不再对日/全部档抽稀，圆点是否显示交给 showDots
-        // 按点间距统一判定
+        // 点：窗口内全部画上，间距恒为 plotWidth/(windowSize-1) ≈ 20dp
         final spots = <FlSpot>[
-          for (var i = startIdx; i <= drawEnd; i++)
-            FlSpot((i - startExact).toDouble(), points[i].$2.toDouble()),
+          for (var idx = startIdx; idx <= drawEnd; idx++)
+            FlSpot((idx - startExact).toDouble(), points[idx].$2.toDouble()),
         ];
+        // 点距固定 20dp，正常都能放下圆点；极窄屏按圆点直径兜底隐藏
+        final showDots =
+            windowSize <= 1 || pointPx >= 2 * kTrendDotRadius + kTrendDotStroke;
 
-        // 横轴刻度去重：首点 + 末点 + 每 labelStep 个为候选，但相邻两个
-        // 候选若标签文本相同（如同一年内多个月都显示"2026"），只保留前者，
-        // 避免横轴出现重复年份
-        final candidates = <int>{startIdx, drawEnd};
-        for (var i = startIdx + labelStep; i < drawEnd; i += labelStep) {
-          candidates.add(i);
-        }
-        final sortedCandidates = candidates.toList()..sort();
-        final shownIndices = <int>{};
-        String? lastLabel;
-        for (final idx in sortedCandidates) {
-          final label = netTrendDateLabel(
-            widget.range,
-            points[idx].$1,
-            windowSize,
-          );
-          if (label != lastLabel) {
-            shownIndices.add(idx);
-            lastLabel = label;
-          }
-        }
+        // 纵轴只按当前窗口内的点算：全屏页取全部历史后，若还按整段算，
+        // 20 年跨度会把最近 36 天的波动压成一条直线。窗口最多几十个点，
+        // 拖动时逐帧重算的代价可以忽略。
+        final y = netTrendYRange(
+          points.sublist(startIdx, min(points.length, drawEnd + 1)),
+        );
+
+        // 刻度：先算一屏写不下几个标签（按实际文本占位），写不下才抽稀。
+        // 步长只能取整数个点，刻度才始终落在数据点上；从右端（最新数据）
+        // 往左对齐，保证"今天"永远有标签，余量落在最左侧。
+        final labelStep = netTrendLabelStep(
+          windowPoints: windowSize,
+          plotWidth: plotWidth,
+          labelWidth: labelSize.width,
+        );
+        final anchorIdx = (startExact + lastX).round();
 
         final chartData = LineChartData(
           minY: y.minY,
@@ -245,14 +251,14 @@ class _NetTrendChartState extends State<NetTrendChart>
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: !widget.masked,
-                reservedSize: 38,
+                reservedSize: leftPad,
                 interval: y.interval,
                 getTitlesWidget: (value, meta) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.only(right: kTrendAxisPadding),
                   child: Text(
                     netTrendAxisLabel(value),
                     style: const TextStyle(
-                      fontSize: 10,
+                      fontSize: kTrendAxisFontSize,
                       color: AppColors.textSecondary,
                     ),
                   ),
@@ -262,16 +268,21 @@ class _NetTrendChartState extends State<NetTrendChart>
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 22,
+                reservedSize: bottomPad,
                 interval: 1,
                 getTitlesWidget: (value, meta) {
                   // x 是相对窗口起点的小数偏移，换回全局下标再取日期
                   final idx = (startExact + value).round();
-                  if (!shownIndices.contains(idx)) {
+                  if (idx < 0 || idx >= points.length) {
+                    return const SizedBox.shrink();
+                  }
+                  // 刻度从最新数据往左按整数步长对齐：拖动时 idx 连续变化
+                  // 也不会漏标，且间隔始终是 step 个点
+                  if ((anchorIdx - idx) % labelStep != 0) {
                     return const SizedBox.shrink();
                   }
                   return Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.only(top: kTrendAxisPadding),
                     child: Text(
                       netTrendDateLabel(
                         widget.range,
@@ -279,7 +290,7 @@ class _NetTrendChartState extends State<NetTrendChart>
                         windowSize,
                       ),
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: kTrendAxisFontSize,
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -301,9 +312,9 @@ class _NetTrendChartState extends State<NetTrendChart>
                 show: showDots,
                 getDotPainter: (spot, percent, bar, index) =>
                     FlDotCirclePainter(
-                      radius: 2.5,
+                      radius: kTrendDotRadius,
                       color: AppColors.primary,
-                      strokeWidth: 1.2,
+                      strokeWidth: kTrendDotStroke,
                       strokeColor: Colors.white,
                     ),
               ),
@@ -386,7 +397,7 @@ class _NetTrendChartState extends State<NetTrendChart>
             if (_moved < 6) return;
             // 一旦拖动就取消选中，避免气泡跟着窗口漂移
             if (_selected != null) setState(() => _selected = null);
-            if (_maxOffset <= 0) return;
+            if (!widget.pannable || _maxOffset <= 0) return;
             // 像素级累加：直接按"点间距"换算，手指走多少窗口走多少
             final next =
                 ((_offsetExact ?? _maxOffset.toDouble()) -
@@ -412,6 +423,29 @@ class _NetTrendChartState extends State<NetTrendChart>
             clipBehavior: Clip.none,
             children: [
               chart,
+              // 卡片被窗口裁掉更早数据时，左边缘渐隐暗示"左边还有"；
+              // 只盖绘图区，不盖左轴刻度，也不吃点击
+              if (widget.leadingFadeColor != null && points.length > windowSize)
+                Positioned(
+                  left: leftPad,
+                  top: 0,
+                  width: kTrendFadeWidth,
+                  height: plotHeight,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            widget.leadingFadeColor!,
+                            widget.leadingFadeColor!.withValues(alpha: 0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (selIndex != null) ...[
                 // 高亮圆点：压在曲线数据点上，比普通圆点更醒目
                 Positioned(
@@ -462,6 +496,31 @@ class _NetTrendChartState extends State<NetTrendChart>
       },
     );
   }
+
+  /// 整体纵轴范围里最宽的刻度文字宽度，用于预留左轴
+  double _widestAxisLabelWidth(
+    ({double minY, double maxY, double interval}) y,
+    TextScaler scaler,
+  ) {
+    final count = ((y.maxY - y.minY) / y.interval).round();
+    var widest = 0.0;
+    for (var i = 0; i <= count; i++) {
+      final width = netTrendTextSize(
+        netTrendAxisLabel(y.minY + i * y.interval),
+        textScaler: scaler,
+      ).width;
+      if (width > widest) widest = width;
+    }
+    return widest;
+  }
+
+  /// 测宽样本：取该档最宽的可能标签，避免用窄样本低估占位
+  String _labelSample(NetTrendRange range) => switch (range) {
+    NetTrendRange.day => '12/31',
+    NetTrendRange.month => '26/12',
+    NetTrendRange.quarter => '26/Q4',
+    NetTrendRange.year => '2026',
+  };
 
   /// 气泡文案：日期 + 当日净值（模糊模式下金额打码）
   String _pillText(NetValuePoint point) => widget.masked
@@ -533,13 +592,13 @@ class NetTrendRangeSwitch extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onTap: () => onChanged(r),
             child: Padding(
-              padding: EdgeInsets.only(
-                left: r == NetTrendRange.values.first ? 0 : 14,
-              ),
+              // 上下各留 8dp：四个字挤在一行时，热区比文字本身大一圈，
+              // 避免相邻档位误点
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
               child: Text(
                 netTrendRangeLabel(r),
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: value == r ? FontWeight.w600 : FontWeight.w400,
                   color: value == r
                       ? AppColors.primary

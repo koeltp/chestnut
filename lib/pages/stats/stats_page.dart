@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,6 +13,7 @@ import '../../utils/money_util.dart';
 import '../../widgets/app_segmented.dart';
 import '../../widgets/loading_placeholder.dart';
 import '../../widgets/pie_chart_card.dart';
+import '../../widgets/stream_cache_mixin.dart';
 import '../home/period_picker_dialog.dart';
 import 'stats_charts.dart';
 import 'stats_filter_sheet.dart';
@@ -55,7 +55,7 @@ class StatsPage extends StatefulWidget {
 
 /// 公开 State 类：外部通过 `GlobalKey<StatsPageState>` 访问
 /// [resetToTop] 方法实现 Tab 同点重置
-class StatsPageState extends State<StatsPage> {
+class StatsPageState extends State<StatsPage> with StreamCacheMixin<StatsPage> {
   /// 列表滚动控制器：Tab 同点时滚回顶 / 重置筛选
   late final ScrollController _scrollController = ScrollController();
 
@@ -86,15 +86,6 @@ class StatsPageState extends State<StatsPage> {
   late StatsQuery _query = StatsQuery(
     month: widget.initialMonth ?? DateTime.now(),
   );
-
-  /// 图片标记流及其 bills-id 键缓存：集合不变时复用同一流，
-  /// StreamBuilder 不重订阅（换流空窗会让相机角标闪一下）
-  Stream<Set<int>>? _imageIdsStream;
-  List<int> _imageIdsKey = const [];
-
-  /// 标签批量查询 Future 缓存：bills-id 不变时复用，避免每次 build
-  /// 新建 Future 重新查询
-  Future<Map<int, List<Tag>>>? _tagsFuture;
 
   /// 分类字典流：页面生命周期内分类表不变，只订阅一次
   late final Stream<Map<int, Category>> _categoriesStream = context
@@ -347,54 +338,29 @@ class StatsPageState extends State<StatsPage> {
     });
   }
 
-  /// 当前视图的账单流缓存：按 StatsQuery.fingerprint 判断是否换流。
-  /// 数据库层一次性按全部条件（范围/type/分类/关键词/排除转账）
-  /// 返回过滤后的结果，UI 层只做标签过滤（bill_tags 关联表成本高，
-  /// 保持在 UI 层）。
-  ///
-  /// 切月份、切 period、切 type、切自定义区间、切关键词都会换流，
-  /// 不复用全量拉回 + 内存过滤的旧路径。
-  Stream<List<Bill>>? _billsStream;
-  String? _billsFingerprint;
+  /// 当前视图的账单流（用 Mixin 缓存，key 为 StatsQuery.fingerprint）
+  Stream<List<Bill>> _billsStream(BillProvider provider) =>
+      ensureStream<List<Bill>>('bills-${_query.fingerprint}', () => provider.statsQueryStream(_query));
 
-  Stream<List<Bill>> _ensureBillsStream(BillProvider provider) {
-    final fp = _query.fingerprint;
-    if (_billsStream != null && fp == _billsFingerprint) {
-      return _billsStream!;
-    }
-    _billsFingerprint = fp;
-    _billsStream = provider.statsQueryStream(_query);
-    return _billsStream!;
-  }
-
-  /// 去年同期对比流缓存（柱状图灰色背景柱）：按月/按年整体平移一年；
-  /// 自定义区间、"全部"与分类视图无对比基准，给同步空流占位。
-  /// 对比基准变化时才换流，避免切换筛选时重订阅
-  Stream<List<Bill>>? _compareStream;
-  String? _compareKey;
-
-  Stream<List<Bill>> _ensureCompareStream(BillProvider provider) {
+  /// 去年同期对比流（用 Mixin 缓存）：按月/按年整体平移一年；
+  /// 自定义区间、"全部"与分类视图无对比基准，给同步空流占位
+  Stream<List<Bill>> _compareStream(BillProvider provider) {
     final q = _query;
-    final key =
-        q.categoryId != null || q.custom != null || q.period == HomePeriod.all
-        ? 'none'
-        : '${q.period.name}-${q.month.year}-${q.month.month}';
-    if (key == _compareKey) return _compareStream!;
-    _compareKey = key;
-    if (key == 'none') {
-      _compareStream = Stream.value(const <Bill>[]);
-      return _compareStream!;
-    }
-    // 平移一年：用 copyWith 构造一个查询，period/month 减一年
-    final prevQuery = q.copyWith(
-      period: q.period,
-      month: q.period == HomePeriod.year
-          ? DateTime(q.month.year - 1)
-          : DateTime(q.month.year - 1, q.month.month),
-      custom: null,
-    );
-    _compareStream = provider.statsQueryStream(prevQuery);
-    return _compareStream!;
+    final none = q.categoryId != null || q.custom != null || q.period == HomePeriod.all;
+    final key = none
+        ? 'compare-none'
+        : 'compare-${q.period.name}-${q.month.year}-${q.month.month}';
+    return ensureStream<List<Bill>>(key, () {
+      if (none) return Stream.value(const <Bill>[]);
+      final prevQuery = q.copyWith(
+        period: q.period,
+        month: q.period == HomePeriod.year
+            ? DateTime(q.month.year - 1)
+            : DateTime(q.month.year - 1, q.month.month),
+        custom: null,
+      );
+      return provider.statsQueryStream(prevQuery);
+    });
   }
 
   @override
@@ -458,7 +424,7 @@ class StatsPageState extends State<StatsPage> {
               ],
             ),
             body: StreamBuilder<List<Bill>>(
-              stream: _ensureBillsStream(provider),
+              stream: _billsStream(provider),
               builder: (context, snapshot) {
                 // 换流空窗（筛选变化重订阅 drift 流）显示加载态，
                 // 而不是当空列表顶"暂无账单"空态，避免闪现误导
@@ -467,21 +433,21 @@ class StatsPageState extends State<StatsPage> {
                 }
                 final bills = snapshot.data!;
                 // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
-                // 按当前 bills 的 id 集合缓存流实例，集合不变时 StreamBuilder
-                // 不重订阅，避免换流空窗闪一下
+                // 标签批量查询也按 bills-id 集合缓存，集合不变时 StreamBuilder
+                // 不重订阅、Future 不重建（用 Mixin ensureStream/ensureFuture）
                 final ids = bills.map((b) => b.id).toList();
-                if (!listEquals(ids, _imageIdsKey)) {
-                  _imageIdsKey = ids;
-                  _imageIdsStream = context
-                      .read<BillImageRepository>()
-                      .watchBillIdsWithImages(ids);
-                  _tagsFuture = context.read<TagRepository>().getTagsByBillIds(
-                    ids,
-                  );
-                }
+                final idsKey = ids.join(',');
+                final imageStream = ensureStream<Set<int>>(
+                  'images-$idsKey',
+                  () => context.read<BillImageRepository>().watchBillIdsWithImages(ids),
+                );
+                final tagsFuture = ensureFuture<Map<int, List<Tag>>>(
+                  'tags-$idsKey',
+                  () => context.read<TagRepository>().getTagsByBillIds(ids),
+                );
                 // 标签批量加载（既用于条目显示也用于按选中标签过滤）
                 return FutureBuilder<Map<int, List<Tag>>>(
-                  future: _tagsFuture,
+                  future: tagsFuture,
                   builder: (context, tagSnapshot) {
                     final tagsByBill =
                         tagSnapshot.data ?? const <int, List<Tag>>{};
@@ -496,11 +462,11 @@ class StatsPageState extends State<StatsPage> {
                               )
                               .toList();
                     return StreamBuilder<Set<int>>(
-                      stream: _imageIdsStream,
+                      stream: imageStream,
                       builder: (context, imgSnapshot) {
                         final imageBillIds = imgSnapshot.data ?? const <int>{};
                         return StreamBuilder<List<Bill>>(
-                          stream: _ensureCompareStream(provider),
+                          stream: _compareStream(provider),
                           builder: (context, prevSnapshot) {
                             return StreamBuilder<Map<int, Asset>>(
                               // id → 资产映射：条目金额下方账户小字查名

@@ -65,11 +65,11 @@ class AssetFlowViewRepository {
     // 一条流同时产出账户本体与全量账户字典：watchAll 含已归档，
     // 修掉归档账户进流水页标题/概览消失的问题
     final assetData = _assets.watchAll().map(
-          (list) => (
-            self: list.where((a) => a.id == assetId).firstOrNull,
-            map: {for (final a in list) a.id: a},
-          ),
-        );
+      (list) => (
+        self: list.where((a) => a.id == assetId).firstOrNull,
+        map: {for (final a in list) a.id: a},
+      ),
+    );
     return combineLatest([
       assetData,
       bills,
@@ -77,58 +77,71 @@ class AssetFlowViewRepository {
       _cats.watchAllCategories().map(_categoryMap),
       // 图片标记依赖账单集合：账单一变就换订新的 id 流
       bills.switchMapLatest(
-        (list) => _billImages.watchBillIdsWithImages(
-          list.map((b) => b.id).toList(),
-        ),
+        (list) =>
+            _billImages.watchBillIdsWithImages(list.map((b) => b.id).toList()),
       ),
       // 借条照片标记是全表流，UI 按 id 自行过滤
       _debts.watchNoteIdsWithPhotos(),
-    ]).map(
-      (v) {
-        final assetInfo = v[0] as ({Asset? self, Map<int, Asset> map});
-        return FlowView(
-          asset: assetInfo.self,
-          relatedAssets: assetInfo.map,
-          entries: buildFlowEntries(
-            v[1] as List<Bill>,
-            v[2] as List<DebtNote>,
-          ),
-          categories: v[3] as Map<int, Category>,
-          billIdsWithImages: v[4] as Set<int>,
-          debtIdsWithPhotos: v[5] as Set<int>,
-        );
-      },
-    );
+    ]).map((v) {
+      final assetInfo = v[0] as ({Asset? self, Map<int, Asset> map});
+      return FlowView(
+        asset: assetInfo.self,
+        relatedAssets: assetInfo.map,
+        entries: buildFlowEntries(v[1] as List<Bill>, v[2] as List<DebtNote>),
+        categories: v[3] as Map<int, Category>,
+        billIdsWithImages: v[4] as Set<int>,
+        debtIdsWithPhotos: v[5] as Set<int>,
+      );
+    });
   }
 
-  /// 首页明细视图：按 [period] 范围聚合账单，借条按借款日期落入
-  /// 同一范围；日分组与小计由 UI 基于 entries 计算
+  /// 首页明细视图：按 [period] 范围聚合账单，借条也下沉 SQL 过滤
+  /// 到同一范围；日分组与小计由 UI 基于 entries 计算
   Stream<FlowView> watchHomeFlow(HomePeriod period, DateTime month) {
     final bills = switch (period) {
       HomePeriod.month => _bills.watchBillsInMonth(month),
       HomePeriod.year => _bills.watchBillsInYear(month.year),
       HomePeriod.all => _bills.watchAllBills(),
     };
+    // 借条按范围下沉 SQL 过滤：避免全表 watch 后 Dart 层 where
+    // 导致范围外借条变动也触发 combineLatest 重发射
+    final debts = switch (period) {
+      HomePeriod.month => _debts.watchDebtsInMonth(month),
+      HomePeriod.year => _debts.watchDebtsInYear(month.year),
+      HomePeriod.all => _debts.watchAll(),
+    };
+    return _assembleFlow(bills, debts);
+  }
+
+  /// 首页"全部"模式：最近 [limit] 条账单 + 全部借条，统一混排后整体返回。
+  ///
+  /// "加载更多"= 调大 [limit] 重新订阅，而不是按 offset 翻页：
+  /// 借条是全表参与混排的，若按页截断会让同一借条在每页重复出现，
+  /// 且分页边界会和真实时间顺序错位。
+  Stream<FlowView> watchHomeFlowPaged({required int limit}) {
+    // 借条数量小（个人用户通常几十条），全表 watch 无压力；
+    // 与最近 limit 条账单在 Dart 层按日期统一混排
+    return _assembleFlow(_bills.watchRecentBills(limit), _debts.watchAll());
+  }
+
+  /// 共用组装：账单流 + 借条流 → combineLatest 6 个子流 → FlowView
+  Stream<FlowView> _assembleFlow(
+    Stream<List<Bill>> bills,
+    Stream<List<DebtNote>> debts,
+  ) {
     return combineLatest([
       bills,
-      _debts.watchAll().map(
-            (list) =>
-                list.where((d) => _debtInRange(d, period, month)).toList(),
-          ),
+      debts,
       _cats.watchAllCategories().map(_categoryMap),
       _assets.watchAll().map(_assetMap),
       bills.switchMapLatest(
-        (list) => _billImages.watchBillIdsWithImages(
-          list.map((b) => b.id).toList(),
-        ),
+        (list) =>
+            _billImages.watchBillIdsWithImages(list.map((b) => b.id).toList()),
       ),
       _debts.watchNoteIdsWithPhotos(),
     ]).map(
       (v) => FlowView(
-        entries: buildFlowEntries(
-          v[0] as List<Bill>,
-          v[1] as List<DebtNote>,
-        ),
+        entries: buildFlowEntries(v[0] as List<Bill>, v[1] as List<DebtNote>),
         categories: v[2] as Map<int, Category>,
         relatedAssets: v[3] as Map<int, Asset>,
         billIdsWithImages: v[4] as Set<int>,
@@ -138,20 +151,12 @@ class AssetFlowViewRepository {
   }
 
   /// 分类列表转 id 字典
-  Map<int, Category> _categoryMap(List<Category> list) =>
-      {for (final c in list) c.id: c};
+  Map<int, Category> _categoryMap(List<Category> list) => {
+    for (final c in list) c.id: c,
+  };
 
   /// 账户列表转 id 字典
-  Map<int, Asset> _assetMap(List<Asset> list) =>
-      {for (final a in list) a.id: a};
-
-  /// 借条是否落在首页当前查看范围内（按借款日期判断）
-  bool _debtInRange(DebtNote debt, HomePeriod period, DateTime month) =>
-      switch (period) {
-        HomePeriod.month =>
-          debt.borrowedAt.year == month.year &&
-              debt.borrowedAt.month == month.month,
-        HomePeriod.year => debt.borrowedAt.year == month.year,
-        HomePeriod.all => true,
-      };
+  Map<int, Asset> _assetMap(List<Asset> list) => {
+    for (final a in list) a.id: a,
+  };
 }

@@ -88,6 +88,41 @@ class DebtNoteRepository {
         .watch();
   }
 
+  /// 监听指定月份的借条（借款日期落在该月内）：首页"按月查看"专用，
+  /// 避免全表 watch 后 Dart 层内存过滤导致范围外借条变动也触发重发射
+  Stream<List<DebtNote>> watchDebtsInMonth(DateTime month) {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    return (_db.select(_db.debtNotes)
+          ..where(
+            (n) =>
+                n.borrowedAt.isBiggerOrEqualValue(start) &
+                n.borrowedAt.isSmallerThanValue(end),
+          )
+          ..orderBy([
+            (n) => OrderingTerm.desc(n.borrowedAt),
+            (n) => OrderingTerm.desc(n.id),
+          ]))
+        .watch();
+  }
+
+  /// 监听指定年份的借条
+  Stream<List<DebtNote>> watchDebtsInYear(int year) {
+    final start = DateTime(year, 1, 1);
+    final end = DateTime(year + 1, 1, 1);
+    return (_db.select(_db.debtNotes)
+          ..where(
+            (n) =>
+                n.borrowedAt.isBiggerOrEqualValue(start) &
+                n.borrowedAt.isSmallerThanValue(end),
+          )
+          ..orderBy([
+            (n) => OrderingTerm.desc(n.borrowedAt),
+            (n) => OrderingTerm.desc(n.id),
+          ]))
+        .watch();
+  }
+
   /// 监听关联某账户的借条（删除资产前检查引用用）
   Future<List<DebtNote>> getByRelatedAsset(int assetId) {
     return (_db.select(_db.debtNotes)
