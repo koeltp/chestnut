@@ -342,23 +342,23 @@ class _StatsPageState extends State<StatsPage> {
     });
   }
 
-  /// 当前视图的账单流缓存：只有视图身份（categoryId）变化才换流。
-  /// 全部视图恒为全量账单流——日期/分类/标签/关键词全部内存过滤，
-  /// 切筛选不重订阅；build 里每次新建流会让全量查询被反复执行
+  /// 当前视图的账单流缓存：按 StatsQuery.fingerprint 判断是否换流。
+  /// 数据库层一次性按全部条件（范围/type/分类/关键词/排除转账）
+  /// 返回过滤后的结果，UI 层只做标签过滤（bill_tags 关联表成本高，
+  /// 保持在 UI 层）。
+  ///
+  /// 切月份、切 period、切 type、切自定义区间、切关键词都会换流，
+  /// 不复用全量拉回 + 内存过滤的旧路径。
   Stream<List<Bill>>? _billsStream;
-  int? _billsCategoryId;
-  bool _billsStreamReady = false;
+  String? _billsFingerprint;
 
   Stream<List<Bill>> _ensureBillsStream(BillProvider provider) {
-    final cid = _query.categoryId;
-    if (_billsStreamReady && cid == _billsCategoryId) {
+    final fp = _query.fingerprint;
+    if (_billsStream != null && fp == _billsFingerprint) {
       return _billsStream!;
     }
-    _billsStreamReady = true;
-    _billsCategoryId = cid;
-    _billsStream = cid == null
-        ? provider.billsInRangeStream(HomePeriod.all, _query.month)
-        : provider.categoryBillsStream(cid);
+    _billsFingerprint = fp;
+    _billsStream = provider.statsQueryStream(_query);
     return _billsStream!;
   }
 
@@ -376,12 +376,19 @@ class _StatsPageState extends State<StatsPage> {
         : '${q.period.name}-${q.month.year}-${q.month.month}';
     if (key == _compareKey) return _compareStream!;
     _compareKey = key;
-    final anchor = q.period == HomePeriod.year
-        ? DateTime(q.month.year - 1)
-        : DateTime(q.month.year - 1, q.month.month);
-    _compareStream = key == 'none'
-        ? Stream.value(const <Bill>[])
-        : provider.billsInRangeStream(q.period, anchor);
+    if (key == 'none') {
+      _compareStream = Stream.value(const <Bill>[]);
+      return _compareStream!;
+    }
+    // 平移一年：用 copyWith 构造一个查询，period/month 减一年
+    final prevQuery = q.copyWith(
+      period: q.period,
+      month: q.period == HomePeriod.year
+          ? DateTime(q.month.year - 1)
+          : DateTime(q.month.year - 1, q.month.month),
+      custom: null,
+    );
+    _compareStream = provider.statsQueryStream(prevQuery);
     return _compareStream!;
   }
 
@@ -578,6 +585,10 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   /// 页面主体：pinned 头部（类型分段器 + 年月条）+ 汇总/图表/明细
+  ///
+  /// [bills] 已经是数据库层按 StatsQuery 过滤后的结果
+  /// （排除了转账、日期范围、收支 type、分类口径、关键词），
+  /// 此处只做标签二次过滤（bill_tags 关联表成本高，保持在 UI 层）
   Widget _buildBody(
     List<Bill> bills,
     Map<int, Category> categories,
@@ -588,24 +599,22 @@ class _StatsPageState extends State<StatsPage> {
     Set<int> imageBillIds = const {},
     Map<int, Asset> assets = const {},
   }) {
-    // 主体过滤单遍完成：日期 + 关键词 + 分类口径（按视图身份，见
-    // filterBills 注释）；数据层为全量流，内存过滤足够
-    final filtered = filterBills(
-      bills,
-      categories: categories,
-      range: _query.range,
-      keyword: _query.keyword,
-      view: _query.view,
-      viewCategoryId: viewCat?.id,
-      filterCategoryIds: _query.filterCategoryIds,
-    );
+    // 标签过滤：数据库层未下沉标签条件（bill_tags 关联表 join 成本高）
+    //，UI 层保留一次过滤
+    final visible = _query.tagIds.isEmpty
+        ? bills
+        : bills
+              .where(
+                (b) => (tagsByBill[b.id] ?? const []).any(
+                  (t) => _query.tagIds.contains(t.id),
+                ),
+              )
+              .toList();
 
     // 分段器是整页开关：全部视图下汇总/图表/明细都只展示当前
-    // 收支类型的数据；分类/未细分视图 typeBills 即 filtered（单分类
-    // 类型固定）
-    final typeBills = isAllView
-        ? filtered.where((b) => b.type == _query.type).toList()
-        : filtered;
+    // 收支类型的数据；分类/未细分视图 typeBills 即 visible（单分类
+    // 类型固定，且数据库层已经按 type 过滤过）
+    final typeBills = visible;
     final isExpense = isAllView
         ? _query.type == BillType.expense
         : viewCat!.type == BillType.expense;
@@ -627,7 +636,7 @@ class _StatsPageState extends State<StatsPage> {
         : const <({Category? category, String name, int cents})>[];
     // 子分类构成环形图（分类视图仅一级分类）
     final subEntries = (viewCat != null && viewCat.parentId == null)
-        ? pieEntries(filtered, categories, viewCat)
+        ? pieEntries(visible, categories, viewCat)
         : const <({Category? category, String name, int cents})>[];
 
     // 按日分组（数据已按日期倒序），与首页明细同粒度
@@ -720,7 +729,7 @@ class _StatsPageState extends State<StatsPage> {
               period: _query.period,
               anchor: _query.month,
               bills: typeBills,
-              prevBills: prevBills.where((b) => b.type == _query.type).toList(),
+              prevBills: prevBills,
               color: amountColor,
             ),
           ),

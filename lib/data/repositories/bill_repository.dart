@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../database.dart';
 import '../../models/enums.dart';
 import '../../models/summaries.dart';
+import '../../pages/stats/stats_query.dart';
 import 'asset_repository.dart';
 
 /// 账单仓储：封装账单相关的全部数据访问，UI 与 Provider 不直接接触 SQL
@@ -38,11 +39,122 @@ class BillRepository {
         .watch();
   }
 
+  /// 统计页专用查询：一次性按 StatsQuery 的全部条件过滤，
+  /// 拉回结果后 UI 层直接聚合/渲染，不再做内存过滤。
+  ///
+  /// 过滤口径（与 stats_logic.filterBills 完全一致，只是下沉到数据库层）：
+  /// - 排除转账（bill.type != transfer）
+  /// - 日期 range 左闭右开，null = 该侧不限
+  /// - 收支 type：全部视图按 query.type；分类/未细分视图按 viewCategoryId
+  ///   对应的分类 type（用子查询拿，账单表 type 列不保证与分类一致）
+  /// - 分类口径：category 视图含自身+子分类；uncategorized 仅直挂；
+  ///   all 视图按 filterCategoryIds 多选（二级精确 or 一级含子）
+  /// - 关键词：locationFull / note / categories.name 任一 contains
+  ///
+  /// 标签过滤不下沉——tagIds 过滤发生在 UI 层（bill_tags 关联表 join
+  /// 成本高，且标签筛选不是高频操作；保持 UI 层过滤即可）。
+  ///
+  /// 全部分类相关条件用子查询构造，不 join categories 表——一次构建
+  /// 全部条件后统一传给 drift where，SQLite 会用 exists/index 子查询
+  /// 高效执行，比 join 更干净且避免类型别名问题。
+  Stream<List<Bill>> watchBillsByStatsQuery(StatsQuery q) {
+    final (rangeStart, rangeEnd) = q.range;
+    final kw = q.keyword.trim();
+    final b = _db.bills;
+    final c = _db.categories;
+
+    // ---- 构造分类相关的子查询 ----
+    // category 视图：viewCid 自身 + 全部子分类 id
+    final viewCid = q.categoryId;
+    final viewCidWithChildren = viewCid == null
+        ? null
+        : (_db.selectOnly(c)
+            ..addColumns([c.id])
+            ..where(c.parentId.equals(viewCid) | c.id.equals(viewCid)));
+
+    // all 视图 filterCategoryIds 的子分类（一级命中 = 含全部子）
+    final filterIds = q.filterCategoryIds.toList();
+    final filterIncludingChildren = filterIds.isEmpty
+        ? null
+        : (_db.selectOnly(c)
+            ..addColumns([c.id])
+            ..where(c.id.isIn(filterIds) | c.parentId.isIn(filterIds)));
+
+    // 分类/未细分视图的 type：子查询拿 viewCid 的 type 当常量
+    final viewTypeSubQuery = (q.view != StatsViewType.all && viewCid != null)
+        ? (_db.selectOnly(c)
+            ..addColumns([c.type])
+            ..where(c.id.equals(viewCid)))
+        : null;
+
+    // 关键词匹配的分类名对应的 id（关键词查分类名也能命中账单）
+    final keywordCatIds = kw.isEmpty
+        ? null
+        : (_db.selectOnly(c)
+            ..addColumns([c.id])
+            ..where(c.name.contains(kw)));
+
+    // ---- 拼 where 表达式 ----
+    Expression<bool> expr = b.type.equals(BillType.transfer.index).not();
+
+    if (rangeStart != null) {
+      expr = expr & b.date.isBiggerOrEqualValue(rangeStart);
+    }
+    if (rangeEnd != null) {
+      expr = expr & b.date.isSmallerThanValue(rangeEnd);
+    }
+
+    // type
+    switch (q.view) {
+      case StatsViewType.all:
+        expr = expr & b.type.equals(q.type.index);
+      case StatsViewType.category || StatsViewType.uncategorized:
+        if (viewTypeSubQuery != null) {
+          expr = expr & b.type.isInQuery(viewTypeSubQuery);
+        }
+    }
+
+    // 分类口径
+    switch (q.view) {
+      case StatsViewType.category:
+        if (viewCidWithChildren != null) {
+          expr = expr & b.categoryId.isInQuery(viewCidWithChildren);
+        }
+      case StatsViewType.uncategorized:
+        if (viewCid != null) {
+          expr = expr & b.categoryId.equals(viewCid);
+        }
+      case StatsViewType.all:
+        if (filterIncludingChildren != null) {
+          expr = expr & b.categoryId.isInQuery(filterIncludingChildren);
+        }
+    }
+
+    // 关键词：locationFull / note / categories.name（后者用子查询）
+    if (kw.isNotEmpty) {
+      expr =
+          expr &
+          (b.locationFull.contains(kw) |
+              b.note.contains(kw) |
+              b.categoryId.isInQuery(keywordCatIds!));
+    }
+
+    return (_db.select(_db.bills)
+          ..where((b) => expr)
+          ..orderBy([
+            (b) => OrderingTerm.desc(b.date),
+            (b) => OrderingTerm.desc(b.timeMinute),
+            (b) => OrderingTerm.desc(b.createdAt),
+          ]))
+        .watch();
+  }
+
   /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；
   /// 账单被删时发 null，弹窗据此自动关闭
   Stream<Bill?> watchBillById(int id) {
-    return (_db.select(_db.bills)..where((b) => b.id.equals(id)))
-        .watchSingleOrNull();
+    return (_db.select(
+      _db.bills,
+    )..where((b) => b.id.equals(id))).watchSingleOrNull();
   }
 
   /// 某账户的流水（账户明细页）：关联为付款方或收款方的账单都要，
@@ -50,7 +162,9 @@ class BillRepository {
   /// （一次作为转出方、一次作为转入方），UI 按"本方视角"展示方向
   Stream<List<Bill>> watchBillsOfAsset(int assetId) {
     return (_db.select(_db.bills)
-          ..where((b) => b.assetId.equals(assetId) | b.toAssetId.equals(assetId))
+          ..where(
+            (b) => b.assetId.equals(assetId) | b.toAssetId.equals(assetId),
+          )
           ..orderBy([
             (b) => OrderingTerm.desc(b.date),
             (b) => OrderingTerm.desc(b.timeMinute),
@@ -278,16 +392,15 @@ class BillRepository {
   }
 
   /// 新增账单：落库并联动账户余额（关联了账户时）
-  Future<int> addBill(BillsCompanion entry) =>
-      _db.transaction(() async {
-        final id = await _db.into(_db.bills).insert(entry);
-        // 重查拿全量实体：联动引擎按 type/amount/账户计算余额影响
-        final bill = await (_db.select(_db.bills)
-              ..where((b) => b.id.equals(id)))
-            .getSingle();
-        await _assetRepo.applyBillEffect(newBill: bill);
-        return id;
-      });
+  Future<int> addBill(BillsCompanion entry) => _db.transaction(() async {
+    final id = await _db.into(_db.bills).insert(entry);
+    // 重查拿全量实体：联动引擎按 type/amount/账户计算余额影响
+    final bill = await (_db.select(
+      _db.bills,
+    )..where((b) => b.id.equals(id))).getSingle();
+    await _assetRepo.applyBillEffect(newBill: bill);
+    return id;
+  });
 
   /// 更新账单（返回受影响行数）
   ///
@@ -296,14 +409,12 @@ class BillRepository {
   /// 不含该列），导致编辑账单清除位置（location/lat/lng 置 NULL）静默失效
   ///
   /// 联动：先查旧账单，撤销旧余额影响再应用新影响（同事务）
-  Future<int> updateBill(Bill bill) =>
-      _db.transaction(() async {
-        final old = await (_db.select(_db.bills)
-              ..where((b) => b.id.equals(bill.id)))
-            .getSingle();
-        final rows = await (_db.update(_db.bills)
-              ..where((b) => b.id.equals(bill.id)))
-            .write(
+  Future<int> updateBill(Bill bill) => _db.transaction(() async {
+    final old = await (_db.select(
+      _db.bills,
+    )..where((b) => b.id.equals(bill.id))).getSingle();
+    final rows =
+        await (_db.update(_db.bills)..where((b) => b.id.equals(bill.id))).write(
           BillsCompanion(
             type: Value(bill.type),
             amountCents: Value(bill.amountCents),
@@ -320,24 +431,23 @@ class BillRepository {
             toAssetId: Value(bill.toAssetId),
           ),
         );
-        await _assetRepo.applyBillEffect(oldBill: old, newBill: bill);
-        return rows;
-      });
+    await _assetRepo.applyBillEffect(oldBill: old, newBill: bill);
+    return rows;
+  });
 
   /// 删除账单：同步撤销该账单对账户余额的影响（同事务）
-  Future<int> deleteBill(int id) =>
-      _db.transaction(() async {
-        final old = await (_db.select(_db.bills)
-              ..where((b) => b.id.equals(id)))
-            .getSingleOrNull();
-        final rows = await (_db.delete(_db.bills)
-              ..where((b) => b.id.equals(id)))
-            .go();
-        if (old != null) {
-          await _assetRepo.applyBillEffect(oldBill: old);
-        }
-        return rows;
-      });
+  Future<int> deleteBill(int id) => _db.transaction(() async {
+    final old = await (_db.select(
+      _db.bills,
+    )..where((b) => b.id.equals(id))).getSingleOrNull();
+    final rows = await (_db.delete(
+      _db.bills,
+    )..where((b) => b.id.equals(id))).go();
+    if (old != null) {
+      await _assetRepo.applyBillEffect(oldBill: old);
+    }
+    return rows;
+  });
 
   /// 查询全部账单（CSV 导出用）
   Future<List<Bill>> getAllBills() => _db.select(_db.bills).get();

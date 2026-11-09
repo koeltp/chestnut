@@ -5,6 +5,7 @@ import '../data/repositories/bill_image_repository.dart';
 import '../data/repositories/bill_repository.dart';
 import '../models/enums.dart';
 import '../models/summaries.dart';
+import '../pages/stats/stats_query.dart';
 import 'cloud_storage_provider.dart';
 
 /// 账单状态管理
@@ -86,6 +87,10 @@ class BillProvider extends ChangeNotifier {
   /// 某分类（含子分类）账单流：分类统计详情页
   Stream<List<Bill>> categoryBillsStream(int categoryId) =>
       _repo.watchBillsInCategory(categoryId);
+
+  /// 统计页专用查询：按 StatsQuery 全部条件一次性查（数据库层过滤）
+  Stream<List<Bill>> statsQueryStream(StatsQuery q) =>
+      _repo.watchBillsByStatsQuery(q);
 
   /// 单条账单流（详情弹窗用）：编辑保存后弹窗自动刷新；被删发 null
   Stream<Bill?> watchBillById(int id) => _repo.watchBillById(id);

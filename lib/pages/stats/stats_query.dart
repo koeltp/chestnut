@@ -143,4 +143,21 @@ class StatsQuery {
       tagIds: tagIds ?? this.tagIds,
     );
   }
+
+  /// 数据库查询指纹：唯一决定 WHERE 子句的字符串表示，
+  /// UI 层按此判断"查询条件变了 → 换流，没 → 复用旧流"。
+  /// 与 copyWith 配合让 setState 内重建不触发重订阅。
+  String get fingerprint {
+    final c = custom;
+    final cs = c == null
+        ? '-'
+        : '${c.start?.millisecondsSinceEpoch ?? 'null'}-${c.end?.millisecondsSinceEpoch ?? 'null'}';
+    final cidsList = filterCategoryIds.toList()..sort();
+    final cids = cidsList.isEmpty ? '-' : cidsList.join(',');
+    final tidsList = tagIds.toList()..sort();
+    final tids = tidsList.isEmpty ? '-' : tidsList.join(',');
+    return '${period.name}|${month.millisecondsSinceEpoch}|'
+        '$cs|${type.name}|${view.name}|${categoryId ?? -1}|'
+        '$cids|$keyword|$tids';
+  }
 }
