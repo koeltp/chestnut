@@ -25,11 +25,15 @@ class _MainPageState extends State<MainPage> {
   /// 上次按返回的时间：2 秒内连按两次才真正退出（防误触）
   DateTime? _lastPopAt;
 
-  static const _pages = <Widget>[
-    HomePage(),
-    StatsPage(),
-    BudgetPage(),
-    SettingsPage(),
+  /// 统计页 GlobalKey：Tab 同点时调 resetToTop
+  final _statsKey = GlobalKey<StatsPageState>();
+
+  /// 四个页面（IndexedStack 保持状态）
+  late final _pages = <Widget>[
+    const HomePage(),
+    StatsPage(key: _statsKey),
+    const BudgetPage(),
+    const SettingsPage(),
   ];
 
   @override
@@ -110,7 +114,14 @@ class _MainPageState extends State<MainPage> {
     final color = selected ? AppColors.primary : AppColors.textSecondary;
     return Expanded(
       child: InkResponse(
-        onTap: () => setState(() => _index = tabIndex),
+        // 同点当前 tab：统计页滚回顶/重置；其他 tab 无动作
+        onTap: () {
+          if (_index == tabIndex) {
+            if (tabIndex == 1) _statsKey.currentState?.resetToTop();
+          } else {
+            setState(() => _index = tabIndex);
+          }
+        },
         radius: 30,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

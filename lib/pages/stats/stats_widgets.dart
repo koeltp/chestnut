@@ -101,8 +101,26 @@ class _StatsPeriodStripState extends State<StatsPeriodStrip> {
     return off;
   }
 
+  /// 锚点索引：自定义区间时虽然不高亮任何项，但横滑条仍要滚到
+  /// 锚点 month 对应的位置（筛选面板选自定义区间后锚点 = 区间起点）
+  int get _anchorIndex {
+    if (widget.isCustom) {
+      // 锚点始终按 month 字段（month 是筛选面板应用时设置的起点月）
+      for (var i = 0; i < widget.items.length; i++) {
+        final (y, m) = widget.items[i];
+        if (m != null &&
+            widget.month.year == y &&
+            widget.month.month == m) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    return _selectedIndex;
+  }
+
   void _scrollToSelected() {
-    final idx = _selectedIndex;
+    final idx = _anchorIndex;
     if (idx < 0 || !_controller.hasClients) return;
     final target = (_offsetOf(idx) - 60).clamp(
       0.0,

@@ -21,21 +21,17 @@ import 'stats_logic.dart';
 import 'stats_query.dart';
 import 'stats_widgets.dart';
 
-/// 统计页（Tab 页 + 分类管理页独立 push 共用）：查询结果页模型
+/// 统计页（Tab 页 + 外部 push 通用）：查询结果页模型
 ///
-/// 页面只有一份查询参数 [StatsQuery]，渲染、筛选面板回显、返回还原
-/// 全部只看这一份数据：
-/// - 外部跳入（分类管理/详情）= 带初始参数 push，系统返回退出
-/// - 点排行项/环图扇区/明细分类 = 当前参数快照压栈 + 换参数出结果；
-///   点"未细分"桶 = 快照压栈 + 切换到未细分视图列出这批账单
-///   （不切换分类视图）
-/// - 漏斗面板搜索 = **只替换当前参数不压栈**（同层数据换看法，
-///   不算导航；连续改条件后 ← 直接退出本页/视图）
-/// - 顶栏 ← 与系统返回键一致：弹栈还原快照；栈空退出页面
-/// - 切月份/分段器 = 当前页内调节，不进栈
+/// 导航栈只有一套 Navigator：点分类钻取 → push 新 StatsPage，pop
+/// 返回上一层，不自己造历史栈。
+/// - Tab 页（主入口）：顶栏无 ←，外部（MainPage 同点 Tab）可通过
+///   GlobalKey 调 [resetToTop] 实现"滚回顶 / 重置筛选"
+/// - push 页（外部跳入）：顶栏 ← 由 Flutter 默认（canPop）处理
 ///
-/// 视图形态由参数推导：categoryId 非空 = 分类视图（汇总卡 + 子分类
-/// 环形图 + 明细）；空 = 全部视图（分段器 + 占比环形图 + 排行 + 明细）
+/// 视图形态由 [StatsQuery.view] 推导：categoryId 非空 = 分类视图
+/// （汇总卡 + 子分类环形图 + 明细）；空 = 全部视图（分段器 + 占比环形图
+/// + 排行 + 明细）
 class StatsPage extends StatefulWidget {
   const StatsPage({
     super.key,
@@ -54,18 +50,42 @@ class StatsPage extends StatefulWidget {
   final DateTime? initialMonth;
 
   @override
-  State<StatsPage> createState() => _StatsPageState();
+  State<StatsPage> createState() => StatsPageState();
 }
 
-class _StatsPageState extends State<StatsPage> {
+/// 公开 State 类：外部通过 `GlobalKey<StatsPageState>` 访问
+/// [resetToTop] 方法实现 Tab 同点重置
+class StatsPageState extends State<StatsPage> {
+  /// 列表滚动控制器：Tab 同点时滚回顶 / 重置筛选
+  late final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// 外部（主框架 Tab 再点）调用：滚动位置不在顶 → 滚回顶；
+  /// 已在顶 → 重置查询到默认（当月/支出/全部视图/无筛选）
+  void resetToTop() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.offset > 0) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      setState(() {
+        _query = StatsQuery(month: DateTime.now());
+      });
+    }
+  }
+
   /// 当前查询参数：唯一状态源
   late StatsQuery _query = StatsQuery(
     month: widget.initialMonth ?? DateTime.now(),
   );
-
-  /// 参数快照栈：仅钻取（点排行/扇区进下级分类）前整体存档，
-  /// ←/系统返回逐级还原；改搜索条件不入栈
-  final List<StatsQuery> _history = [];
 
   /// 图片标记流及其 bills-id 键缓存：集合不变时复用同一流，
   /// StreamBuilder 不重订阅（换流空窗会让相机角标闪一下）
@@ -104,43 +124,28 @@ class _StatsPageState extends State<StatsPage> {
 
   // ---------------- 导航 ----------------
 
-  /// 点击跳转（排行项/环图扇区/明细分类）：快照压栈 + 进入分类视图
+  /// 点击跳转（排行项/环图扇区/明细分类）：push 新 StatsPage 进入
+  /// 该分类视图；pop 后回到当前页面的当前状态。
+  /// 导航栈只有 Navigator 一套，不自己造历史栈
   void _jumpToCategory(Category category) {
     if (_query.view == StatsViewType.category &&
         _query.categoryId == category.id) {
       return;
     }
-    setState(() {
-      _history.add(_query);
-      _query = _query.copyWith(
-        view: StatsViewType.category,
-        categoryId: category.id,
-        // 视图身份即过滤口径，进入分类视图清掉多选条件
-        filterCategoryIds: const {},
-      );
-    });
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            StatsPage(initialCategory: category, initialMonth: _query.month),
+      ),
+    );
   }
 
-  /// 点击"未细分"桶（一级分类视图的子分类环图/排行）：快照压栈后
-  /// 切换到未细分视图，列出直挂该一级的账单。已在未细分视图内再点
-  /// 为空操作
-  void _jumpToUncategorized() {
-    if (_query.view == StatsViewType.uncategorized) return;
-    setState(() {
-      _history.add(_query);
-      _query = _query.copyWith(
-        view: StatsViewType.uncategorized,
-        // 与进入分类视图同口径：视图身份即过滤口径，清掉多选条件
-        filterCategoryIds: const {},
-      );
-    });
-  }
-
-  /// 顶栏 ←：弹栈还原上一份参数快照；栈空时 leading 为 null，
-  /// 由系统默认返回（Tab 页无按钮 / push 页退出）
-  void _popView() {
-    if (_history.isEmpty) return;
-    setState(() => _query = _history.removeLast());
+  /// 点击"未细分"桶（一级分类视图的子分类环图/排行）：等价于
+  /// 进入该一级分类视图，push 新 StatsPage（StatsQuery 自动会按
+  /// categoryId 过滤账单，直挂的就是未细分桶的那批）
+  void _jumpToUncategorized(Category category) {
+    _jumpToCategory(category);
   }
 
   // ---------------- 筛选 ----------------
@@ -395,151 +400,138 @@ class _StatsPageState extends State<StatsPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.read<BillProvider>();
-    return PopScope(
-      // 系统返回键（手势/物理键）与顶栏 ← 同一口径：
-      // 栈非空先弹一层视图，栈空才退出页面回来源页
-      canPop: _history.isEmpty,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _popView();
-      },
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        // AppBar 依赖分类字典（标题父名），放进字典流的 builder 内构建
-        body: StreamBuilder<Map<int, Category>>(
-          stream: _categoriesStream,
-          builder: (context, catSnapshot) {
-            final categories = catSnapshot.data ?? const <int, Category>{};
-            final viewCat = _viewCategory(categories);
-            final isAllView = _query.view == StatsViewType.all;
-            return Scaffold(
-              backgroundColor: AppColors.background,
-              appBar: AppBar(
-                centerTitle: true,
-                // 快照栈非空显示 ←（弹栈还原）；栈空时 Tab 页无按钮、
-                // push 页由系统默认返回箭头兜底（退出统计页）
-                leading: _history.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: _popView,
-                      )
-                    : null,
-                title: InkWell(
-                  onTap: _pickPeriod,
-                  child: Column(
-                    children: [
-                      Text(
-                        _title(categories, viewCat),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
+    // 导航栈只有 Navigator 一套：push 进来的页面自动有系统 ←，
+    // Tab 页（canPop=false）默认无 leading。不造内部历史栈
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      // AppBar 依赖分类字典（标题父名），放进字典流的 builder 内构建
+      body: StreamBuilder<Map<int, Category>>(
+        stream: _categoriesStream,
+        builder: (context, catSnapshot) {
+          final categories = catSnapshot.data ?? const <int, Category>{};
+          final viewCat = _viewCategory(categories);
+          final isAllView = _query.view == StatsViewType.all;
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            appBar: AppBar(
+              centerTitle: true,
+              // leading 不设，Flutter 按 canPop 自动处理：push 页有 ←，
+              // Tab 页无。不再手动覆盖系统默认行为
+              title: InkWell(
+                onTap: _pickPeriod,
+                child: Column(
+                  children: [
+                    Text(
+                      _title(categories, viewCat),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
                       ),
-                      Text(
-                        _subtitle,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
+                    ),
+                    Text(
+                      _subtitle,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                actions: [
-                  // 漏斗：自定义区间或任一搜索条件生效时主色高亮提示
-                  //（分类视图身份不算条件，不亮漏斗）
-                  IconButton(
-                    icon: const Icon(Icons.filter_alt_outlined, size: 22),
-                    color:
-                        (_query.custom != null ||
-                            _query.keyword.isNotEmpty ||
-                            _query.tagIds.isNotEmpty ||
-                            _query.filterCategoryIds.isNotEmpty)
-                        ? AppColors.primary
-                        : AppColors.textPrimary,
-                    onPressed: () => _showFilterSheet(categories),
-                  ),
-                ],
               ),
-              body: StreamBuilder<List<Bill>>(
-                stream: _ensureBillsStream(provider),
-                builder: (context, snapshot) {
-                  // 换流空窗（筛选变化重订阅 drift 流）显示加载态，
-                  // 而不是当空列表顶"暂无账单"空态，避免闪现误导
-                  if (!snapshot.hasData) {
-                    return const LoadingPlaceholder();
-                  }
-                  final bills = snapshot.data!;
-                  // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
-                  // 按当前 bills 的 id 集合缓存流实例，集合不变时 StreamBuilder
-                  // 不重订阅，避免换流空窗闪一下
-                  final ids = bills.map((b) => b.id).toList();
-                  if (!listEquals(ids, _imageIdsKey)) {
-                    _imageIdsKey = ids;
-                    _imageIdsStream = context
-                        .read<BillImageRepository>()
-                        .watchBillIdsWithImages(ids);
-                    _tagsFuture = context
-                        .read<TagRepository>()
-                        .getTagsByBillIds(ids);
-                  }
-                  // 标签批量加载（既用于条目显示也用于按选中标签过滤）
-                  return FutureBuilder<Map<int, List<Tag>>>(
-                    future: _tagsFuture,
-                    builder: (context, tagSnapshot) {
-                      final tagsByBill =
-                          tagSnapshot.data ?? const <int, List<Tag>>{};
-                      // 标签过滤：账单挂了任一选中标签即保留；未选标签则全部保留
-                      final visible = _query.tagIds.isEmpty
-                          ? bills
-                          : bills
-                                .where(
-                                  (b) => (tagsByBill[b.id] ?? const []).any(
-                                    (t) => _query.tagIds.contains(t.id),
-                                  ),
-                                )
-                                .toList();
-                      return StreamBuilder<Set<int>>(
-                        stream: _imageIdsStream,
-                        builder: (context, imgSnapshot) {
-                          final imageBillIds =
-                              imgSnapshot.data ?? const <int>{};
-                          return StreamBuilder<List<Bill>>(
-                            stream: _ensureCompareStream(provider),
-                            builder: (context, prevSnapshot) {
-                              return StreamBuilder<Map<int, Asset>>(
-                                // id → 资产映射：条目金额下方账户小字查名
-                                stream: context
-                                    .read<AssetProvider>()
-                                    .assetsMapStream(),
-                                builder: (context, assetSnapshot) {
-                                  return _buildBody(
-                                    visible,
-                                    categories,
-                                    viewCat,
-                                    isAllView,
-                                    prevSnapshot.data ?? const <Bill>[],
-                                    tagsByBill: tagsByBill,
-                                    imageBillIds: imageBillIds,
-                                    assets:
-                                        assetSnapshot.data ??
-                                        const <int, Asset>{},
-                                  );
-                                },
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
+              actions: [
+                // 漏斗：自定义区间或任一搜索条件生效时主色高亮提示
+                //（分类视图身份不算条件，不亮漏斗）
+                IconButton(
+                  icon: const Icon(Icons.filter_alt_outlined, size: 22),
+                  color:
+                      (_query.custom != null ||
+                          _query.keyword.isNotEmpty ||
+                          _query.tagIds.isNotEmpty ||
+                          _query.filterCategoryIds.isNotEmpty)
+                      ? AppColors.primary
+                      : AppColors.textPrimary,
+                  onPressed: () => _showFilterSheet(categories),
+                ),
+              ],
+            ),
+            body: StreamBuilder<List<Bill>>(
+              stream: _ensureBillsStream(provider),
+              builder: (context, snapshot) {
+                // 换流空窗（筛选变化重订阅 drift 流）显示加载态，
+                // 而不是当空列表顶"暂无账单"空态，避免闪现误导
+                if (!snapshot.hasData) {
+                  return const LoadingPlaceholder();
+                }
+                final bills = snapshot.data!;
+                // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
+                // 按当前 bills 的 id 集合缓存流实例，集合不变时 StreamBuilder
+                // 不重订阅，避免换流空窗闪一下
+                final ids = bills.map((b) => b.id).toList();
+                if (!listEquals(ids, _imageIdsKey)) {
+                  _imageIdsKey = ids;
+                  _imageIdsStream = context
+                      .read<BillImageRepository>()
+                      .watchBillIdsWithImages(ids);
+                  _tagsFuture = context.read<TagRepository>().getTagsByBillIds(
+                    ids,
                   );
-                },
-              ),
-            );
-          },
-        ),
+                }
+                // 标签批量加载（既用于条目显示也用于按选中标签过滤）
+                return FutureBuilder<Map<int, List<Tag>>>(
+                  future: _tagsFuture,
+                  builder: (context, tagSnapshot) {
+                    final tagsByBill =
+                        tagSnapshot.data ?? const <int, List<Tag>>{};
+                    // 标签过滤：账单挂了任一选中标签即保留；未选标签则全部保留
+                    final visible = _query.tagIds.isEmpty
+                        ? bills
+                        : bills
+                              .where(
+                                (b) => (tagsByBill[b.id] ?? const []).any(
+                                  (t) => _query.tagIds.contains(t.id),
+                                ),
+                              )
+                              .toList();
+                    return StreamBuilder<Set<int>>(
+                      stream: _imageIdsStream,
+                      builder: (context, imgSnapshot) {
+                        final imageBillIds = imgSnapshot.data ?? const <int>{};
+                        return StreamBuilder<List<Bill>>(
+                          stream: _ensureCompareStream(provider),
+                          builder: (context, prevSnapshot) {
+                            return StreamBuilder<Map<int, Asset>>(
+                              // id → 资产映射：条目金额下方账户小字查名
+                              stream: context
+                                  .read<AssetProvider>()
+                                  .assetsMapStream(),
+                              builder: (context, assetSnapshot) {
+                                return _buildBody(
+                                  visible,
+                                  categories,
+                                  viewCat,
+                                  isAllView,
+                                  prevSnapshot.data ?? const <Bill>[],
+                                  tagsByBill: tagsByBill,
+                                  imageBillIds: imageBillIds,
+                                  assets:
+                                      assetSnapshot.data ??
+                                      const <int, Asset>{},
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }
@@ -664,6 +656,7 @@ class _StatsPageState extends State<StatsPage> {
     );
 
     return CustomScrollView(
+      controller: _scrollController,
       slivers: [
         // 固定头部：全部视图多一行收支类型分段器，滚动时整体钉在顶部
         SliverPersistentHeader(
@@ -688,7 +681,10 @@ class _StatsPageState extends State<StatsPage> {
                           // 总宽仍为内容自然宽（窄条居中不变）
                           fit: AppSegmentedFit.equal,
                           options: [
-                            for (final t in BillType.values) (t, t.label),
+                            for (final t in BillType.values.where(
+                              (t) => t != BillType.transfer,
+                            ))
+                              (t, t.label),
                           ],
                           colors: const [AppColors.expense, AppColors.income],
                           selected: _query.type,
@@ -769,7 +765,8 @@ class _StatsPageState extends State<StatsPage> {
                 entries: catEntries,
                 total: total,
                 onTap: _jumpToCategory,
-                onUncategorizedTap: _jumpToUncategorized,
+                // 全部视图无"未细分"桶（entries 是顶层分类），传 null
+                onUncategorizedTap: null,
               ),
             ),
           ),
@@ -796,7 +793,7 @@ class _StatsPageState extends State<StatsPage> {
                   if (target != null) {
                     _jumpToCategory(target);
                   } else {
-                    _jumpToUncategorized();
+                    _jumpToUncategorized(viewCat);
                   }
                 },
               ),
@@ -817,7 +814,8 @@ class _StatsPageState extends State<StatsPage> {
                 entries: subEntries,
                 total: total,
                 onTap: _jumpToCategory,
-                onUncategorizedTap: _jumpToUncategorized,
+                // onUncategorizedTap 是 VoidCallback，闭包捕获当前 viewCat
+                onUncategorizedTap: () => _jumpToUncategorized(viewCat),
               ),
             ),
           ),
