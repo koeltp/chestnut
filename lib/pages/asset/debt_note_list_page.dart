@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
@@ -18,8 +18,24 @@ import 'debt_note_edit_page.dart';
 ///
 /// 顶部两列合计（全部口径，含"不计入统计"的记录）+ 借条列表；
 /// 行点击弹详情（详情里再进编辑），右下角新增。
-class DebtNoteListPage extends StatelessWidget {
+class DebtNoteListPage extends StatefulWidget {
   const DebtNoteListPage({super.key});
+
+  @override
+  State<DebtNoteListPage> createState() => _DebtNoteListPageState();
+}
+
+class _DebtNoteListPageState extends State<DebtNoteListPage> {
+  /// 三条流都在页面生命周期内恒定：只建一次，重建不重订阅
+  late final Stream<List<DebtNote>> _allStream = context
+      .read<DebtNoteProvider>()
+      .allStream();
+  late final Stream<Set<int>> _photoStream = context
+      .read<DebtNoteProvider>()
+      .photoNoteIdsStream();
+  late final Stream<Map<int, Asset>> _assetsStream = context
+      .read<AssetProvider>()
+      .assetsMapStream();
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +49,7 @@ class DebtNoteListPage extends StatelessWidget {
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder<List<DebtNote>>(
-        stream: context.read<DebtNoteProvider>().allStream(),
+        stream: _allStream,
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const SizedBox.shrink();
           final list = snapshot.data!;
@@ -44,7 +60,10 @@ class DebtNoteListPage extends StatelessWidget {
               .where((n) => n.direction == DebtDirection.borrowIn)
               .toList();
           final lendTotal = lendOut.fold<int>(0, (s, n) => s + n.amountCents);
-          final borrowTotal = borrowIn.fold<int>(0, (s, n) => s + n.amountCents);
+          final borrowTotal = borrowIn.fold<int>(
+            0,
+            (s, n) => s + n.amountCents,
+          );
           final masked = context.watch<AssetProvider>().masked;
           return ListView(
             padding: const EdgeInsets.fromLTRB(
@@ -91,15 +110,13 @@ class DebtNoteListPage extends StatelessWidget {
               else
                 // 借据照片标记 + 关联账户字典：行相机角标与金额下小字
                 StreamBuilder<Set<int>>(
-                  stream: context.read<DebtNoteProvider>().photoNoteIdsStream(),
+                  stream: _photoStream,
                   builder: (context, photoSnap) {
                     final photoNoteIds = photoSnap.data ?? const <int>{};
                     return StreamBuilder<Map<int, Asset>>(
-                      stream:
-                          context.read<AssetProvider>().assetsMapStream(),
+                      stream: _assetsStream,
                       builder: (context, assetSnap) {
-                        final assets =
-                            assetSnap.data ?? const <int, Asset>{};
+                        final assets = assetSnap.data ?? const <int, Asset>{};
                         return SectionCard(
                           padding: EdgeInsets.zero,
                           child: Column(
@@ -109,10 +126,8 @@ class DebtNoteListPage extends StatelessWidget {
                                   const Divider(indent: 16, endIndent: 16),
                                 DebtFlowRow(
                                   note: list[i],
-                                  hasImage:
-                                      photoNoteIds.contains(list[i].id),
-                                  accountLine:
-                                      debtAccountLine(list[i], assets),
+                                  hasImage: photoNoteIds.contains(list[i].id),
+                                  accountLine: debtAccountLine(list[i], assets),
                                   onTap: () => showDebtNoteDetailSheet(
                                     context,
                                     note: list[i],

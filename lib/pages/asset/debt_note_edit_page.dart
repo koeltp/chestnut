@@ -42,7 +42,8 @@ class DebtNoteEditPage extends StatefulWidget {
 }
 
 class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
-  late DebtDirection _direction = widget.existing?.direction ??
+  late DebtDirection _direction =
+      widget.existing?.direction ??
       widget.initialDirection ??
       DebtDirection.lendOut;
   late final TextEditingController _person = TextEditingController(
@@ -56,8 +57,15 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
   late final TextEditingController _note = TextEditingController(
     text: widget.existing?.note,
   );
-  late DateTime _borrowedAt =
-      widget.existing?.borrowedAt ?? DateTime.now();
+
+  /// 活跃账户列表：编辑借条期间账户不会增删，只查一次后复用，
+  /// 避免每次 build 重新订阅查询
+  late final Future<List<Asset>> _activeAssets = context
+      .read<AssetProvider>()
+      .activeStream()
+      .first;
+
+  late DateTime _borrowedAt = widget.existing?.borrowedAt ?? DateTime.now();
   late DateTime? _repayDueAt = widget.existing?.repayDueAt;
   late int? _relatedAssetId = widget.existing?.relatedAssetId;
 
@@ -93,8 +101,9 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
   Future<void> _loadExistingPhotos() async {
     final existing = widget.existing;
     if (existing == null) return;
-    final photos =
-        await context.read<DebtNoteProvider>().photosByNoteId(existing.id);
+    final photos = await context.read<DebtNoteProvider>().photosByNoteId(
+      existing.id,
+    );
     if (mounted) setState(() => _existingPhotos = photos);
   }
 
@@ -222,14 +231,13 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
   ///   新记录继承原 sort，并触发上传；本地快照原位换新
   Future<void> _editImage(String path) async {
     final edited = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(
-        builder: (_) => ImageEditPage(sourcePath: path),
-      ),
+      MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: path)),
     );
     if (edited == null || !mounted) return;
     try {
-      final existingIndex =
-          _existingPhotos.indexWhere((e) => e.localPath == path);
+      final existingIndex = _existingPhotos.indexWhere(
+        (e) => e.localPath == path,
+      );
       if (existingIndex >= 0) {
         final repo = context.read<DebtNoteRepository>();
         final client = context.read<CloudStorageProvider>().createClient();
@@ -283,8 +291,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
     _replacePhoto(image.copyWith(uploadState: BillImageUploadState.uploading));
     final ok = await repo.uploadOne(image, client);
     if (!mounted) return;
-    final photos =
-        await repo.getPhotosByNoteId(widget.existing!.id);
+    final photos = await repo.getPhotosByNoteId(widget.existing!.id);
     if (!mounted) return;
     setState(() => _existingPhotos = photos);
     showAppToast(context, ok ? '上传成功' : '上传失败，请检查网络后重试');
@@ -324,7 +331,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
   /// 选择关联账户：统一账户选择面板（与记一笔同风格，支持"不关联"）。
   /// 关联是纯参考信息（提示钱的来源/去向），不改动账户余额。
   Future<void> _pickRelatedAsset() async {
-    final assets = await context.read<AssetProvider>().activeStream().first;
+    final assets = await _activeAssets;
     if (!mounted) return;
     final result = await showAssetPickSheet(
       context,
@@ -339,7 +346,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
   /// 关联账户显示名：按 id 从资产流里查（查不到说明已归档/删除）
   Widget _relatedAssetName() {
     return FutureBuilder<List<Asset>>(
-      future: context.read<AssetProvider>().activeStream().first,
+      future: _activeAssets,
       builder: (context, snapshot) {
         final id = _relatedAssetId;
         String text = '选填，钱的来源/去向';
@@ -455,10 +462,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
     if (!mounted) return;
     final cloud = context.read<CloudStorageProvider>();
     final provider = context.read<DebtNoteProvider>();
-    await provider.deleteDebtNote(
-      existing,
-      client: cloud.createClient(),
-    );
+    await provider.deleteDebtNote(existing, client: cloud.createClient());
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -468,9 +472,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
     final df = DateFormat('yyyy-MM-dd');
     final isLendOut = _direction == DebtDirection.lendOut;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_editing ? '编辑借条' : '记借条'),
-      ),
+      appBar: AppBar(title: Text(_editing ? '编辑借条' : '记借条')),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -526,127 +528,133 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
           ),
           const SizedBox(height: AppDimens.gapMd),
           // 基本信息：对方 / 金额 / 日期
-          FormRowsCard(rows: [
-            FormInputRow(
-              label: isLendOut ? '借款人（对方）' : '出借人（对方）',
-              controller: _person,
-              hint: '姓名',
-              maxLength: 20,
-              textInputAction: TextInputAction.next,
-            ),
-            FormInputRow(
-              label: '金额（元）',
-              controller: _amount,
-              hint: '0.00',
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              // 最多两位小数：金额按分入库，防输入超精度小数
-              inputFormatters: MoneyUtil.amountInputFormatters,
-              textInputAction: TextInputAction.next,
-            ),
-            FormRow(
-              label: '借款日期',
-              onTap: _pickBorrowedAt,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    df.format(_borrowedAt),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 22,
-                    color: AppColors.textSecondary,
-                  ),
-                ],
+          FormRowsCard(
+            rows: [
+              FormInputRow(
+                label: isLendOut ? '借款人（对方）' : '出借人（对方）',
+                controller: _person,
+                hint: '姓名',
+                maxLength: 20,
+                textInputAction: TextInputAction.next,
               ),
-            ),
-            FormRow(
-              label: '约定还款日期',
-              onTap: _pickRepayDueAt,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    _repayDueAt == null ? '选填' : df.format(_repayDueAt!),
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: _repayDueAt == null
-                          ? AppColors.textSecondary
-                          : AppColors.textPrimary,
-                    ),
-                  ),
-                  // 有值显示 ×（一键清除），没值显示 >：两者互斥不同时出现。
-                  // × 与 > 同为 22×22 盒子，切换时位置不跳
-                  if (_repayDueAt != null)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _repayDueAt = null),
-                      child: const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: Icon(
-                          Icons.close,
-                          size: 22,
-                          color: AppColors.textSecondary,
-                        ),
+              FormInputRow(
+                label: '金额（元）',
+                controller: _amount,
+                hint: '0.00',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                // 最多两位小数：金额按分入库，防输入超精度小数
+                inputFormatters: MoneyUtil.amountInputFormatters,
+                textInputAction: TextInputAction.next,
+              ),
+              FormRow(
+                label: '借款日期',
+                onTap: _pickBorrowedAt,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      df.format(_borrowedAt),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
                       ),
-                    )
-                  else
+                    ),
                     const Icon(
                       Icons.chevron_right,
                       size: 22,
                       color: AppColors.textSecondary,
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ]),
+              FormRow(
+                label: '约定还款日期',
+                onTap: _pickRepayDueAt,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      _repayDueAt == null ? '选填' : df.format(_repayDueAt!),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: _repayDueAt == null
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                    // 有值显示 ×（一键清除），没值显示 >：两者互斥不同时出现。
+                    // × 与 > 同为 22×22 盒子，切换时位置不跳
+                    if (_repayDueAt != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _repayDueAt = null),
+                        child: const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Icon(
+                            Icons.close,
+                            size: 22,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      )
+                    else
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 22,
+                        color: AppColors.textSecondary,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: AppDimens.gapMd),
           // 选项：关联账户 + 计入统计开关
-          FormRowsCard(rows: [
-            FormRow(
-              label: '关联账户',
-              onTap: _pickRelatedAsset,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _relatedAssetName(),
-                  // 有值显示 ×（一键取消关联），没值显示 >：两者互斥。
-                  // × 与 > 同为 22×22 盒子，切换时位置不跳
-                  if (_relatedAssetId != null)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _relatedAssetId = null),
-                      child: const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: Icon(
-                          Icons.close,
-                          size: 22,
-                          color: AppColors.textSecondary,
+          FormRowsCard(
+            rows: [
+              FormRow(
+                label: '关联账户',
+                onTap: _pickRelatedAsset,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _relatedAssetName(),
+                    // 有值显示 ×（一键取消关联），没值显示 >：两者互斥。
+                    // × 与 > 同为 22×22 盒子，切换时位置不跳
+                    if (_relatedAssetId != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _relatedAssetId = null),
+                        child: const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Icon(
+                            Icons.close,
+                            size: 22,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
+                      )
+                    else
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 22,
+                        color: AppColors.textSecondary,
                       ),
-                    )
-                  else
-                    const Icon(
-                      Icons.chevron_right,
-                      size: 22,
-                      color: AppColors.textSecondary,
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            FormSwitchRow(
-              label: isLendOut ? '计入总借出' : '计入总借入',
-              subtitle: '关闭后仅台账记录，不参与净值统计',
-              value: _includeInTotal,
-              onChanged: (v) => setState(() => _includeInTotal = v),
-            ),
-          ]),
+              FormSwitchRow(
+                label: isLendOut ? '计入总借出' : '计入总借入',
+                subtitle: '关闭后仅台账记录，不参与净值统计',
+                value: _includeInTotal,
+                onChanged: (v) => setState(() => _includeInTotal = v),
+              ),
+            ],
+          ),
           const SizedBox(height: AppDimens.gapMd),
           // 借据照片独立一张卡（多图网格）
           SectionCard(
@@ -682,9 +690,16 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
           ),
           const SizedBox(height: AppDimens.gapMd),
           // 备注独立一张卡
-          FormRowsCard(rows: [
-            FormInputRow(label: '备注', controller: _note, hint: '选填', maxLength: 50),
-          ]),
+          FormRowsCard(
+            rows: [
+              FormInputRow(
+                label: '备注',
+                controller: _note,
+                hint: '选填',
+                maxLength: 50,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -801,7 +816,11 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
                 ),
               )
             : const Center(
-                child: Icon(Icons.add, size: 24, color: AppColors.textSecondary),
+                child: Icon(
+                  Icons.add,
+                  size: 24,
+                  color: AppColors.textSecondary,
+                ),
               ),
       ),
     );

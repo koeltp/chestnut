@@ -12,6 +12,7 @@ import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
 import '../../widgets/app_segmented.dart';
+import '../../widgets/loading_placeholder.dart';
 import '../../widgets/pie_chart_card.dart';
 import '../home/period_picker_dialog.dart';
 import 'stats_charts.dart';
@@ -70,6 +71,15 @@ class _StatsPageState extends State<StatsPage> {
   /// StreamBuilder 不重订阅（换流空窗会让相机角标闪一下）
   Stream<Set<int>>? _imageIdsStream;
   List<int> _imageIdsKey = const [];
+
+  /// 标签批量查询 Future 缓存：bills-id 不变时复用，避免每次 build
+  /// 新建 Future 重新查询
+  Future<Map<int, List<Tag>>>? _tagsFuture;
+
+  /// 分类字典流：页面生命周期内分类表不变，只订阅一次
+  late final Stream<Map<int, Category>> _categoriesStream = context
+      .read<CategoryProvider>()
+      .categoriesMapStream();
 
   @override
   void initState() {
@@ -169,13 +179,8 @@ class _StatsPageState extends State<StatsPage> {
         initialKeyword: _query.keyword,
         initialTagIds: _query.tagIds,
         initialCategoryIds: initialCategoryIds,
-        onApply: (range, keyword, tagIds, categoryIds) => _applyFilter(
-          categories,
-          range,
-          keyword,
-          tagIds,
-          categoryIds,
-        ),
+        onApply: (range, keyword, tagIds, categoryIds) =>
+            _applyFilter(categories, range, keyword, tagIds, categoryIds),
       ),
     );
   }
@@ -337,29 +342,47 @@ class _StatsPageState extends State<StatsPage> {
     });
   }
 
-  /// 当前视图的账单流：分类视图为该分类流；全部视图恒为全量账单流——
-  /// 日期/分类/标签/关键词全部内存过滤。仅参数变化时随 build 换流
-  Stream<List<Bill>> _billsStream(BillProvider provider) {
+  /// 当前视图的账单流缓存：只有视图身份（categoryId）变化才换流。
+  /// 全部视图恒为全量账单流——日期/分类/标签/关键词全部内存过滤，
+  /// 切筛选不重订阅；build 里每次新建流会让全量查询被反复执行
+  Stream<List<Bill>>? _billsStream;
+  int? _billsCategoryId;
+  bool _billsStreamReady = false;
+
+  Stream<List<Bill>> _ensureBillsStream(BillProvider provider) {
     final cid = _query.categoryId;
-    if (cid != null) return provider.categoryBillsStream(cid);
-    // 全部视图统一监听全量账单：切换筛选不重订阅全量流、无加载空窗；
-    // 个人数据量下无性能压力
-    return provider.billsInRangeStream(HomePeriod.all, _query.month);
+    if (_billsStreamReady && cid == _billsCategoryId) {
+      return _billsStream!;
+    }
+    _billsStreamReady = true;
+    _billsCategoryId = cid;
+    _billsStream = cid == null
+        ? provider.billsInRangeStream(HomePeriod.all, _query.month)
+        : provider.categoryBillsStream(cid);
+    return _billsStream!;
   }
 
-  /// 去年同期对比流（柱状图灰色背景柱）：按月/按年整体平移一年；
-  /// 自定义区间、"全部"与分类视图无对比基准，给同步空流占位
-  Stream<List<Bill>> _compareStream(BillProvider provider) {
+  /// 去年同期对比流缓存（柱状图灰色背景柱）：按月/按年整体平移一年；
+  /// 自定义区间、"全部"与分类视图无对比基准，给同步空流占位。
+  /// 对比基准变化时才换流，避免切换筛选时重订阅
+  Stream<List<Bill>>? _compareStream;
+  String? _compareKey;
+
+  Stream<List<Bill>> _ensureCompareStream(BillProvider provider) {
     final q = _query;
-    if (q.categoryId != null ||
-        q.custom != null ||
-        q.period == HomePeriod.all) {
-      return Stream.value(const <Bill>[]);
-    }
+    final key =
+        q.categoryId != null || q.custom != null || q.period == HomePeriod.all
+        ? 'none'
+        : '${q.period.name}-${q.month.year}-${q.month.month}';
+    if (key == _compareKey) return _compareStream!;
+    _compareKey = key;
     final anchor = q.period == HomePeriod.year
         ? DateTime(q.month.year - 1)
         : DateTime(q.month.year - 1, q.month.month);
-    return provider.billsInRangeStream(q.period, anchor);
+    _compareStream = key == 'none'
+        ? Stream.value(const <Bill>[])
+        : provider.billsInRangeStream(q.period, anchor);
+    return _compareStream!;
   }
 
   @override
@@ -376,7 +399,7 @@ class _StatsPageState extends State<StatsPage> {
         backgroundColor: AppColors.background,
         // AppBar 依赖分类字典（标题父名），放进字典流的 builder 内构建
         body: StreamBuilder<Map<int, Category>>(
-          stream: context.read<CategoryProvider>().categoriesMapStream(),
+          stream: _categoriesStream,
           builder: (context, catSnapshot) {
             final categories = catSnapshot.data ?? const <int, Category>{};
             final viewCat = _viewCategory(categories);
@@ -434,12 +457,12 @@ class _StatsPageState extends State<StatsPage> {
                 ],
               ),
               body: StreamBuilder<List<Bill>>(
-                stream: _billsStream(provider),
+                stream: _ensureBillsStream(provider),
                 builder: (context, snapshot) {
                   // 换流空窗（筛选变化重订阅 drift 流）显示加载态，
                   // 而不是当空列表顶"暂无账单"空态，避免闪现误导
                   if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const LoadingPlaceholder();
                   }
                   final bills = snapshot.data!;
                   // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
@@ -451,10 +474,13 @@ class _StatsPageState extends State<StatsPage> {
                     _imageIdsStream = context
                         .read<BillImageRepository>()
                         .watchBillIdsWithImages(ids);
+                    _tagsFuture = context
+                        .read<TagRepository>()
+                        .getTagsByBillIds(ids);
                   }
                   // 标签批量加载（既用于条目显示也用于按选中标签过滤）
                   return FutureBuilder<Map<int, List<Tag>>>(
-                    future: context.read<TagRepository>().getTagsByBillIds(ids),
+                    future: _tagsFuture,
                     builder: (context, tagSnapshot) {
                       final tagsByBill =
                           tagSnapshot.data ?? const <int, List<Tag>>{};
@@ -474,7 +500,7 @@ class _StatsPageState extends State<StatsPage> {
                           final imageBillIds =
                               imgSnapshot.data ?? const <int>{};
                           return StreamBuilder<List<Bill>>(
-                            stream: _compareStream(provider),
+                            stream: _ensureCompareStream(provider),
                             builder: (context, prevSnapshot) {
                               return StreamBuilder<Map<int, Asset>>(
                                 // id → 资产映射：条目金额下方账户小字查名
@@ -525,9 +551,7 @@ class _StatsPageState extends State<StatsPage> {
             : categories[viewCat.parentId];
         final base =
             '分类统计-${parent == null ? viewCat.name : '${parent.name}-${viewCat.name}'}';
-        return _query.view == StatsViewType.uncategorized
-            ? '$base-未细分'
-            : base;
+        return _query.view == StatsViewType.uncategorized ? '$base-未细分' : base;
     }
   }
 
@@ -841,4 +865,3 @@ class _StatsPageState extends State<StatsPage> {
     );
   }
 }
-

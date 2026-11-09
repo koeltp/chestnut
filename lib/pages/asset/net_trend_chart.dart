@@ -191,35 +191,42 @@ class _NetTrendChartState extends State<NetTrendChart>
             : plotWidth / (windowSize - 1);
         _pointPx = pointPx;
 
-        // 横轴刻度：横屏再密一档（原来 11 个，每 3 个加 1 个 → 约 13 个），
-        // 月档 24 点正好每 2 个月一格；竖屏卡片维持 5~6 个，再多会挤成一片
-        final labelTarget = constraints.maxWidth >= 600 ? 13 : 5;
+        // 横轴刻度目标数：全屏按可用宽度自适应 10~12 个（每个标签约
+        // 占 80dp 宽），卡片固定 6 个，避免挤成一片
+        final labelTarget = fullHistory
+            ? (plotWidth / 80).floor().clamp(10, 12)
+            : 6;
         final labelStep = max(1, (windowSize / labelTarget).ceil());
-        // 圆点按实际间距显示：≥6dp 就画，更密时才隐藏，避免糊成一条粗线
+        // 圆点按实际点间距显示：≥6dp 就画，更密时才隐藏，避免糊成粗线
         final showDots = windowSize <= 1 || pointPx >= 6;
 
-        // 全屏日/全部档窗口 90 个点太密，每 4 个取 1 个；
-        // 月/年档点数本来就少，保持原样
-        final spotStep =
-            fullHistory &&
-                (widget.range == NetTrendRange.day ||
-                    widget.range == NetTrendRange.all)
-            ? 4
-            : 1;
+        // 数据点全部绘制：不再对日/全部档抽稀，圆点是否显示交给 showDots
+        // 按点间距统一判定
         final spots = <FlSpot>[
-          for (var i = startIdx; i <= drawEnd; i += spotStep)
+          for (var i = startIdx; i <= drawEnd; i++)
             FlSpot((i - startExact).toDouble(), points[i].$2.toDouble()),
         ];
-        // 末点不在步长上时补一个，曲线才能连到窗口右边缘
-        if (spotStep > 1 &&
-            spots.isNotEmpty &&
-            (drawEnd - startIdx) % spotStep != 0) {
-          spots.add(
-            FlSpot(
-              (drawEnd - startExact).toDouble(),
-              points[drawEnd].$2.toDouble(),
-            ),
+
+        // 横轴刻度去重：首点 + 末点 + 每 labelStep 个为候选，但相邻两个
+        // 候选若标签文本相同（如同一年内多个月都显示"2026"），只保留前者，
+        // 避免横轴出现重复年份
+        final candidates = <int>{startIdx, drawEnd};
+        for (var i = startIdx + labelStep; i < drawEnd; i += labelStep) {
+          candidates.add(i);
+        }
+        final sortedCandidates = candidates.toList()..sort();
+        final shownIndices = <int>{};
+        String? lastLabel;
+        for (final idx in sortedCandidates) {
+          final label = netTrendDateLabel(
+            widget.range,
+            points[idx].$1,
+            windowSize,
           );
+          if (label != lastLabel) {
+            shownIndices.add(idx);
+            lastLabel = label;
+          }
         }
 
         final chartData = LineChartData(
@@ -258,14 +265,9 @@ class _NetTrendChartState extends State<NetTrendChart>
                 reservedSize: 22,
                 interval: 1,
                 getTitlesWidget: (value, meta) {
-                  final show =
-                      value <= 0.001 ||
-                      value >= lastX - 0.001 ||
-                      value.round() % labelStep == 0;
-                  if (!show) return const SizedBox.shrink();
                   // x 是相对窗口起点的小数偏移，换回全局下标再取日期
                   final idx = (startExact + value).round();
-                  if (idx < startIdx || idx > drawEnd) {
+                  if (!shownIndices.contains(idx)) {
                     return const SizedBox.shrink();
                   }
                   return Padding(

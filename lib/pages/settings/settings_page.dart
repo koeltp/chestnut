@@ -39,6 +39,12 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 当前应用版本标签（版本名 + 换算后的构建号，启动后异步获取，不再硬编码）
   String _versionName = '';
 
+  /// 资产汇总流：页面生命周期内只订阅一次，避免设置项变更触发重建时
+  /// 反复重订阅 drift 查询
+  late final Stream<AssetSummary> _summaryStream = context
+      .read<AssetProvider>()
+      .summaryStream();
+
   @override
   void initState() {
     super.initState();
@@ -49,8 +55,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final build = (code != null && code >= 2000) ? code - 2000 : null;
       if (mounted) {
         setState(
-          () => _versionName =
-              build == null ? info.version : '${info.version} ($build)',
+          () => _versionName = build == null
+              ? info.version
+              : '${info.version} ($build)',
         );
       }
     });
@@ -137,9 +144,9 @@ class _SettingsPageState extends State<SettingsPage> {
     // watch masked：资产页里切换明文/模糊后返回本页需同步刷新
     final masked = context.watch<AssetProvider>().masked;
     return SectionCard(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const AssetPage()),
-      ),
+      onTap: () =>
+          Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => const AssetPage())),
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
@@ -150,7 +157,11 @@ class _SettingsPageState extends State<SettingsPage> {
               color: AppColors.primary,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.savings_outlined, color: Colors.white, size: 22),
+            child: const Icon(
+              Icons.savings_outlined,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
           const SizedBox(width: AppDimens.gapMd),
           Expanded(
@@ -167,7 +178,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 2),
                 StreamBuilder<AssetSummary>(
-                  stream: context.read<AssetProvider>().summaryStream(),
+                  stream: _summaryStream,
                   builder: (context, snapshot) {
                     final summary = snapshot.data;
                     if (summary == null) {
@@ -176,7 +187,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     final text = masked
                         ? '总净值 ¥ ****'
                         : '总净值 ${summary.netCents < 0 ? '-' : ''}'
-                            '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.netCents.abs())}';
+                              '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.netCents.abs())}';
                     return Text(
                       text,
                       style: const TextStyle(
@@ -225,9 +236,7 @@ class _SettingsPageState extends State<SettingsPage> {
             title: '标签管理',
             subtitle: '管理标签名称、颜色与排序',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TagManagePage(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const TagManagePage()),
             ),
           ),
           const Divider(indent: 16, endIndent: 16),
@@ -242,8 +251,9 @@ class _SettingsPageState extends State<SettingsPage> {
               final settings = context.read<SettingsProvider>();
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) =>
-                      PasscodeSettingsPage(startSetup: !settings.passcodeEnabled),
+                  builder: (_) => PasscodeSettingsPage(
+                    startSetup: !settings.passcodeEnabled,
+                  ),
                 ),
               );
             },
@@ -269,13 +279,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 ? '已启用 · ${context.read<CloudStorageProvider>().bucket}'
                 : '小票凭证存到你自己的云存储',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const CloudStoragePage(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const CloudStoragePage()),
             ),
             // 有图片未同步时在入口挂红点数，冷启动补传失败不再隐形
-            badgeCount:
-                context.watch<ImageSyncStatusProvider>().counts.pendingTotal,
+            badgeCount: context
+                .watch<ImageSyncStatusProvider>()
+                .counts
+                .pendingTotal,
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(
@@ -293,9 +303,9 @@ class _SettingsPageState extends State<SettingsPage> {
             color: AppColors.primary,
             title: '备份与恢复',
             subtitle: '导出完整备份 / 导入备份恢复数据',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const BackupPage()),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const BackupPage())),
           ),
           const Divider(indent: 16, endIndent: 16),
           _menuItem(
@@ -315,9 +325,9 @@ class _SettingsPageState extends State<SettingsPage> {
             color: AppColors.expense,
             title: '关于',
             subtitle: '版本、隐私政策与开源信息',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const AboutPage()),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const AboutPage())),
           ),
         ],
       ),
@@ -488,9 +498,9 @@ class _SettingsPageState extends State<SettingsPage> {
         final result = await showUpdateDialog(context, info);
         // 用户选择先去备份：跳备份与恢复页，备份方式由用户在页内自选
         if (result == UpdateDialogResult.goBackup && context.mounted) {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const BackupPage()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => const BackupPage()));
         }
       }
     } on UpdateException catch (e) {

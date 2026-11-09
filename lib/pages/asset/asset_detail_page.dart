@@ -26,17 +26,26 @@ import 'asset_snapshot_history_page.dart';
 /// [AssetFlowViewRepository] 完成。总资产卡整卡可点进编辑页（改资料/
 /// 改市值唯一入口）；流水含支出/收入与转账（转出/转入双向各一条），
 /// 点条目弹对应详情
-class AssetDetailPage extends StatelessWidget {
+class AssetDetailPage extends StatefulWidget {
   const AssetDetailPage({super.key, required this.assetId});
 
   final int assetId;
 
   @override
+  State<AssetDetailPage> createState() => _AssetDetailPageState();
+}
+
+class _AssetDetailPageState extends State<AssetDetailPage> {
+  /// 账户 id 在页面生命周期内不变：流只建一次，避免每次重建都
+  /// 重新订阅（bills/assets/借条/图片多条 drift 查询叠加）
+  late final Stream<FlowView> _flowStream = context
+      .read<AssetFlowViewRepository>()
+      .watchAssetFlow(widget.assetId);
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<FlowView>(
-      stream: context
-          .read<AssetFlowViewRepository>()
-          .watchAssetFlow(assetId),
+      stream: _flowStream,
       builder: (context, snapshot) {
         final view = snapshot.data;
         final asset = view?.asset;
@@ -67,8 +76,7 @@ class AssetDetailPage extends StatelessWidget {
             children: [
               // 账户被删除（非归档）时概览不展示；归档账户照常
               if (asset != null) _SummaryCard(asset: asset),
-              if (asset != null)
-                const SizedBox(height: AppDimens.gapSection),
+              if (asset != null) const SizedBox(height: AppDimens.gapSection),
               if (view != null) _FlowCard(view: view),
             ],
           ),
@@ -88,8 +96,7 @@ class _SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final masked = context.watch<AssetProvider>().masked;
     final isLiability = asset.kind == AssetKind.liability;
-    final isCredit =
-        AssetGroups.groupOf(asset.category) == AssetGroups.credit;
+    final isCredit = AssetGroups.groupOf(asset.category) == AssetGroups.credit;
     // 副标题：信用卡展示额度与出账日/还款日摘要，其余展示备注
     final subtitle = isCredit
         ? [
@@ -106,7 +113,8 @@ class _SummaryCard extends StatelessWidget {
       onTap: () async {
         final deleted = await pushAssetEditPage(
           context,
-          category: AssetGroups.categoryOf(asset.category) ??
+          category:
+              AssetGroups.categoryOf(asset.category) ??
               AssetGroups.fund.categories.first,
           existing: asset,
         );
@@ -194,10 +202,7 @@ class _SummaryCard extends StatelessWidget {
       ),
       child: const Text(
         '未计入',
-        style: TextStyle(
-          fontSize: 10,
-          color: AppColors.textSecondary,
-        ),
+        style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
       ),
     );
   }
@@ -219,20 +224,19 @@ class _FlowCard extends StatelessWidget {
           : Column(
               children: [
                 for (var i = 0; i < entries.length; i++) ...[
-                  if (i > 0)
-                    const Divider(height: 1, indent: 16),
+                  if (i > 0) const Divider(height: 1, indent: 16),
                   if (entries[i].bill != null)
-                    _BillFlowRow(
-                      bill: entries[i].bill!,
-                      view: view,
-                    )
+                    _BillFlowRow(bill: entries[i].bill!, view: view)
                   else
                     DebtFlowRow(
                       note: entries[i].debt!,
-                      hasImage: view.debtIdsWithPhotos
-                          .contains(entries[i].debt!.id),
-                      accountLine:
-                          debtAccountLine(entries[i].debt!, view.relatedAssets),
+                      hasImage: view.debtIdsWithPhotos.contains(
+                        entries[i].debt!.id,
+                      ),
+                      accountLine: debtAccountLine(
+                        entries[i].debt!,
+                        view.relatedAssets,
+                      ),
                       onTap: () => showDebtNoteDetailSheet(
                         context,
                         note: entries[i].debt!,
@@ -258,12 +262,13 @@ class _BillFlowRow extends StatelessWidget {
     final category = view.categories[bill.categoryId];
     return BillListItem(
       name: category?.name ?? (isTransfer ? '转账' : '未知分类'),
-      iconCode: category?.iconCode ??
+      iconCode:
+          category?.iconCode ??
           (isTransfer
               ? Icons.swap_horiz.codePoint
               : Icons.help_outline.codePoint),
-      colorValue: category?.colorValue ??
-          (isTransfer ? 0xFF8A8A8A : 0xFFA8A8A8),
+      colorValue:
+          category?.colorValue ?? (isTransfer ? 0xFF8A8A8A : 0xFFA8A8A8),
       type: bill.type,
       amountCents: bill.amountCents,
       discountCents: bill.discountCents,

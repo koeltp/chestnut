@@ -28,6 +28,11 @@ class CategoryManagePage extends StatefulWidget {
 class _CategoryManagePageState extends State<CategoryManagePage> {
   BillType _type = BillType.expense;
 
+  /// 分类流缓存：只在类型（支出/收入）变化时换流，展开/折叠等本地
+  /// 状态变化触发的重建不重订阅
+  Stream<List<Category>>? _categoriesStream;
+  BillType? _streamType;
+
   /// 当前展开子分类面板的一级分类 id
   final Set<int> _expanded = {};
 
@@ -39,6 +44,10 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.read<CategoryProvider>();
+    if (_streamType != _type) {
+      _streamType = _type;
+      _categoriesStream = provider.categoriesStream(_type);
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -46,7 +55,8 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final t in BillType.values)
+            for (final t in BillType.values
+                .where((t) => t != BillType.transfer))
               _TopTab(
                 label: t.label,
                 selected: _type == t,
@@ -93,7 +103,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
           ),
           Expanded(
             child: StreamBuilder<List<Category>>(
-              stream: provider.categoriesStream(_type),
+              stream: _categoriesStream,
               builder: (context, snapshot) {
                 final categories = snapshot.data ?? const <Category>[];
                 final parents = categories
@@ -349,16 +359,16 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     );
   }
 
-  /// 弹窗选择一个所属一级分类（[excludeId] 从候选中排除）
-  Future<Category?> _pickParent(CategoryProvider provider, {int? excludeId}) {
+  /// 弹窗选择一个所属一级分类（[excludeId] 从候选中排除）。
+  /// 直接复用页面已缓存的分类流，避免弹窗再开一条 drift 查询
+  Future<Category?> _pickParent({int? excludeId}) {
     return showDialog<Category>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('选择所属一级分类'),
         children: [
-          // 候选为当前类型下的一级分类（Stream 快照足够新，选择后即校验写入）
           StreamBuilder<List<Category>>(
-            stream: provider.categoriesStream(_type),
+            stream: _categoriesStream,
             builder: (context, snapshot) {
               final parents = (snapshot.data ?? const <Category>[])
                   .where((c) => c.parentId == null && c.id != excludeId)
@@ -387,7 +397,7 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
     CategoryProvider provider,
     Category category,
   ) async {
-    final target = await _pickParent(provider, excludeId: category.id);
+    final target = await _pickParent(excludeId: category.id);
     if (target == null || !mounted) return;
     final dup = await provider.siblingNameExists(
       name: category.name,
@@ -532,7 +542,8 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
         : [
             ...all.where((c) => c.id == category.parentId),
             ...all.where(
-              (c) => c.parentId == category.parentId && !excluded.contains(c.id),
+              (c) =>
+                  c.parentId == category.parentId && !excluded.contains(c.id),
             ),
           ];
     if (candidates.isEmpty) {

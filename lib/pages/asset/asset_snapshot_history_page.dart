@@ -15,18 +15,30 @@ import '../../widgets/section_card.dart';
 /// 快照本身"只增不删"（每次更新市值落一条），误输市值（如多打一个 0）
 /// 后净值曲线会留尖刺——这里是唯一的清理入口。展示/编辑/删除都以"日"
 /// 为单位，与净值聚合"当天最后一条"口径一致
-class AssetSnapshotHistoryPage extends StatelessWidget {
+class AssetSnapshotHistoryPage extends StatefulWidget {
   const AssetSnapshotHistoryPage({super.key, required this.asset});
 
   final Asset asset;
 
   @override
+  State<AssetSnapshotHistoryPage> createState() =>
+      _AssetSnapshotHistoryPageState();
+}
+
+class _AssetSnapshotHistoryPageState extends State<AssetSnapshotHistoryPage> {
+  /// 资产 id 在页面生命周期内不变：快照流只建一次
+  late final Stream<List<AssetSnapshot>> _snapshotsStream = context
+      .read<AssetProvider>()
+      .snapshotStream(widget.asset.id);
+
+  @override
   Widget build(BuildContext context) {
+    final asset = widget.asset;
     final masked = context.watch<AssetProvider>().masked;
     return Scaffold(
       appBar: AppBar(title: const Text('历史市值记录')),
       body: StreamBuilder<List<AssetSnapshot>>(
-        stream: context.read<AssetProvider>().snapshotStream(asset.id),
+        stream: _snapshotsStream,
         builder: (context, snapshot) {
           final snaps = snapshot.data ?? const <AssetSnapshot>[];
           if (snaps.isEmpty) {
@@ -65,7 +77,10 @@ class AssetSnapshotHistoryPage extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   '市值按日留存，可修正或删除误输的数值，净值曲线随记录实时更新',
-                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
             ],

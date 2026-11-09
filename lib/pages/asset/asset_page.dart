@@ -6,6 +6,7 @@ import '../../models/asset_category.dart';
 import '../../models/institutions.dart';
 import '../../providers/asset_provider.dart';
 import '../../theme/app_dimens.dart';
+import '../../widgets/loading_placeholder.dart';
 import 'asset_archived_section.dart';
 import 'asset_category_sheet.dart';
 import 'asset_chart_cards.dart';
@@ -84,7 +85,7 @@ class _AssetPageState extends State<AssetPage> {
         stream: _summaryStream,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const LoadingPlaceholder();
           }
           final summary = snapshot.data!;
           return ListView(

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -77,12 +77,18 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
   /// imageId → 本地文件（null = 本地缺失且云端拉回失败，显示占位）
   final Map<int, File?> _localFiles = {};
 
+  /// 关联账户映射：详情展示期间账户不变，只查一次
+  late final Future<Map<int, Asset>> _assetsMap = context
+      .read<AssetProvider>()
+      .assetsMapStream()
+      .first;
+
   @override
   void initState() {
     super.initState();
-    _imageSub = widget.repo
-        .watchPhotosByNoteId(widget.note.id)
-        .listen((images) {
+    _imageSub = widget.repo.watchPhotosByNoteId(widget.note.id).listen((
+      images,
+    ) {
       if (!mounted) return;
       setState(() => _images = images);
       unawaited(_ensureFiles(images));
@@ -309,7 +315,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
             DetailInfoRow(
               label: '关联账户',
               child: FutureBuilder<Map<int, Asset>>(
-                future: context.read<AssetProvider>().assetsMapStream().first,
+                future: _assetsMap,
                 builder: (context, snapshot) {
                   final id = widget.note.relatedAssetId;
                   String text = '不关联';

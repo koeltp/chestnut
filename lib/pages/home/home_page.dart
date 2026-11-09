@@ -22,6 +22,7 @@ import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/debt_flow_row.dart';
 import '../../widgets/debt_note_detail_sheet.dart';
+import '../../widgets/loading_placeholder.dart';
 import '../../widgets/month_switcher.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/update_dialog.dart';
@@ -38,6 +39,31 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  /// 流水/汇总流缓存：build 里每次新建流会让 StreamBuilder 反复取消
+  /// 并重订阅 drift 查询（首帧全量查询被重复执行），范围没变就复用
+  Stream<FlowView>? _flowStream;
+  Stream<MonthSummary>? _summaryStream;
+  HomePeriod? _streamPeriod;
+  DateTime? _streamMonth;
+
+  /// 查看范围（模式 + 年月）变化时才换流；其余重建沿用同一实例
+  void _ensureStreams(BillProvider provider) {
+    final period = provider.period;
+    final month = provider.selectedMonth;
+    if (_streamPeriod == period &&
+        _streamMonth?.year == month.year &&
+        _streamMonth?.month == month.month) {
+      return;
+    }
+    _streamPeriod = period;
+    _streamMonth = month;
+    _flowStream = context.read<AssetFlowViewRepository>().watchHomeFlow(
+      period,
+      month,
+    );
+    _summaryStream = provider.homeSummaryStream();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -70,9 +96,8 @@ class _HomePageState extends State<HomePage> {
       final result = await showUpdateDialog(context, info);
       // 用户选择先去备份：跳备份与恢复页，备份方式由用户在页内自选
       if (result == UpdateDialogResult.goBackup && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const BackupPage()),
-        );
+        Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => const BackupPage()));
       }
     } catch (_) {
       // 自动检查保持静默；错误提示只在手动检查时出现
@@ -108,9 +133,10 @@ class _HomePageState extends State<HomePage> {
     // watch：月份/查看模式切换（notifyListeners）时重建，
     // StreamBuilder 随之订阅新范围的流
     final provider = context.watch<BillProvider>();
+    _ensureStreams(provider);
     return Column(
       children: [
-        _SummaryHeader(provider: provider),
+        _SummaryHeader(provider: provider, summaryStream: _summaryStream!),
         Expanded(
           // 边界切月手势只在"按月显示"下有意义（年/全部没有"上下月"概念）
           child: _MonthPullSwitch(
@@ -120,12 +146,10 @@ class _HomePageState extends State<HomePage> {
             child: StreamBuilder<FlowView>(
               // 账单/借条/分类/账户/图片标记全部由视图仓储组装，
               // 页面只订阅这一层
-              stream: context
-                  .read<AssetFlowViewRepository>()
-                  .watchHomeFlow(provider.period, provider.selectedMonth),
+              stream: _flowStream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const LoadingPlaceholder();
                 }
                 final view = snapshot.data!;
                 if (view.entries.isEmpty) {
@@ -157,9 +181,12 @@ class _HomePageState extends State<HomePage> {
 
 /// 顶部渐变汇总区：显示方式切换 + 支出 / 收入 / 结余
 class _SummaryHeader extends StatelessWidget {
-  const _SummaryHeader({required this.provider});
+  const _SummaryHeader({required this.provider, required this.summaryStream});
 
   final BillProvider provider;
+
+  /// 汇总流由页面缓存后传入：组件重建不再新建查询流
+  final Stream<MonthSummary> summaryStream;
 
   /// 打开"显示方式"弹窗并应用选择结果（模式 + 基准月份）
   Future<void> _pickPeriod(BuildContext context) async {
@@ -191,7 +218,7 @@ class _SummaryHeader extends StatelessWidget {
             AppDimens.gapLg,
           ),
           child: StreamBuilder<MonthSummary>(
-            stream: provider.homeSummaryStream(),
+            stream: summaryStream,
             builder: (context, snapshot) {
               final summary = snapshot.data ?? MonthSummary.empty;
               return Column(
@@ -204,8 +231,7 @@ class _SummaryHeader extends StatelessWidget {
                       showArrows: false,
                       text: switch (period) {
                         HomePeriod.month => null,
-                        HomePeriod.year =>
-                          '${provider.selectedMonth.year}年',
+                        HomePeriod.year => '${provider.selectedMonth.year}年',
                         HomePeriod.all => '全部',
                       },
                       onTapText: () => _pickPeriod(context),
@@ -399,8 +425,7 @@ class _FlowListState extends State<_FlowList> {
       }
     }
     // 年份按需显示：列表数据跨年时分组头带年份消歧，同年内省略
-    final crossYear =
-        view.entries.map((e) => e.date.year).toSet().length > 1;
+    final crossYear = view.entries.map((e) => e.date.year).toSet().length > 1;
 
     return ListView.builder(
       controller: _controller,
@@ -415,8 +440,7 @@ class _FlowListState extends State<_FlowList> {
         if (index == dayKeys.length) {
           // 列表尾部留白提示
           return Padding(
-            padding:
-                const EdgeInsets.symmetric(vertical: AppDimens.gapLg),
+            padding: const EdgeInsets.symmetric(vertical: AppDimens.gapLg),
             child: Center(
               child: Text(
                 widget.showAll ? '· 全部账单到底啦 ·' : '· 本月账单到底啦 ·',
@@ -495,14 +519,13 @@ class _DayCard extends StatelessWidget {
             else
               DebtFlowRow(
                 note: entries[i].debt!,
-                hasImage: view.debtIdsWithPhotos
-                    .contains(entries[i].debt!.id),
-                accountLine:
-                    debtAccountLine(entries[i].debt!, view.relatedAssets),
-                onTap: () => showDebtNoteDetailSheet(
-                  context,
-                  note: entries[i].debt!,
+                hasImage: view.debtIdsWithPhotos.contains(entries[i].debt!.id),
+                accountLine: debtAccountLine(
+                  entries[i].debt!,
+                  view.relatedAssets,
                 ),
+                onTap: () =>
+                    showDebtNoteDetailSheet(context, note: entries[i].debt!),
               ),
           ],
         ],
@@ -514,8 +537,7 @@ class _DayCard extends StatelessWidget {
   /// 右侧当日收支小计。年份按需显示（数据跨年才带年份，见 DateLabelUtil）
   Widget _buildHeader(int expenseCents, int incomeCents) {
     final parts = <String>[
-      if (expenseCents > 0)
-        '支 ${MoneyUtil.centsToYuanTrimmed(expenseCents)}',
+      if (expenseCents > 0) '支 ${MoneyUtil.centsToYuanTrimmed(expenseCents)}',
       if (incomeCents > 0) '收 ${MoneyUtil.centsToYuanTrimmed(incomeCents)}',
     ];
     return Padding(
@@ -556,12 +578,13 @@ class _DayCard extends StatelessWidget {
     final isTransfer = bill.type == BillType.transfer;
     return BillListItem(
       name: category?.name ?? (isTransfer ? '转账' : '未知分类'),
-      iconCode: category?.iconCode ??
+      iconCode:
+          category?.iconCode ??
           (isTransfer
               ? Icons.swap_horiz.codePoint
               : Icons.help_outline.codePoint),
-      colorValue: category?.colorValue ??
-          (isTransfer ? 0xFF8A8A8A : 0xFFA8A8A8),
+      colorValue:
+          category?.colorValue ?? (isTransfer ? 0xFF8A8A8A : 0xFFA8A8A8),
       type: bill.type,
       amountCents: bill.amountCents,
       discountCents: bill.discountCents,
@@ -582,9 +605,7 @@ class _DayCard extends StatelessWidget {
         ),
         // 详情里点标签：跳转到该标签筛选的统计页
         onTagTap: (tag) => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => StatsPage(initialTag: tag),
-          ),
+          MaterialPageRoute<void>(builder: (_) => StatsPage(initialTag: tag)),
         ),
       ),
       onLongPress: () => _confirmDelete(context, bill),
@@ -686,12 +707,13 @@ class _MonthPullSwitchState extends State<_MonthPullSwitch> {
         if (n.overscroll < 0) {
           if (_bottomDrag > 0) {
             if (-n.overscroll >= _decayDeadZone) {
-              _bottomDrag =
-                  (_bottomDrag + n.overscroll).clamp(0.0, _maxDrag);
+              _bottomDrag = (_bottomDrag + n.overscroll).clamp(0.0, _maxDrag);
             }
           } else {
-            _topDrag = (_topDrag - n.overscroll * _amplify)
-                .clamp(0.0, _maxDrag);
+            _topDrag = (_topDrag - n.overscroll * _amplify).clamp(
+              0.0,
+              _maxDrag,
+            );
           }
         } else {
           if (_topDrag > 0) {
@@ -699,8 +721,10 @@ class _MonthPullSwitchState extends State<_MonthPullSwitch> {
               _topDrag = (_topDrag - n.overscroll).clamp(0.0, _maxDrag);
             }
           } else {
-            _bottomDrag = (_bottomDrag + n.overscroll * _amplify)
-                .clamp(0.0, _maxDrag);
+            _bottomDrag = (_bottomDrag + n.overscroll * _amplify).clamp(
+              0.0,
+              _maxDrag,
+            );
           }
         }
         _settling = false;
@@ -779,9 +803,12 @@ class _MonthPullSwitchState extends State<_MonthPullSwitch> {
         ? '${target.month}月'
         : '${target.year}年${target.month}月';
     final now = DateTime.now();
-    final notYet = isTop &&
-        DateTime(target.year, target.month)
-            .isAfter(DateTime(now.year, now.month));
+    final notYet =
+        isTop &&
+        DateTime(
+          target.year,
+          target.month,
+        ).isAfter(DateTime(now.year, now.month));
     final crossed = drag >= _threshold;
     final text = switch ((isTop, notYet, crossed)) {
       (true, false, false) => '继续下拉，查看 $label',

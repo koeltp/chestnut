@@ -1,12 +1,15 @@
 import 'dart:math';
 
 import 'package:chestnut/data/database.dart';
+import 'package:chestnut/data/repositories/asset_repository.dart';
 import 'package:chestnut/data/repositories/tag_repository.dart';
 import 'package:chestnut/models/enums.dart';
+import 'package:chestnut/pages/asset/net_trend_data.dart';
 import 'package:chestnut/pages/stats/stats_logic.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 
 /// 性能基线测试：5 万笔账单量级下"全部"模式数据链路各环节耗时
 ///
@@ -81,9 +84,7 @@ void main() {
     });
 
     // 环节 3：aggregateByCategory（环图/排行）
-    final typeBills = bills
-        .where((b) => b.type == BillType.expense)
-        .toList();
+    final typeBills = bills.where((b) => b.type == BillType.expense).toList();
     bench('aggregateByCategory（支出全量）', () {
       aggregateByCategory(typeBills, categoriesMap);
     });
@@ -94,10 +95,12 @@ void main() {
       final dayMap = <String, List<Bill>>{};
       for (final b in typeBills) {
         final key = '${b.date.year}-${b.date.month}-${b.date.day}';
-        dayMap.putIfAbsent(key, () {
-          dayKeys.add(key);
-          return [];
-        }).add(b);
+        dayMap
+            .putIfAbsent(key, () {
+              dayKeys.add(key);
+              return [];
+            })
+            .add(b);
       }
     });
 
@@ -138,6 +141,39 @@ void main() {
     bench('aggregateByCategory 单月', () {
       aggregateByCategory(monthBills, categoriesMap);
     });
+  });
+
+  test('净值走势基线：3 年日级净值查询 + 四档聚合', () async {
+    final repo = AssetRepository(db);
+    // 环节 0：全量净值流首帧（"全部"档的数据源，1095 行）
+    final sw = Stopwatch()..start();
+    final history = await repo.watchNetHistory().first;
+    sw.stop();
+    // ignore: avoid_print
+    print(
+      '  [perf] watchNetHistory 全量首帧（${history.length} 行）: '
+      '${sw.elapsedMicroseconds / 1000} ms',
+    );
+
+    const currentNet = 6400000;
+    for (final range in NetTrendRange.values) {
+      bench('netTrendPoints ${netTrendRangeLabel(range)}·卡片窗口', () {
+        netTrendPoints(
+          range: range,
+          history: history,
+          currentNetCents: currentNet,
+        );
+      });
+      bench('netTrendPoints ${netTrendRangeLabel(range)}·全屏全量+纵轴', () {
+        final pts = netTrendPoints(
+          range: range,
+          history: history,
+          currentNetCents: currentNet,
+          fullHistory: true,
+        );
+        netTrendYRange(pts);
+      });
+    }
   });
 }
 
@@ -194,6 +230,22 @@ Future<void> _seed(AppDatabase db) async {
         BillTagsCompanion.insert(
           billId: bills[i].id,
           tagId: tagIds[i % tagIds.length],
+        ),
+      );
+    }
+  });
+
+  // 3 年日级净值（1095 行）：净值走势图"全部"档的数据源
+  final dayStart = DateTime(2023, 1, 1);
+  final dayFmt = DateFormat('yyyy-MM-dd');
+  await db.batch((batch) {
+    for (var i = 0; i < 1095; i++) {
+      batch.insert(
+        db.netValueDays,
+        NetValueDaysCompanion.insert(
+          day: dayFmt.format(dayStart.add(Duration(days: i))),
+          netCents: 5000000 + rng.nextInt(200000),
+          updatedAt: 0,
         ),
       );
     }
