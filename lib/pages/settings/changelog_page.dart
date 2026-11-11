@@ -62,7 +62,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
     ChangelogSection? section;
 
     for (final line in markdown.split('\n')) {
-      final versionMatch = RegExp(r'^## \[(.+?)\] - (.+?)\s*$').firstMatch(line);
+      final versionMatch = RegExp(r'^## \[(.+?)\] - (.+?)\s*$')
+          .firstMatch(line);
       if (versionMatch != null) {
         current = ChangelogVersion(
           version: versionMatch.group(1)!,
@@ -108,11 +109,14 @@ class _ChangelogPageState extends State<ChangelogPage> {
                 32,
               ),
               itemCount: versions.length + (remote == null ? 0 : 1),
-              separatorBuilder: (_, _) => const SizedBox(height: AppDimens.gapSection),
+              separatorBuilder: (_, _) =>
+                  const SizedBox(height: AppDimens.gapSection),
               itemBuilder: (_, i) {
                 // 首位固定给线上最新版卡，历史版本顺延
                 if (remote != null && i == 0) return _LatestCard(info: remote);
-                return _VersionCard(version: versions[remote == null ? i : i - 1]);
+                return _VersionCard(
+                  version: versions[remote == null ? i : i - 1],
+                );
               },
             ),
     );
@@ -276,9 +280,8 @@ class _LatestCard extends StatelessWidget {
   Future<void> _update(BuildContext context) async {
     final result = await showUpdateDialog(context, info);
     if (result == UpdateDialogResult.goBackup && context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const BackupPage()),
-      );
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const BackupPage()));
     }
   }
 }

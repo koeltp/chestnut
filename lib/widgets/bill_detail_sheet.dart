@@ -115,9 +115,9 @@ class _DetailBodyState extends State<_DetailBody> {
     super.initState();
     _loadTags();
     // 订阅图片流：手动重传改状态、后台补传完成都会推新数据
-    _imageSub = widget.imageRepo
-        .watchImagesByBillId(widget.bill.id)
-        .listen((images) {
+    _imageSub = widget.imageRepo.watchImagesByBillId(widget.bill.id).listen((
+      images,
+    ) {
       if (!mounted) return;
       setState(() => _images = images);
       unawaited(_ensureFiles(images));
@@ -195,13 +195,14 @@ class _DetailBodyState extends State<_DetailBody> {
     final matches = _images.where((i) => i.localPath == path).toList();
     if (matches.isEmpty) return;
     final edited = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(
-        builder: (_) => ImageEditPage(sourcePath: path),
-      ),
+      MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: path)),
     );
     if (edited == null || !mounted) return;
-    final created = await widget.imageRepo
-        .replaceImage(matches.first, edited, client: widget.cloud.createClient());
+    final created = await widget.imageRepo.replaceImage(
+      matches.first,
+      edited,
+      client: widget.cloud.createClient(),
+    );
     if (!mounted) return;
     if (created == null) {
       showAppToast(context, '保存编辑失败，请重试');
@@ -234,9 +235,8 @@ class _DetailBodyState extends State<_DetailBody> {
         ? AddBillPage(editBill: widget.bill)
         : AddBillPage(copyOf: widget.bill);
     Navigator.of(widget.hostContext).pop();
-    Navigator.of(widget.hostContext).push(
-      MaterialPageRoute<void>(builder: (_) => page),
-    );
+    Navigator.of(widget.hostContext)
+        .push(MaterialPageRoute<void>(builder: (_) => page));
   }
 
   /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新
@@ -356,12 +356,12 @@ class _DetailBodyState extends State<_DetailBody> {
 
   /// 地图 App 中文名映射：插件自带 name 是英文
   String _mapLabel(SupportedMap m) => switch (m.map.id) {
-        'amap' => '高德地图',
-        'baidu' => '百度地图',
-        'tencent' => '腾讯地图',
-        'google' => 'Google 地图',
-        _ => m.name,
-      };
+    'amap' => '高德地图',
+    'baidu' => '百度地图',
+    'tencent' => '腾讯地图',
+    'google' => 'Google 地图',
+    _ => m.name,
+  };
 
   /// 时间显示格式：2026-10-02 18:08
   String _format(DateTime t, int? timeMinute) {
@@ -438,14 +438,20 @@ class _DetailBodyState extends State<_DetailBody> {
                             ),
                           )
                         : Text(
-                            '${isTransfer ? '' : isExpense ? '-' : '+'}¥'
+                            '${isTransfer
+                                ? ''
+                                : isExpense
+                                ? '-'
+                                : '+'}¥'
                             '${MoneyUtil.centsToYuanGroupedTrimmed(widget.bill.amountCents)}',
                             textAlign: TextAlign.right,
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w600,
                               color: amountColor,
-                              fontFeatures: const [FontFeature.tabularFigures()],
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
                             ),
                           ),
                     // 有优惠时在实付下方展示原价（划线）与省额

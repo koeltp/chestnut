@@ -105,10 +105,7 @@ class _TagPickerSheetState extends State<TagPickerSheet> {
                     ),
                   ),
                   const Spacer(),
-                  TextButton(
-                    onPressed: _openManage,
-                    child: const Text('管理'),
-                  ),
+                  TextButton(onPressed: _openManage, child: const Text('管理')),
                 ],
               ),
               const SizedBox(height: AppDimens.gapMd),

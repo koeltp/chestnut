@@ -11,11 +11,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Widget wrap(Widget child) => MaterialApp(
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-        ),
-        home: Scaffold(body: child),
-      );
+    theme: ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+    ),
+    home: Scaffold(body: child),
+  );
 
   testWidgets('.none 构造函数：渲染主副文案', (tester) async {
     await tester.pumpWidget(wrap(const EmptyStateCard.none()));

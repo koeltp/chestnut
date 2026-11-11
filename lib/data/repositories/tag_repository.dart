@@ -14,30 +14,30 @@ class TagRepository {
 
   /// 监听全部标签（按 sortOrder 升序）
   Stream<List<Tag>> watchTags() {
-    return (_db.select(_db.tags)
-          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
-        .watch();
+    return (_db.select(
+      _db.tags,
+    )..orderBy([(t) => OrderingTerm.asc(t.sortOrder)])).watch();
   }
 
   /// 获取全部标签（按 sortOrder 升序）
   Future<List<Tag>> getTags() {
-    return (_db.select(_db.tags)
-          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
-        .get();
+    return (_db.select(
+      _db.tags,
+    )..orderBy([(t) => OrderingTerm.asc(t.sortOrder)])).get();
   }
 
   /// 按 id 查单个标签
   Future<Tag?> getTagById(int id) {
-    return (_db.select(_db.tags)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    return (_db.select(
+      _db.tags,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
   /// 获取某笔账单的全部标签（按 sortOrder 排序）
   Future<List<Tag>> getTagsByBillId(int billId) async {
-    final tagIds = await (_db.select(_db.billTags)
-          ..where((bt) => bt.billId.equals(billId)))
-        .map((bt) => bt.tagId)
-        .get();
+    final tagIds = await (_db.select(
+      _db.billTags,
+    )..where((bt) => bt.billId.equals(billId))).map((bt) => bt.tagId).get();
     if (tagIds.isEmpty) return [];
     return (_db.select(_db.tags)
           ..where((t) => t.id.isIn(tagIds))
@@ -55,18 +55,20 @@ class TagRepository {
     const chunkSize = 500;
     final rows = <BillTag>[];
     for (var i = 0; i < billIds.length; i += chunkSize) {
-      final end = i + chunkSize < billIds.length ? i + chunkSize : billIds.length;
+      final end = i + chunkSize < billIds.length
+          ? i + chunkSize
+          : billIds.length;
       rows.addAll(
-        await (_db.select(_db.billTags)
-              ..where((bt) => bt.billId.isIn(billIds.sublist(i, end))))
-            .get(),
+        await (_db.select(
+          _db.billTags,
+        )..where((bt) => bt.billId.isIn(billIds.sublist(i, end)))).get(),
       );
     }
     final tagIds = rows.map((r) => r.tagId).toSet().toList();
     if (tagIds.isEmpty) return {};
-    final tags = await (_db.select(_db.tags)
-          ..where((t) => t.id.isIn(tagIds)))
-        .get();
+    final tags = await (_db.select(
+      _db.tags,
+    )..where((t) => t.id.isIn(tagIds))).get();
     final tagMap = {for (final t in tags) t.id: t};
     final result = <int, List<Tag>>{};
     for (final r in rows) {
@@ -92,9 +94,9 @@ class TagRepository {
       throw ArgumentError('标签名不能为空');
     }
     // 查重：名称完全匹配（首尾空格已 trim）
-    final existing = await (_db.select(_db.tags)
-          ..where((t) => t.name.equals(trimmed)))
-        .getSingleOrNull();
+    final existing = await (_db.select(
+      _db.tags,
+    )..where((t) => t.name.equals(trimmed))).getSingleOrNull();
     if (existing != null) return existing.id;
 
     // 自动分配颜色：按现有标签总数对色板取模，保证颜色均匀分布
@@ -103,12 +105,14 @@ class TagRepository {
     final finalColor = color ?? palette[count % palette.length];
 
     // sortOrder 追加到末尾
-    final maxOrder = await (_db.selectOnly(_db.tags)
-          ..addColumns([_db.tags.sortOrder.max()]))
-        .map((r) => r.read(_db.tags.sortOrder.max()) ?? -1)
-        .getSingle();
+    final maxOrder =
+        await (_db.selectOnly(_db.tags)..addColumns([_db.tags.sortOrder.max()]))
+            .map((r) => r.read(_db.tags.sortOrder.max()) ?? -1)
+            .getSingle();
 
-    return _db.into(_db.tags).insert(
+    return _db
+        .into(_db.tags)
+        .insert(
           TagsCompanion.insert(
             name: trimmed,
             color: finalColor,
@@ -120,18 +124,15 @@ class TagRepository {
   /// 更新标签名与颜色
   Future<int> updateTag(int id, String name, int color) {
     return (_db.update(_db.tags)..where((t) => t.id.equals(id))).write(
-          TagsCompanion(
-            name: Value(name.trim()),
-            color: Value(color),
-          ),
-        );
+      TagsCompanion(name: Value(name.trim()), color: Value(color)),
+    );
   }
 
   /// 统计引用该标签的账单数量（删除前确认弹窗提示用）
   Future<int> countBillsByTagId(int tagId) async {
-    final rows = await (_db.select(_db.billTags)
-          ..where((bt) => bt.tagId.equals(tagId)))
-        .get();
+    final rows = await (_db.select(
+      _db.billTags,
+    )..where((bt) => bt.tagId.equals(tagId))).get();
     return rows.length;
   }
 
@@ -140,9 +141,9 @@ class TagRepository {
   /// 返回受影响的关联行数（供 UI 提示"有 N 笔账单使用此标签"）。
   Future<int> deleteTag(int id) {
     return _db.transaction(() async {
-      final affected =
-          await (_db.delete(_db.billTags)..where((bt) => bt.tagId.equals(id)))
-              .go();
+      final affected = await (_db.delete(
+        _db.billTags,
+      )..where((bt) => bt.tagId.equals(id))).go();
       await (_db.delete(_db.tags)..where((t) => t.id.equals(id))).go();
       return affected;
     });
@@ -151,29 +152,26 @@ class TagRepository {
   /// 设置某笔账单的标签（全量替换：先删旧关联再插新，事务内保证原子性）
   Future<void> setBillTags(int billId, List<int> tagIds) {
     return _db.transaction(() async {
-      await (_db.delete(_db.billTags)
-            ..where((bt) => bt.billId.equals(billId)))
-          .go();
+      await (_db.delete(
+        _db.billTags,
+      )..where((bt) => bt.billId.equals(billId))).go();
       if (tagIds.isEmpty) return;
       // 去重 + 按 id 排序，保证插入顺序稳定
       final unique = tagIds.toSet().toList()..sort();
       await _db.batch((b) {
-        b.insertAll(
-          _db.billTags,
-          [
-            for (final tagId in unique)
-              BillTagsCompanion.insert(billId: billId, tagId: tagId),
-          ],
-        );
+        b.insertAll(_db.billTags, [
+          for (final tagId in unique)
+            BillTagsCompanion.insert(billId: billId, tagId: tagId),
+        ]);
       });
     });
   }
 
   /// 单笔账单的标签数量（记一笔页 #(N) 显示用，编辑回显时查询）
   Future<int> countTagsByBillId(int billId) async {
-    final rows = await (_db.select(_db.billTags)
-          ..where((bt) => bt.billId.equals(billId)))
-        .get();
+    final rows = await (_db.select(
+      _db.billTags,
+    )..where((bt) => bt.billId.equals(billId))).get();
     return rows.length;
   }
 

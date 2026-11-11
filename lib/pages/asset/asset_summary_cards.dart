@@ -33,10 +33,7 @@ class NetValueCard extends StatelessWidget {
         children: [
           const Text(
             '总净值（总资产 − 总负债）',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppDimens.gapSm),
           Text(
@@ -59,11 +56,7 @@ class NetValueCard extends StatelessWidget {
                   masked: masked,
                 ),
               ),
-              Container(
-                width: 1,
-                height: 28,
-                color: AppColors.divider,
-              ),
+              Container(width: 1, height: 28, color: AppColors.divider),
               Expanded(
                 child: _TotalColumn(
                   label: '总负债',
@@ -102,10 +95,7 @@ class _TotalColumn extends StatelessWidget {
         Text(
           label,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 2),
         Text(
@@ -176,9 +166,9 @@ class LiabilityRateCard extends StatelessWidget {
                   masked
                       ? '负债占资产的 ****'
                       : '负债占资产 '
-                          '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.totalLiabilityCents)}'
-                          ' / '
-                          '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.totalAssetCents)}',
+                            '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.totalLiabilityCents)}'
+                            ' / '
+                            '¥${MoneyUtil.centsToYuanGroupedTrimmed(summary.totalAssetCents)}',
                   textAlign: TextAlign.right,
                   style: const TextStyle(
                     fontSize: 12,
@@ -216,19 +206,15 @@ class DebtNoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final masked = context.watch<AssetProvider>().masked;
     return SectionCard(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const DebtNoteListPage()),
-      ),
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const DebtNoteListPage())),
       child: Row(
         children: [
           Expanded(
             child: Row(
               children: [
-                const Icon(
-                  Icons.north_east,
-                  size: 18,
-                  color: AppColors.income,
-                ),
+                const Icon(Icons.north_east, size: 18, color: AppColors.income),
                 const SizedBox(width: AppDimens.gapSm),
                 Expanded(
                   child: Column(

@@ -121,10 +121,7 @@ class BillListItem extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.divider,
-                          width: 1,
-                        ),
+                        border: Border.all(color: AppColors.divider, width: 1),
                       ),
                       child: const Icon(
                         Icons.photo_camera,
@@ -227,7 +224,9 @@ class BillListItem extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // 免单（实付 0 且有优惠）直接显示绿色"免单"，比"¥0"直观
-                (amountCents == 0 && discountCents != null && discountCents! > 0)
+                (amountCents == 0 &&
+                        discountCents != null &&
+                        discountCents! > 0)
                     ? const Text(
                         '免单',
                         style: TextStyle(
@@ -253,8 +252,9 @@ class BillListItem extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           fontFeatures: const [FontFeature.tabularFigures()],
                           // 金额颜色与记一笔输入金额一致：支出红 / 收入绿
-                          color:
-                              isExpense ? AppColors.expense : AppColors.income,
+                          color: isExpense
+                              ? AppColors.expense
+                              : AppColors.income,
                         ),
                       ),
                 if (accountLine != null && accountLine!.isNotEmpty) ...[
@@ -395,11 +395,7 @@ class _MiniTagChip extends StatelessWidget {
       ),
       child: Text(
         tag.name,
-        style: TextStyle(
-          fontSize: 10,
-          color: c,
-          fontWeight: FontWeight.w500,
-        ),
+        style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w500),
       ),
     );
   }

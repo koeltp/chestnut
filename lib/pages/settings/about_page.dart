@@ -136,7 +136,9 @@ class _AboutPageState extends State<AboutPage> {
             title: '隐私政策',
             value: '数据如何存储与使用',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const PrivacyPolicyPage()),
+              MaterialPageRoute<void>(
+                builder: (_) => const PrivacyPolicyPage(),
+              ),
             ),
           ),
           const Divider(indent: 16, endIndent: 16),

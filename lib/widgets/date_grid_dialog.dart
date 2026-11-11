@@ -29,10 +29,17 @@ Future<int?> showYearGridDialog(BuildContext context, {required int selected}) {
 }
 
 /// 月份网格弹窗，返回所选月份（1~12）
-Future<int?> showMonthGridDialog(BuildContext context, {required int selected}) {
+Future<int?> showMonthGridDialog(
+  BuildContext context, {
+  required int selected,
+}) {
   return _showGridDialog<int>(
     context,
-    _GridDialog(type: _GridType.month, selected: selected, year: DateTime.now().year),
+    _GridDialog(
+      type: _GridType.month,
+      selected: selected,
+      year: DateTime.now().year,
+    ),
   );
 }
 
@@ -139,7 +146,9 @@ class _GridDialogState extends State<_GridDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: AppColors.card,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_radius),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 10),
         child: SizedBox(
@@ -185,25 +194,25 @@ class _GridDialogState extends State<_GridDialog> {
     return switch (widget.type) {
       _GridType.year => const Text('选择年份', style: base),
       _GridType.month => Text.rich(
-          TextSpan(
-            style: base,
-            children: [
-              TextSpan(text: '${widget.year}', style: accent),
-              const TextSpan(text: '年'),
-            ],
-          ),
+        TextSpan(
+          style: base,
+          children: [
+            TextSpan(text: '${widget.year}', style: accent),
+            const TextSpan(text: '年'),
+          ],
         ),
+      ),
       _GridType.day => Text.rich(
-          TextSpan(
-            style: base,
-            children: [
-              TextSpan(text: '${widget.year}', style: accent),
-              const TextSpan(text: '年'),
-              TextSpan(text: '${widget.month}', style: accent),
-              const TextSpan(text: '月'),
-            ],
-          ),
+        TextSpan(
+          style: base,
+          children: [
+            TextSpan(text: '${widget.year}', style: accent),
+            const TextSpan(text: '年'),
+            TextSpan(text: '${widget.month}', style: accent),
+            const TextSpan(text: '月'),
+          ],
         ),
+      ),
     };
   }
 
@@ -268,11 +277,7 @@ class _GridDialogState extends State<_GridDialog> {
       childAspectRatio: _cellAspect,
       children: [
         for (var m = 1; m <= 12; m++)
-          _cell(
-            '$m月',
-            m == widget.selected,
-            () => Navigator.pop(context, m),
-          ),
+          _cell('$m月', m == widget.selected, () => Navigator.pop(context, m)),
       ],
     );
   }

@@ -47,24 +47,20 @@ List<FlowEntry> buildFlowEntries(List<Bill> bills, List<DebtNote> debts) {
     for (final bill in bills)
       FlowEntry(date: bill.date, createdAt: bill.createdAt, bill: bill),
     for (final debt in debts)
-      FlowEntry(
-        date: debt.borrowedAt,
-        createdAt: debt.createdAt,
-        debt: debt,
-      ),
+      FlowEntry(date: debt.borrowedAt, createdAt: debt.createdAt, debt: debt),
   ]..sort((a, b) {
-      // 借条 date 含时刻、账单 date 是当日 0 点，直接比较会让同日
-      // 借条因时刻膨胀恒在账单上方——先归一到自然日
-      final byDay = _dayKey(b.date).compareTo(_dayKey(a.date));
-      if (byDay != 0) return byDay;
-      final am = a.dayMinute, bm = b.dayMinute;
-      if (am != bm) {
-        if (am == null) return 1;
-        if (bm == null) return -1;
-        return bm.compareTo(am);
-      }
-      return b.createdAt.compareTo(a.createdAt);
-    });
+    // 借条 date 含时刻、账单 date 是当日 0 点，直接比较会让同日
+    // 借条因时刻膨胀恒在账单上方——先归一到自然日
+    final byDay = _dayKey(b.date).compareTo(_dayKey(a.date));
+    if (byDay != 0) return byDay;
+    final am = a.dayMinute, bm = b.dayMinute;
+    if (am != bm) {
+      if (am == null) return 1;
+      if (bm == null) return -1;
+      return bm.compareTo(am);
+    }
+    return b.createdAt.compareTo(a.createdAt);
+  });
 }
 
 /// 自然日键：y*10000+m*100+d，消掉日内时刻

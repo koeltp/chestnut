@@ -124,7 +124,8 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
       case _Flow.verifyOld:
         final salt = settings.passcodeSalt;
         final hash = settings.passcodeHash;
-        final ok = salt != null &&
+        final ok =
+            salt != null &&
             hash != null &&
             PasscodeUtil.verify(salt, pin, hash);
         if (!ok) return false;
@@ -236,9 +237,7 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            _flow == _Flow.editQuestion ? '安全问题' : '密码保护',
-          ),
+          title: Text(_flow == _Flow.editQuestion ? '安全问题' : '密码保护'),
         ),
         body: SafeArea(child: _buildBody()),
       ),
@@ -318,9 +317,7 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
                   ),
                 ),
                 subtitle: Text(
-                  enabled
-                      ? '已设置，打开应用与后台返回时需解锁'
-                      : '未设置，开启后每次使用需输入密码',
+                  enabled ? '已设置，打开应用与后台返回时需解锁' : '未设置，开启后每次使用需输入密码',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
@@ -425,10 +422,7 @@ class _PasscodeSettingsPageState extends State<PasscodeSettingsPage> {
               children: [
                 const Text(
                   '后台返回锁定时机',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: TextStyle(fontSize: 15, color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 12),
                 AppSegmented<int>(

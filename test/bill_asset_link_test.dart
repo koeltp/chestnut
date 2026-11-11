@@ -103,7 +103,12 @@ void main() {
   test('编辑账单改金额：差值修正（撤销旧影响再应用新影响）', () async {
     final asset = await createAsset('现金钱包');
     final cat = await anyCategory(BillType.expense);
-    final id = await addBill(BillType.expense, 500, cat: cat, assetId: asset.id);
+    final id = await addBill(
+      BillType.expense,
+      500,
+      cat: cat,
+      assetId: asset.id,
+    );
     final bill = await (db.select(
       db.bills,
     )..where((b) => b.id.equals(id))).getSingle();
@@ -133,7 +138,12 @@ void main() {
     final assetA = await createAsset('现金钱包');
     final assetB = await createAsset('银行卡');
     final cat = await anyCategory(BillType.expense);
-    final id = await addBill(BillType.expense, 500, cat: cat, assetId: assetA.id);
+    final id = await addBill(
+      BillType.expense,
+      500,
+      cat: cat,
+      assetId: assetA.id,
+    );
     final bill = await (db.select(
       db.bills,
     )..where((b) => b.id.equals(id))).getSingle();
@@ -163,7 +173,12 @@ void main() {
   test('删除账单：余额恢复原值', () async {
     final asset = await createAsset('现金钱包');
     final cat = await anyCategory(BillType.expense);
-    final id = await addBill(BillType.expense, 500, cat: cat, assetId: asset.id);
+    final id = await addBill(
+      BillType.expense,
+      500,
+      cat: cat,
+      assetId: asset.id,
+    );
     await billRepo.deleteBill(id);
     expect(await balanceOf(asset.id), 10000);
   });
@@ -191,12 +206,7 @@ void main() {
   test('转账账单：转出减、转入加，总额守恒', () async {
     final from = await createAsset('银行卡');
     final to = await createAsset('现金钱包');
-    await addBill(
-      BillType.transfer,
-      1000,
-      assetId: from.id,
-      toAssetId: to.id,
-    );
+    await addBill(BillType.transfer, 1000, assetId: from.id, toAssetId: to.id);
     expect(await balanceOf(from.id), 9000);
     expect(await balanceOf(to.id), 11000);
   });
@@ -208,12 +218,7 @@ void main() {
     final incomeCat = await anyCategory(BillType.income);
     await addBill(BillType.expense, 500, cat: expenseCat, assetId: from.id);
     await addBill(BillType.income, 200, cat: incomeCat, assetId: to.id);
-    await addBill(
-      BillType.transfer,
-      1000,
-      assetId: from.id,
-      toAssetId: to.id,
-    );
+    await addBill(BillType.transfer, 1000, assetId: from.id, toAssetId: to.id);
     final summary = await billRepo
         .watchSummaryBetween(DateTime(2026, 10), DateTime(2026, 11))
         .first;
@@ -233,12 +238,7 @@ void main() {
     final to = await createAsset('现金钱包');
     final expenseCat = await anyCategory(BillType.expense);
     await addBill(BillType.expense, 500, cat: expenseCat, assetId: from.id);
-    await addBill(
-      BillType.transfer,
-      1000,
-      assetId: from.id,
-      toAssetId: to.id,
-    );
+    await addBill(BillType.transfer, 1000, assetId: from.id, toAssetId: to.id);
     final fromBills = await billRepo.watchBillsOfAsset(from.id).first;
     final toBills = await billRepo.watchBillsOfAsset(to.id).first;
     expect(fromBills, hasLength(2)); // 支出 + 转出侧
@@ -315,7 +315,12 @@ void main() {
   test('编辑账单使余额穿 0：拦截且整体回滚（旧账单保留原样）', () async {
     final asset = await createAsset('现金钱包');
     final cat = await anyCategory(BillType.expense);
-    final id = await addBill(BillType.expense, 500, cat: cat, assetId: asset.id);
+    final id = await addBill(
+      BillType.expense,
+      500,
+      cat: cat,
+      assetId: asset.id,
+    );
     final bill = await (db.select(
       db.bills,
     )..where((b) => b.id.equals(id))).getSingle();
@@ -391,4 +396,3 @@ void main() {
     expect(await debtRepo.watchAll().first, isEmpty);
   });
 }
-

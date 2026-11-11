@@ -52,11 +52,7 @@ class CategoryAvatar extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             )
-          : Icon(
-              categoryIconByCode(iconCode),
-              color: c,
-              size: iconSize,
-            ),
+          : Icon(categoryIconByCode(iconCode), color: c, size: iconSize),
     );
   }
 }

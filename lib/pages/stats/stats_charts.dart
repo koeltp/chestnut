@@ -177,9 +177,7 @@ class StatsBarChartPainter extends CustomPainter {
         final v = valueOf(i);
         if (v <= 0 || v < threshold) continue;
         // 与已入选柱距离过近时，矮的让给高的
-        final conflict = monthLabeled
-            .where((j) => (j - i).abs() < 3)
-            .toList();
+        final conflict = monthLabeled.where((j) => (j - i).abs() < 3).toList();
         if (conflict.isEmpty) {
           monthLabeled.add(i);
         } else if (v > valueOf(conflict.first)) {
@@ -273,11 +271,7 @@ class StatsBarChartPainter extends CustomPainter {
       // 避免文字上半截侵入柱体区域造成遮挡；labels 按今年天数生成，
       // 闰年多出的槽位无标签，判界跳过
       if (i < labels.length && labels[i].isNotEmpty) {
-        _text(
-          canvas,
-          labels[i],
-          Offset(cx, baselineY + labelHeight / 2),
-        );
+        _text(canvas, labels[i], Offset(cx, baselineY + labelHeight / 2));
       }
     }
 

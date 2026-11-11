@@ -55,18 +55,12 @@ class DatabaseErrorPage extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              _tip(
-                icon: Icons.refresh,
-                text: '完全关闭应用后重新打开，会自动重试',
-              ),
+              _tip(icon: Icons.refresh, text: '完全关闭应用后重新打开，会自动重试'),
               _tip(
                 icon: Icons.delete_outline,
                 text: '若仍然失败，请勿卸载应用——卸载会删除手机里的历史备份',
               ),
-              _tip(
-                icon: Icons.mail_outline,
-                text: '可通过官网或邮箱联系开发者反馈',
-              ),
+              _tip(icon: Icons.mail_outline, text: '可通过官网或邮箱联系开发者反馈'),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -75,9 +69,7 @@ class DatabaseErrorPage extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        AppDimens.radiusCard,
-                      ),
+                      borderRadius: BorderRadius.circular(AppDimens.radiusCard),
                     ),
                   ),
                   // 关闭进程，用户回到桌面重新打开即完成重试

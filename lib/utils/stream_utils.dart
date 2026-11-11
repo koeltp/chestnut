@@ -32,16 +32,13 @@ Stream<List<Object?>> combineLatest(List<Stream<Object?>> streams) {
       for (var i = 0; i < streams.length; i++) {
         final index = i;
         subs.add(
-          streams[i].listen(
-            (value) {
-              values[index] = value;
-              ready[index] = true;
-              if (ready.every((e) => e)) {
-                controller.add(List<Object?>.unmodifiable(values));
-              }
-            },
-            onError: controller.addError,
-          ),
+          streams[i].listen((value) {
+            values[index] = value;
+            ready[index] = true;
+            if (ready.every((e) => e)) {
+              controller.add(List<Object?>.unmodifiable(values));
+            }
+          }, onError: controller.addError),
         );
       }
     }

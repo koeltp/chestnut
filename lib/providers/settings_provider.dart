@@ -113,7 +113,10 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   /// 修改安全问题
-  Future<void> updateSecurityQuestion(String question, String answerHash) async {
+  Future<void> updateSecurityQuestion(
+    String question,
+    String answerHash,
+  ) async {
     await _prefs.setString(_kSecurityQuestion, question);
     await _prefs.setString(_kSecurityAnswerHash, answerHash);
     notifyListeners();

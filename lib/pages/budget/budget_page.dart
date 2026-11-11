@@ -33,8 +33,13 @@ class BudgetPage extends StatefulWidget {
 }
 
 /// 公开 State：主框架 Tab 同点调 [resetToTop] 实现"滚回顶 / 重置月份"
-class BudgetPageState extends State<BudgetPage> with StreamCacheMixin<BudgetPage> {
+class BudgetPageState extends State<BudgetPage>
+    with StreamCacheMixin<BudgetPage> {
   DateTime _month = DateTime.now();
+
+  /// 预算流是否已收到过首个事件（null 也算数据）：用来区分"首屏未加载"
+  /// 与"该月确实没设预算"。只用一次，之后换月都不再回到整页占位
+  bool _budgetReady = false;
 
   late final ScrollController _scrollController = ScrollController();
 
@@ -187,81 +192,123 @@ class BudgetPageState extends State<BudgetPage> with StreamCacheMixin<BudgetPage
   Widget build(BuildContext context) {
     final provider = context.read<BudgetProvider>();
     final mk = '${_month.year}-${_month.month}';
-    final budgetStream = ensureStream<Budget?>('budget-$mk', () => provider.budgetStream(_month));
-    final summaryStream = ensureStream<MonthSummary>('summary-$mk', () => provider.summaryStream(_month));
+    // 单槽流缓存：同月重建复用实例，切月换新流（drift 流单订阅，
+    // 切回看过的月份也不能复用已经 listen 过的旧实例）
+    final budgetStream = ensureSingleStream<Budget?>(
+      'budget',
+      mk,
+      () => provider.budgetStream(_month),
+    );
+    final summaryStream = ensureSingleStream<MonthSummary>(
+      'summary',
+      mk,
+      () => provider.summaryStream(_month),
+    );
+    // 底部安全区由主框架的导航栏统一处理，页面只避让状态栏
     return SafeArea(
+      bottom: false,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimens.pagePadding,
-              AppDimens.gapSm,
-              AppDimens.pagePadding,
-              0,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: MonthSwitcher(
-                month: _month,
-                onChanged: (m) => setState(() => _month = m),
-                foregroundColor: AppColors.textPrimary,
-              ),
-            ),
-          ),
           Expanded(
+            // 不挂按月的 ValueKey：换月时 StreamBuilder 会保留上一份快照，
+            // 只把状态置回 waiting，页面不塌陷成整页转圈。旧月数据短暂
+            // 留到新月数据到达后原地替换，切换期由顶部细进度条提示。
+            // （挂 key 会重建整棵子树、旧快照丢失 → 每次切月都白屏转圈）
             child: StreamBuilder<Budget?>(
               stream: budgetStream,
               builder: (context, budgetSnapshot) {
                 // 首屏数据未到：统一占位，避免直接按"未设预算 + 0 支出"
-                // 渲染后金额再跳变
-                if (!budgetSnapshot.hasData) {
+                // 渲染后金额再跳变；出错时用错误占位区分
+                if (budgetSnapshot.hasError) {
+                  return const ErrorPlaceholder();
+                }
+                // 注意：这条流的值可为空（null = 该月未设预算），不能用
+                // hasData 判断——null 也是合法数据，用 hasData 会把它当成
+                // "还没加载"而永久停在转圈。这里只区分"首屏是否已收到过
+                // 事件"：之后换月一律直接渲染（null 按未设预算处理），
+                // 避免每个无预算月份在切换瞬间都闪一次转圈
+                // 收到过事件（active）或流已结束（done）都算"数据已到达"，
+                // waiting 才代表还在等首次结果
+                if (budgetSnapshot.connectionState != ConnectionState.waiting) {
+                  _budgetReady = true;
+                }
+                if (!_budgetReady) {
                   return const LoadingPlaceholder();
                 }
                 final budget = budgetSnapshot.data;
                 final hasBudget = budget != null && budget.amountCents > 0;
+                final budgetWaiting =
+                    budgetSnapshot.connectionState == ConnectionState.waiting;
                 return StreamBuilder<MonthSummary>(
                   stream: summaryStream,
                   builder: (context, summarySnapshot) {
+                    if (summarySnapshot.hasError) {
+                      return const ErrorPlaceholder();
+                    }
                     if (!summarySnapshot.hasData) {
                       return const LoadingPlaceholder();
                     }
                     final summary = summarySnapshot.data!;
-                    return ListView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(
-                        AppDimens.pagePadding,
-                        AppDimens.gapSection,
-                        AppDimens.pagePadding,
-                        24,
-                      ),
+                    // 换月后新流尚未吐出首个数据：内容还是上一份快照，
+                    // 顶部细进度条说明"正在换月"，不把旧数字伪装成新月数据
+                    final switching =
+                        budgetWaiting ||
+                        summarySnapshot.connectionState ==
+                            ConnectionState.waiting;
+                    return Stack(
                       children: [
-                        _BudgetHeader(
-                          month: _month,
-                          budgetCents: hasBudget ? budget.amountCents : null,
-                          spentCents: summary.expenseCents,
-                          onEdit: () => _showEditSheet(
-                            current: hasBudget ? budget.amountCents : null,
+                        ListView(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(
+                            AppDimens.pagePadding,
+                            AppDimens.gapSection,
+                            AppDimens.pagePadding,
+                            24,
                           ),
-                          onClear: _clearAllBudgets,
+                          children: [
+                            _BudgetHeader(
+                              month: _month,
+                              budgetCents: hasBudget
+                                  ? budget.amountCents
+                                  : null,
+                              spentCents: summary.expenseCents,
+                              onMonthChanged: (m) => setState(() => _month = m),
+                              onEdit: () => _showEditSheet(
+                                current: hasBudget ? budget.amountCents : null,
+                              ),
+                              onClear: _clearAllBudgets,
+                            ),
+                            const SizedBox(height: AppDimens.gapSection),
+                            if (_isCurrentMonth) ...[
+                              _buildModeCard(),
+                              const SizedBox(height: AppDimens.gapSection),
+                            ],
+                            _buildCategoryBudgetSection(
+                              totalBudgetCents: hasBudget
+                                  ? budget.amountCents
+                                  : null,
+                            ),
+                            const SizedBox(height: AppDimens.gapSection),
+                            _buildStatusBar(
+                              hasBudget,
+                              summary.expenseCents,
+                              budget?.amountCents ?? 0,
+                            ),
+                            const SizedBox(height: AppDimens.gapSection),
+                            _buildHistoryCard(),
+                          ],
                         ),
-                        const SizedBox(height: AppDimens.gapSection),
-                        if (_isCurrentMonth) ...[
-                          _buildModeCard(),
-                          const SizedBox(height: AppDimens.gapSection),
-                        ],
-                        _buildCategoryBudgetSection(
-                          totalBudgetCents: hasBudget
-                              ? budget.amountCents
-                              : null,
-                        ),
-                        const SizedBox(height: AppDimens.gapSection),
-                        _buildStatusBar(
-                          hasBudget,
-                          summary.expenseCents,
-                          budget?.amountCents ?? 0,
-                        ),
-                        const SizedBox(height: AppDimens.gapSection),
-                        _buildHistoryCard(),
+                        // 贴顶细进度条：不占布局、不打断阅读，仅提示换月中
+                        if (switching)
+                          const Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: LinearProgressIndicator(
+                              minHeight: 2,
+                              backgroundColor: Colors.transparent,
+                            ),
+                          ),
                       ],
                     );
                   },
@@ -407,11 +454,15 @@ class BudgetPageState extends State<BudgetPage> with StreamCacheMixin<BudgetPage
   /// "已分配"总和，超过总预算时整段转橙色警示
   Widget _buildCategoryBudgetSection({required int? totalBudgetCents}) {
     final mk = '${_month.year}-${_month.month}';
-    final catSummaryStream = ensureStream<List<CategorySummary>>(
-      'catSummary-$mk', () => context.read<BudgetProvider>().categorySummaryStream(_month),
+    final catSummaryStream = ensureSingleStream<List<CategorySummary>>(
+      'catSummary',
+      mk,
+      () => context.read<BudgetProvider>().categorySummaryStream(_month),
     );
-    final catBudgetsStream = ensureStream<List<Budget>>(
-      'catBudgets-$mk', () => context.read<BudgetProvider>().categoryBudgetsStream(_month),
+    final catBudgetsStream = ensureSingleStream<List<Budget>>(
+      'catBudgets',
+      mk,
+      () => context.read<BudgetProvider>().categoryBudgetsStream(_month),
     );
     return SectionCard(
       padding: const EdgeInsets.only(bottom: 4),
@@ -741,9 +792,12 @@ class BudgetPageState extends State<BudgetPage> with StreamCacheMixin<BudgetPage
             ),
           ),
           FutureBuilder<List<_HistoryRow>>(
-            // 月份切换时重新加载（key 变化避免 FutureBuilder 缓存旧结果）
-            key: ValueKey(_month),
-            future: ensureFuture<List<_HistoryRow>>('history-${_month.year}-${_month.month}', () => _loadHistory()),
+            // 不挂 ValueKey：换 future 时 FutureBuilder 会保留上一份数据
+            // （只把状态置回 waiting），切月不会闪成小转圈
+            future: ensureFuture<List<_HistoryRow>>(
+              'history-${_month.year}-${_month.month}',
+              () => _loadHistory(),
+            ),
             builder: (context, snapshot) {
               final rows = snapshot.data;
               if (rows == null) {
@@ -870,6 +924,7 @@ class _BudgetHeader extends StatelessWidget {
     required this.month,
     required this.budgetCents,
     required this.spentCents,
+    required this.onMonthChanged,
     required this.onEdit,
     required this.onClear,
   });
@@ -877,6 +932,9 @@ class _BudgetHeader extends StatelessWidget {
   final DateTime month;
   final int? budgetCents;
   final int spentCents;
+
+  /// 卡片首行的月份切换回调（年月选择器放在操作行最左侧）
+  final ValueChanged<DateTime> onMonthChanged;
   final VoidCallback onEdit;
 
   /// 清空全部预算回调（仅有预算时入口可见）
@@ -911,7 +969,12 @@ class _BudgetHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              // 右上操作区靠右（年月信息由页面顶部选择器承担，不再重复）
+              // 月份选择放操作行最左：切换月份与"修改预算"同一视觉层级
+              MonthSwitcher(
+                month: month,
+                onChanged: onMonthChanged,
+                foregroundColor: Colors.white,
+              ),
               const Spacer(),
               InkWell(
                 onTap: onEdit,

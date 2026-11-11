@@ -20,30 +20,35 @@ void main() {
   });
 
   S3CompatibleClient dummyClient() => S3CompatibleClient(
-        endpoint: 'https://example.invalid',
-        bucket: 'test',
-        accessKeyId: 'test',
-        secretAccessKey: 'test',
-      );
+    endpoint: 'https://example.invalid',
+    bucket: 'test',
+    accessKeyId: 'test',
+    secretAccessKey: 'test',
+  );
 
   group('BillImageRepository.watchSyncCount', () {
     test('计数随图片行的增改自动刷新（总数 + 未同步数）', () async {
       final billId = await db
           .into(db.bills)
-          .insert(BillsCompanion.insert(
-            type: BillType.expense,
-            amountCents: 100,
-            date: DateTime(2026, 10, 25),
-          ));
+          .insert(
+            BillsCompanion.insert(
+              type: BillType.expense,
+              amountCents: 100,
+              date: DateTime(2026, 10, 25),
+            ),
+          );
       final repo = BillImageRepository(db);
 
-      Future<int> insertImage(BillImageUploadState state) =>
-          db.into(db.billImages).insert(BillImagesCompanion.insert(
-                billId: billId,
-                objectKey: 'chestnut/receipts/$billId-x-${state.index}.jpg',
-                localPath: '/tmp/none.jpg',
-                uploadState: state,
-              ));
+      Future<int> insertImage(BillImageUploadState state) => db
+          .into(db.billImages)
+          .insert(
+            BillImagesCompanion.insert(
+              billId: billId,
+              objectKey: 'chestnut/receipts/$billId-x-${state.index}.jpg',
+              localPath: '/tmp/none.jpg',
+              uploadState: state,
+            ),
+          );
 
       // 初值：监听即发当前快照
       final first = await repo.watchSyncCount().first;
@@ -58,11 +63,13 @@ void main() {
 
       // 状态变化后计数跟随
       final doneRow = await db.select(db.billImages).get();
-      await (db.update(db.billImages)
-            ..where((t) => t.id.equals(doneRow.first.id)))
-          .write(const BillImagesCompanion(
-        uploadState: Value(BillImageUploadState.done),
-      ));
+      await (db.update(
+        db.billImages,
+      )..where((t) => t.id.equals(doneRow.first.id))).write(
+        const BillImagesCompanion(
+          uploadState: Value(BillImageUploadState.done),
+        ),
+      );
       final updated = await repo.watchSyncCount().first;
       expect(updated, (total: 3, pending: 1));
     });
@@ -72,26 +79,36 @@ void main() {
     test('借据照片计数正确（总数 + 未同步数）', () async {
       final noteId = await db
           .into(db.debtNotes)
-          .insert(DebtNotesCompanion.insert(
-            direction: DebtDirection.lendOut,
-            personName: '张三',
-            amountCents: 50000,
-            borrowedAt: DateTime(2026, 10, 25),
-          ));
+          .insert(
+            DebtNotesCompanion.insert(
+              direction: DebtDirection.lendOut,
+              personName: '张三',
+              amountCents: 50000,
+              borrowedAt: DateTime(2026, 10, 25),
+            ),
+          );
       final repo = DebtNoteRepository(db);
 
-      await db.into(db.debtNoteImages).insert(DebtNoteImagesCompanion.insert(
-            noteId: noteId,
-            objectKey: 'chestnut/debt_photos/$noteId-1.jpg',
-            localPath: '/tmp/none.jpg',
-            uploadState: BillImageUploadState.pending,
-          ));
-      await db.into(db.debtNoteImages).insert(DebtNoteImagesCompanion.insert(
-            noteId: noteId,
-            objectKey: 'chestnut/debt_photos/$noteId-2.jpg',
-            localPath: '/tmp/none.jpg',
-            uploadState: BillImageUploadState.done,
-          ));
+      await db
+          .into(db.debtNoteImages)
+          .insert(
+            DebtNoteImagesCompanion.insert(
+              noteId: noteId,
+              objectKey: 'chestnut/debt_photos/$noteId-1.jpg',
+              localPath: '/tmp/none.jpg',
+              uploadState: BillImageUploadState.pending,
+            ),
+          );
+      await db
+          .into(db.debtNoteImages)
+          .insert(
+            DebtNoteImagesCompanion.insert(
+              noteId: noteId,
+              objectKey: 'chestnut/debt_photos/$noteId-2.jpg',
+              localPath: '/tmp/none.jpg',
+              uploadState: BillImageUploadState.done,
+            ),
+          );
 
       final count = await repo.watchSyncCount().first;
       expect(count, (total: 2, pending: 1));
@@ -102,19 +119,25 @@ void main() {
     test('每张待传图片回调一次 (done, total)，本地文件缺失时上传失败并清理', () async {
       final billId = await db
           .into(db.bills)
-          .insert(BillsCompanion.insert(
-            type: BillType.expense,
-            amountCents: 100,
-            date: DateTime(2026, 10, 25),
-          ));
+          .insert(
+            BillsCompanion.insert(
+              type: BillType.expense,
+              amountCents: 100,
+              date: DateTime(2026, 10, 25),
+            ),
+          );
       final repo = BillImageRepository(db);
       for (var i = 0; i < 2; i++) {
-        await db.into(db.billImages).insert(BillImagesCompanion.insert(
-              billId: billId,
-              objectKey: 'chestnut/receipts/test-$i.jpg',
-              localPath: '/tmp/missing-$i.jpg',
-              uploadState: BillImageUploadState.pending,
-            ));
+        await db
+            .into(db.billImages)
+            .insert(
+              BillImagesCompanion.insert(
+                billId: billId,
+                objectKey: 'chestnut/receipts/test-$i.jpg',
+                localPath: '/tmp/missing-$i.jpg',
+                uploadState: BillImageUploadState.pending,
+              ),
+            );
       }
 
       final progress = <(int, int)>[];

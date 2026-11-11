@@ -81,9 +81,15 @@ const List<InstitutionSection> kInstitutionSections = [
     InstitutionDef('国信证券', svg: 'assets/images/brands/guoxin_zhengquan.svg'),
     InstitutionDef('光大证券', svg: 'assets/images/brands/guangda_zhengquan.svg'),
     InstitutionDef('兴业证券', svg: 'assets/images/brands/xingye_zhengquan.svg'),
-    InstitutionDef('长江证券', svg: 'assets/images/brands/changjiang_zhengquan.svg'),
+    InstitutionDef(
+      '长江证券',
+      svg: 'assets/images/brands/changjiang_zhengquan.svg',
+    ),
     InstitutionDef('东莞证券', svg: 'assets/images/brands/dongguan_zhengquan.svg'),
-    InstitutionDef('长城证券', svg: 'assets/images/brands/changcheng_zhengquan.svg'),
+    InstitutionDef(
+      '长城证券',
+      svg: 'assets/images/brands/changcheng_zhengquan.svg',
+    ),
     InstitutionDef('长桥证券', svg: 'assets/images/brands/changqiao_zhengquan.svg'),
     InstitutionDef('富途牛牛证券', svg: 'assets/images/brands/futu_zhengquan.svg'),
     InstitutionDef('老虎证券'),
@@ -114,7 +120,8 @@ final List<String> kAllInstitutionNames = [
 
 /// 机构名 → 定义（选择器查 logo 用）
 final Map<String, InstitutionDef> kInstitutionByName = {
-  for (final s in kInstitutionSections) for (final d in s.items) d.name: d,
+  for (final s in kInstitutionSections)
+    for (final d in s.items) d.name: d,
 };
 
 /// 机构弹层的分组过滤预设（集合元素对应 [kInstitutionSections] 的 label）：
@@ -202,9 +209,7 @@ List<MapEntry<String, List<InstitutionDef>>> groupInstitutionsByInitial(
 ) {
   final buckets = <String, List<InstitutionDef>>{};
   for (final d in items) {
-    buckets
-        .putIfAbsent(kInstitutionInitials[d.name] ?? '#', () => [])
-        .add(d);
+    buckets.putIfAbsent(kInstitutionInitials[d.name] ?? '#', () => []).add(d);
   }
   final keys = buckets.keys.toList()..sort();
   return [for (final k in keys) MapEntry(k, buckets[k]!)];

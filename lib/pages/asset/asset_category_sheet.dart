@@ -101,10 +101,7 @@ class _CategoryCell extends StatelessWidget {
             def.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textPrimary,
-            ),
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),
         ],
       ),

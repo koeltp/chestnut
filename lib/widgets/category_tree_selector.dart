@@ -34,9 +34,11 @@ class CategoryTreeSelector extends StatefulWidget {
     this.initialExpandedId,
     this.onSingleChanged,
     this.onMultiChanged,
-  }) : assert(mode == CategoryTreeMode.single
-            ? selectedId != null && onSingleChanged != null
-            : selectedIds != null && onMultiChanged != null);
+  }) : assert(
+         mode == CategoryTreeMode.single
+             ? selectedId != null && onSingleChanged != null
+             : selectedIds != null && onMultiChanged != null,
+       );
 
   /// 当前收支类型下的全部分类（一级 + 二级）
   final List<Category> categories;
@@ -186,7 +188,8 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
     return Expanded(
       child: _RootCell(
         category: root,
-        filled: widget.selectedId == root.id ||
+        filled:
+            widget.selectedId == root.id ||
             _subsOf(root.id).any((s) => s.id == widget.selectedId),
         onTap: () => _onSingleRootTap(root),
       ),
@@ -207,7 +210,10 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
           width: double.infinity,
           child: Align(
             alignment: Alignment(arrowX, -1),
-            child: CustomPaint(size: const Size(14, 6), painter: _TrianglePainter()),
+            child: CustomPaint(
+              size: const Size(14, 6),
+              painter: _TrianglePainter(),
+            ),
           ),
         ),
         Container(
@@ -251,8 +257,7 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
         return Column(
           children: [
             _buildMultiRootRow(root, subs, expanded),
-            if (expanded && subs.isNotEmpty)
-              ...subs.map(_buildMultiSubRow),
+            if (expanded && subs.isNotEmpty) ...subs.map(_buildMultiSubRow),
             if (i < roots.length - 1)
               const Divider(
                 height: 1,
@@ -267,16 +272,11 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
   }
 
   /// 多选一级行：[箭头] 头像 名称 …… [三态复选框]
-  Widget _buildMultiRootRow(
-    Category root,
-    List<Category> subs,
-    bool expanded,
-  ) {
+  Widget _buildMultiRootRow(Category root, List<Category> subs, bool expanded) {
     final hasSubs = subs.isNotEmpty;
     return InkWell(
       // 有子=只展开；无子=行本身就是勾选动作（没有可展开内容）
-      onTap: () =>
-          hasSubs ? _toggleExpand(root.id) : _onMultiRootCheck(root),
+      onTap: () => hasSubs ? _toggleExpand(root.id) : _onMultiRootCheck(root),
       child: SizedBox(
         height: 50,
         child: Row(
@@ -319,8 +319,10 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
               behavior: HitTestBehavior.opaque,
               onTap: () => _onMultiRootCheck(root),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: _TriCheckbox(state: _multiRootState(root)),
               ),
             ),
@@ -364,8 +366,10 @@ class _CategoryTreeSelectorState extends State<CategoryTreeSelector> {
               behavior: HitTestBehavior.opaque,
               onTap: () => _onMultiSubTap(sub),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: _TriCheckbox(
                   state: picked ? _RootBadge.full : _RootBadge.none,
                 ),
@@ -557,11 +561,7 @@ class _Glyph extends StatelessWidget {
         ),
       );
     }
-    return Icon(
-      categoryIconByCode(category.iconCode),
-      color: color,
-      size: 21,
-    );
+    return Icon(categoryIconByCode(category.iconCode), color: color, size: 21);
   }
 }
 

@@ -54,7 +54,10 @@ class CloudStorageProvider extends ChangeNotifier {
     await _prefs.setString(_kBucket, bucket.trim());
     await _prefs.setString(_kAccessKey, accessKeyId.trim());
     await _prefs.setString(_kSecretKey, secretAccessKey.trim());
-    await _prefs.setString(_kRegion, region.trim().isEmpty ? 'auto' : region.trim());
+    await _prefs.setString(
+      _kRegion,
+      region.trim().isEmpty ? 'auto' : region.trim(),
+    );
     await _prefs.setBool(_kEnabled, false);
     notifyListeners();
   }

@@ -15,7 +15,8 @@ Future<bool> confirmDeleteAsset(BuildContext context, Asset asset) async {
   final confirmed = await showConfirmDialog(
     context,
     title: '删除资产',
-    content: '删除后「${asset.name}」及其历史快照将被清除，不可恢复。'
+    content:
+        '删除后「${asset.name}」及其历史快照将被清除，不可恢复。'
         '${count > 0 ? '$count 笔关联账单会保留，但不再关联此账户。' : ''}',
     confirmText: '删除',
     danger: true,

@@ -47,8 +47,9 @@ void main() {
   );
 
   /// 建一笔支出账单，返回 id
-  Future<int> addBill(int categoryId, {String? note, int cents = 100}) =>
-      db.into(db.bills).insert(
+  Future<int> addBill(int categoryId, {String? note, int cents = 100}) => db
+      .into(db.bills)
+      .insert(
         BillsCompanion.insert(
           type: BillType.expense,
           amountCents: cents,
@@ -59,8 +60,9 @@ void main() {
       );
 
   /// 建一条分类预算，返回 id
-  Future<int> addBudget(String month, int categoryId, int cents) =>
-      db.into(db.budgets).insert(
+  Future<int> addBudget(String month, int categoryId, int cents) => db
+      .into(db.budgets)
+      .insert(
         BudgetsCompanion.insert(
           month: month,
           amountCents: cents,
@@ -189,10 +191,7 @@ void main() {
         db.bills,
       )..where((b) => b.categoryId.equals(target))).get();
       expect(bills, hasLength(2));
-      expect(
-        bills.map((b) => b.note).toSet(),
-        {'好喝｜原分类:奶茶', '原分类:奶茶'},
-      );
+      expect(bills.map((b) => b.note).toSet(), {'好喝｜原分类:奶茶', '原分类:奶茶'});
       // 源分类已删除
       final cats = await db.select(db.categories).get();
       expect(cats.any((c) => c.id == source), isFalse);

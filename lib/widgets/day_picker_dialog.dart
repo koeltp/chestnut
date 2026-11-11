@@ -9,10 +9,7 @@ import '../theme/app_colors.dart';
 ///
 /// 视觉与日期网格弹窗（date_grid_dialog）统一：圆角 20、标题 20 加粗、
 /// 大号圆点、入场 fade+scale。
-Future<int?> showDayPickerDialog(
-  BuildContext context, {
-  int? initialDay,
-}) {
+Future<int?> showDayPickerDialog(BuildContext context, {int? initialDay}) {
   return showGeneralDialog<int>(
     context: context,
     barrierDismissible: true,
@@ -77,9 +74,7 @@ class _DayGridDialogState extends State<_DayGridDialog> {
               mainAxisSpacing: 4,
               crossAxisSpacing: 4,
               childAspectRatio: 1,
-              children: [
-                for (var day = 1; day <= 31; day++) _dayCell(day),
-              ],
+              children: [for (var day = 1; day <= 31; day++) _dayCell(day)],
             ),
             // 底部右侧取消（点取消不改值）
             Align(

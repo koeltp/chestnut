@@ -143,9 +143,9 @@ class _ImageEditPageState extends State<ImageEditPage> {
       }
       canvas.drawImage(src, Offset.zero, Paint());
       final img = await recorder.endRecording().toImage(
-            rotate ? src.height : src.width,
-            rotate ? src.width : src.height,
-          );
+        rotate ? src.height : src.width,
+        rotate ? src.width : src.height,
+      );
       await _swapBase(img);
       _modified = true;
     } catch (_) {
@@ -190,10 +190,11 @@ class _ImageEditPageState extends State<ImageEditPage> {
       final src = _base!;
       final left = (rect.left * src.width).round().clamp(0, src.width - 2);
       final top = (rect.top * src.height).round().clamp(0, src.height - 2);
-      final right =
-          (rect.right * src.width).round().clamp(left + 1, src.width);
-      final bottom =
-          (rect.bottom * src.height).round().clamp(top + 1, src.height);
+      final right = (rect.right * src.width).round().clamp(left + 1, src.width);
+      final bottom = (rect.bottom * src.height).round().clamp(
+        top + 1,
+        src.height,
+      );
       final w = right - left;
       final h = bottom - top;
       if (w < 24 || h < 24) {
@@ -201,8 +202,8 @@ class _ImageEditPageState extends State<ImageEditPage> {
         return;
       }
       final recorder = ui.PictureRecorder();
-      Canvas(recorder).drawImage(
-          src, Offset(-left.toDouble(), -top.toDouble()), Paint());
+      Canvas(recorder)
+          .drawImage(src, Offset(-left.toDouble(), -top.toDouble()), Paint());
       final cropped = await recorder.endRecording().toImage(w, h);
       await _swapBase(cropped, stableLum: false);
       _modified = true;
@@ -281,7 +282,11 @@ class _ImageEditPageState extends State<ImageEditPage> {
         b = t + o.height;
     }
     return Rect.fromLTRB(
-        l.clamp(0.0, 1.0), t.clamp(0.0, 1.0), r.clamp(0.0, 1.0), b.clamp(0.0, 1.0));
+      l.clamp(0.0, 1.0),
+      t.clamp(0.0, 1.0),
+      r.clamp(0.0, 1.0),
+      b.clamp(0.0, 1.0),
+    );
   }
 
   // ---------- 标注操作（画笔 / 箭头 / 马赛克 / 文字） ----------
@@ -327,8 +332,10 @@ class _ImageEditPageState extends State<ImageEditPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF262626),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text(title,
-            style: const TextStyle(color: Colors.white, fontSize: 16)),
+        title: Text(
+          title,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -346,8 +353,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('确定'),
           ),
         ],
@@ -359,12 +365,14 @@ class _ImageEditPageState extends State<ImageEditPage> {
   Future<void> _addTextAt(Offset normPos) async {
     final text = await _promptText('添加文字', '');
     if (text == null || text.isEmpty || !mounted) return;
-    _addStroke(_Annotation(
-      kind: _Tool.text,
-      points: [normPos],
-      color: _color,
-      text: text,
-    ));
+    _addStroke(
+      _Annotation(
+        kind: _Tool.text,
+        points: [normPos],
+        color: _color,
+        text: text,
+      ),
+    );
   }
 
   /// 编辑已有文字：预填原内容；清空后确认即删除该文字，取消不动
@@ -394,8 +402,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
   (int, int)? _hitObject(Offset normPos, Size boxSize) {
     final base = _base;
     if (base == null) return null;
-    final px = Offset(
-        normPos.dx * boxSize.width, normPos.dy * boxSize.height);
+    final px = Offset(normPos.dx * boxSize.width, normPos.dy * boxSize.height);
     // 图片像素 → 屏幕逻辑像素的缩放（画布保持图片宽高比，x/y 同比）
     final scale = boxSize.width / base.width;
     for (var i = _strokes.length - 1; i >= 0; i--) {
@@ -403,10 +410,15 @@ class _ImageEditPageState extends State<ImageEditPage> {
       if (s.kind == _Tool.text && s.points.isNotEmpty) {
         // 文字：按整个文字矩形判定（与绘制同一套排版量宽，外加
         // 8px 容差）；旧版只认锚点周围小圆，中段/边缘拖不动
-        final center = Offset(s.points.first.dx * boxSize.width,
-            s.points.first.dy * boxSize.height);
+        final center = Offset(
+          s.points.first.dx * boxSize.width,
+          s.points.first.dy * boxSize.height,
+        );
         final p = _buildTextParagraph(
-            s, base.width.toDouble(), const Color(0xFFFFFFFF));
+          s,
+          base.width.toDouble(),
+          const Color(0xFFFFFFFF),
+        );
         final half = Offset(p.longestLine / 2, p.height / 2) * scale;
         if ((px.dx - center.dx).abs() <= half.dx + 8 &&
             (px.dy - center.dy).abs() <= half.dy + 8) {
@@ -414,9 +426,13 @@ class _ImageEditPageState extends State<ImageEditPage> {
         }
       } else if (s.kind == _Tool.arrow && s.points.length >= 2) {
         final a = Offset(
-            s.points[0].dx * boxSize.width, s.points[0].dy * boxSize.height);
+          s.points[0].dx * boxSize.width,
+          s.points[0].dy * boxSize.height,
+        );
         final b = Offset(
-            s.points[1].dx * boxSize.width, s.points[1].dy * boxSize.height);
+          s.points[1].dx * boxSize.width,
+          s.points[1].dy * boxSize.height,
+        );
         if ((px - a).distance <= 30) return (i, 0);
         if ((px - b).distance <= 30) return (i, 1);
         // 点到线段距离：只认杆身中段（端点附近留给拖头/拖尾）
@@ -456,8 +472,11 @@ class _ImageEditPageState extends State<ImageEditPage> {
   /// 状态不变并抛出（调用方 toast），不会出现"黑图已上屏、纹理
   /// 还是旧的"的错位状态。旧纹理等新帧渲染完成后再释放——全尺寸
   /// 位图每张十几 MB，不释放连续几次操作就会 OOM
-  Future<void> _swapBase(ui.Image img,
-      {VoidCallback? onCommitted, bool stableLum = true}) async {
+  Future<void> _swapBase(
+    ui.Image img, {
+    VoidCallback? onCommitted,
+    bool stableLum = true,
+  }) async {
     final oldBase = _base;
     final oldPix = _pixelated;
     try {
@@ -499,7 +518,8 @@ class _ImageEditPageState extends State<ImageEditPage> {
   /// 原尺寸，得到块状像素化图，笔刷沿轨迹刷出时与原图坐标 1:1 对齐。
   /// 缩小产物同时充当基准位图的有效性探针，返回 (纹理, 均值亮度)
   Future<({ui.Image full, double meanLum})> _buildPixelated(
-      ui.Image base) async {
+    ui.Image base,
+  ) async {
     final smallW = math.max(1, base.width ~/ 24);
     final smallH = math.max(1, base.height ~/ 24);
     final small = await _resample(base, smallW, smallH, none: false);
@@ -545,8 +565,12 @@ class _ImageEditPageState extends State<ImageEditPage> {
     return sum / math.max(1, n);
   }
 
-  Future<ui.Image> _resample(ui.Image src, int w, int h,
-      {required bool none}) async {
+  Future<ui.Image> _resample(
+    ui.Image src,
+    int w,
+    int h, {
+    required bool none,
+  }) async {
     final recorder = ui.PictureRecorder();
     Canvas(recorder).drawImageRect(
       src,
@@ -603,10 +627,14 @@ class _ImageEditPageState extends State<ImageEditPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF262626),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('放弃编辑？',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: const Text('当前修改不会被保存',
-            style: TextStyle(color: Colors.white70, fontSize: 14)),
+        title: const Text(
+          '放弃编辑？',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        content: const Text(
+          '当前修改不会被保存',
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -614,8 +642,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('放弃',
-                style: TextStyle(color: AppColors.expense)),
+            child: const Text('放弃', style: TextStyle(color: AppColors.expense)),
           ),
         ],
       ),
@@ -630,8 +657,9 @@ class _ImageEditPageState extends State<ImageEditPage> {
   // ---------- 手势 → 归一化坐标 ----------
 
   Offset _normalize(Offset local, Size size) => Offset(
-      (local.dx / size.width).clamp(0.0, 1.0),
-      (local.dy / size.height).clamp(0.0, 1.0));
+    (local.dx / size.width).clamp(0.0, 1.0),
+    (local.dy / size.height).clamp(0.0, 1.0),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -648,10 +676,13 @@ class _ImageEditPageState extends State<ImageEditPage> {
             body: Column(
               children: [
                 _buildTopBar(),
-                Expanded(child: base == null
-                    ? const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : _buildCanvas(base)),
+                Expanded(
+                  child: base == null
+                      ? const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : _buildCanvas(base),
+                ),
                 if (!_cropMode) _buildPalette(),
                 _cropMode ? _buildCropBar() : _buildToolbar(),
               ],
@@ -662,9 +693,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
             const Positioned.fill(
               child: ColoredBox(
                 color: Colors.black38,
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               ),
             ),
         ],
@@ -694,11 +723,14 @@ class _ImageEditPageState extends State<ImageEditPage> {
           ),
           TextButton(
             onPressed: _busy ? null : _finish,
-            child: const Text('完成',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary)),
+            child: const Text(
+              '完成',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -718,140 +750,157 @@ class _ImageEditPageState extends State<ImageEditPage> {
             aspectRatio: aspect,
             child: Builder(
               builder: (canvasContext) => GestureDetector(
-              // 文字模式：点空白=新增文字，点已有文字=编辑
-              onTapUp: _tool == _Tool.text && !_busy && !_cropMode
-                  ? (d) {
-                      final box =
-                          canvasContext.findRenderObject()! as RenderBox;
-                      final pos = _normalize(
-                          box.globalToLocal(d.globalPosition), box.size);
-                      final hit = _hitObject(pos, box.size);
-                      if (hit != null && hit.$2 == 3) {
-                        _editText(hit.$1);
-                      } else if (hit == null) {
-                        _addTextAt(pos);
-                      }
-                    }
-                  : null,
-              // 所有工具：按下即命中已有对象（文字/箭头）则抓取操作，
-              // 与当前工具无关——"看到对象就能操作"；未命中时绘制工具
-              // 在按下瞬间创建笔迹（onPanStart 有 ~18px 拖动激活阈值，
-              // 会让起点落后于指尖），文字模式空白处留给 onTapUp 新增
-              onPanDown: !_busy &&
-                      !_cropMode &&
-                      (_isDrawingTool || _tool == _Tool.text)
-                  ? (d) {
-                      final box =
-                          canvasContext.findRenderObject()! as RenderBox;
-                      final pos = _normalize(
-                          box.globalToLocal(d.globalPosition), box.size);
-                      final grab = _hitObject(pos, box.size);
-                      setState(() {
-                        _strokeCreatedThisGesture = false;
-                        _dragArrowIndex = null;
-                        _arrowOp = null;
-                        _dragTextIndex = null;
-                        if (grab != null) {
-                          final (i, op) = grab;
-                          if (op == 3) {
-                            // 文字：记住抓取偏移，拖动不跳位
-                            _dragTextIndex = i;
-                            _dragTextGrabOffset =
-                                _strokes[i].points.first - pos;
-                          } else {
-                            // 箭头：0=拖起点 1=拖终点 2=整体平移
-                            _dragArrowIndex = i;
-                            _arrowOp = op;
-                            _arrowGrabOrig = List.of(_strokes[i].points);
-                            _arrowGrabTouch = pos;
-                          }
-                          return;
+                // 文字模式：点空白=新增文字，点已有文字=编辑
+                onTapUp: _tool == _Tool.text && !_busy && !_cropMode
+                    ? (d) {
+                        final box =
+                            canvasContext.findRenderObject()! as RenderBox;
+                        final pos = _normalize(
+                          box.globalToLocal(d.globalPosition),
+                          box.size,
+                        );
+                        final hit = _hitObject(pos, box.size);
+                        if (hit != null && hit.$2 == 3) {
+                          _editText(hit.$1);
+                        } else if (hit == null) {
+                          _addTextAt(pos);
                         }
-                        if (_tool == _Tool.text) return;
-                        _strokeCreatedThisGesture = true;
-                        _strokes.add(_Annotation(
-                          kind: _tool,
-                          points: [pos],
-                          color: _color,
-                        ));
-                      });
-                    }
-                  : null,
-              onPanUpdate: !_busy &&
-                      !_cropMode &&
-                      (_isDrawingTool || _tool == _Tool.text)
-                  ? (d) {
-                      final box =
-                          canvasContext.findRenderObject()! as RenderBox;
-                      final pos = _normalize(
-                          box.globalToLocal(d.globalPosition), box.size);
-                      setState(() {
-                        // 拖动文字（任意工具下抓取均可）：锚点 = 手指 +
-                        // 抓取偏移（不跳位），钳制在图内
-                        if (_dragTextIndex != null) {
-                          final i = _dragTextIndex;
+                      }
+                    : null,
+                // 所有工具：按下即命中已有对象（文字/箭头）则抓取操作，
+                // 与当前工具无关——"看到对象就能操作"；未命中时绘制工具
+                // 在按下瞬间创建笔迹（onPanStart 有 ~18px 拖动激活阈值，
+                // 会让起点落后于指尖），文字模式空白处留给 onTapUp 新增
+                onPanDown:
+                    !_busy &&
+                        !_cropMode &&
+                        (_isDrawingTool || _tool == _Tool.text)
+                    ? (d) {
+                        final box =
+                            canvasContext.findRenderObject()! as RenderBox;
+                        final pos = _normalize(
+                          box.globalToLocal(d.globalPosition),
+                          box.size,
+                        );
+                        final grab = _hitObject(pos, box.size);
+                        setState(() {
+                          _strokeCreatedThisGesture = false;
+                          _dragArrowIndex = null;
+                          _arrowOp = null;
+                          _dragTextIndex = null;
+                          if (grab != null) {
+                            final (i, op) = grab;
+                            if (op == 3) {
+                              // 文字：记住抓取偏移，拖动不跳位
+                              _dragTextIndex = i;
+                              _dragTextGrabOffset =
+                                  _strokes[i].points.first - pos;
+                            } else {
+                              // 箭头：0=拖起点 1=拖终点 2=整体平移
+                              _dragArrowIndex = i;
+                              _arrowOp = op;
+                              _arrowGrabOrig = List.of(_strokes[i].points);
+                              _arrowGrabTouch = pos;
+                            }
+                            return;
+                          }
+                          if (_tool == _Tool.text) return;
+                          _strokeCreatedThisGesture = true;
+                          _strokes.add(
+                            _Annotation(
+                              kind: _tool,
+                              points: [pos],
+                              color: _color,
+                            ),
+                          );
+                        });
+                      }
+                    : null,
+                onPanUpdate:
+                    !_busy &&
+                        !_cropMode &&
+                        (_isDrawingTool || _tool == _Tool.text)
+                    ? (d) {
+                        final box =
+                            canvasContext.findRenderObject()! as RenderBox;
+                        final pos = _normalize(
+                          box.globalToLocal(d.globalPosition),
+                          box.size,
+                        );
+                        setState(() {
+                          // 拖动文字（任意工具下抓取均可）：锚点 = 手指 +
+                          // 抓取偏移（不跳位），钳制在图内
+                          if (_dragTextIndex != null) {
+                            final i = _dragTextIndex;
+                            if (i != null && i < _strokes.length) {
+                              final s = _strokes[i];
+                              final target = pos + _dragTextGrabOffset;
+                              _strokes[i] = _Annotation(
+                                kind: s.kind,
+                                points: [
+                                  Offset(
+                                    target.dx.clamp(0.0, 1.0),
+                                    target.dy.clamp(0.0, 1.0),
+                                  ),
+                                ],
+                                color: s.color,
+                                text: s.text,
+                              );
+                              _modified = true;
+                            }
+                            return;
+                          }
+                          // 操作已有箭头：拖头 / 拖尾 / 整体平移
+                          final i = _dragArrowIndex;
                           if (i != null && i < _strokes.length) {
                             final s = _strokes[i];
-                            final target = pos + _dragTextGrabOffset;
+                            Offset clamp01(Offset p) => Offset(
+                              p.dx.clamp(0.0, 1.0),
+                              p.dy.clamp(0.0, 1.0),
+                            );
+                            final pts = List.of(s.points);
+                            switch (_arrowOp) {
+                              case 0:
+                                pts[0] = clamp01(pos);
+                              case 1:
+                                pts[1] = clamp01(pos);
+                              default:
+                                final delta = pos - _arrowGrabTouch;
+                                pts[0] = clamp01(_arrowGrabOrig[0] + delta);
+                                pts[1] = clamp01(_arrowGrabOrig[1] + delta);
+                            }
                             _strokes[i] = _Annotation(
                               kind: s.kind,
-                              points: [
-                                Offset(target.dx.clamp(0.0, 1.0),
-                                    target.dy.clamp(0.0, 1.0))
-                              ],
+                              points: pts,
                               color: s.color,
-                              text: s.text,
                             );
                             _modified = true;
+                            return;
                           }
-                          return;
-                        }
-                        // 操作已有箭头：拖头 / 拖尾 / 整体平移
-                        final i = _dragArrowIndex;
-                        if (i != null && i < _strokes.length) {
-                          final s = _strokes[i];
-                          Offset clamp01(Offset p) => Offset(
-                              p.dx.clamp(0.0, 1.0), p.dy.clamp(0.0, 1.0));
-                          final pts = List.of(s.points);
-                          switch (_arrowOp) {
-                            case 0:
-                              pts[0] = clamp01(pos);
-                            case 1:
-                              pts[1] = clamp01(pos);
-                            default:
-                              final delta = pos - _arrowGrabTouch;
-                              pts[0] = clamp01(_arrowGrabOrig[0] + delta);
-                              pts[1] = clamp01(_arrowGrabOrig[1] + delta);
+                          // 新笔迹延伸：仅当本次手势创建过笔迹。文字模式
+                          // 空白处按下未创建，避免误接到上一条旧笔迹上
+                          if (!_strokeCreatedThisGesture || _strokes.isEmpty) {
+                            return;
                           }
-                          _strokes[i] = _Annotation(
-                            kind: s.kind,
-                            points: pts,
-                            color: s.color,
-                          );
-                          _modified = true;
-                          return;
-                        }
-                        // 新笔迹延伸：仅当本次手势创建过笔迹。文字模式
-                        // 空白处按下未创建，避免误接到上一条旧笔迹上
-                        if (!_strokeCreatedThisGesture || _strokes.isEmpty) {
-                          return;
-                        }
-                        final last = _strokes.last;
-                        if (_tool == _Tool.arrow) {
-                          // 箭头实时跟随：起点固定、终点刷新
-                          if (last.points.length == 1) {
-                            last.points.add(pos);
+                          final last = _strokes.last;
+                          if (_tool == _Tool.arrow) {
+                            // 箭头实时跟随：起点固定、终点刷新
+                            if (last.points.length == 1) {
+                              last.points.add(pos);
+                            } else {
+                              last.points[1] = pos;
+                            }
                           } else {
-                            last.points[1] = pos;
+                            last.points.add(pos);
                           }
-                        } else {
-                          last.points.add(pos);
-                        }
-                      });
-                    }
-                  : null,
-              onPanEnd: !_busy && !_cropMode && (_isDrawingTool || _tool == _Tool.text)
-                  ? (_) => setState(() {
+                        });
+                      }
+                    : null,
+                onPanEnd:
+                    !_busy &&
+                        !_cropMode &&
+                        (_isDrawingTool || _tool == _Tool.text)
+                    ? (_) => setState(() {
                         _dragTextIndex = null;
                         _dragArrowIndex = null;
                         _arrowOp = null;
@@ -863,18 +912,22 @@ class _ImageEditPageState extends State<ImageEditPage> {
                               _strokes.isNotEmpty &&
                               _strokes.last.points.length == 1) {
                             final pt = _strokes.last.points.first;
-                            _strokes.last.points
-                                .add(Offset(pt.dx + 0.001, pt.dy + 0.001));
+                            _strokes.last.points.add(
+                              Offset(pt.dx + 0.001, pt.dy + 0.001),
+                            );
                           }
                           _modified = true;
                           _strokeCreatedThisGesture = false;
                         }
                       })
-                  : null,
-              // 手势未成为拖动（如轻点后抬起）时收尾：新建的箭头残笔
-              // 撤掉，画笔/马赛克的单点保留为"点一下=一个点"
-              onPanCancel: !_busy && !_cropMode && (_isDrawingTool || _tool == _Tool.text)
-                  ? () => setState(() {
+                    : null,
+                // 手势未成为拖动（如轻点后抬起）时收尾：新建的箭头残笔
+                // 撤掉，画笔/马赛克的单点保留为"点一下=一个点"
+                onPanCancel:
+                    !_busy &&
+                        !_cropMode &&
+                        (_isDrawingTool || _tool == _Tool.text)
+                    ? () => setState(() {
                         if (_strokeCreatedThisGesture) {
                           if (_tool == _Tool.arrow &&
                               _strokes.isNotEmpty &&
@@ -889,58 +942,62 @@ class _ImageEditPageState extends State<ImageEditPage> {
                         _arrowOp = null;
                         _dragTextIndex = null;
                       })
-                  : null,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CustomPaint(
-                    size: Size.infinite,
-                    painter: _EditPainter(
-                      base: base,
-                      strokes: List.of(_strokes),
-                      pixelated: _pixelated,
-                    ),
-                  ),
-                  // 裁剪模式：遮罩 + 可拖拽裁剪框，盖在标注层之上
-                  if (_cropMode && _cropRect != null)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanStart: (d) {
-                        final box =
-                            canvasContext.findRenderObject()! as RenderBox;
-                        final pos = _normalize(
-                            box.globalToLocal(d.globalPosition), box.size);
-                        final zone = _cropHitZone(pos, box.size);
-                        setState(() {
-                          _cropZone = zone;
-                          _cropDragOrig = _cropRect;
-                          _cropDragStart = pos;
-                        });
-                      },
-                      onPanUpdate: (d) {
-                        final box =
-                            canvasContext.findRenderObject()! as RenderBox;
-                        final pos = _normalize(
-                            box.globalToLocal(d.globalPosition), box.size);
-                        final zone = _cropZone;
-                        final orig = _cropDragOrig;
-                        if (zone == null || orig == null) return;
-                        setState(() {
-                          _cropRect = _updatedCropRect(zone, orig, pos);
-                        });
-                      },
-                      onPanEnd: (_) => setState(() {
-                        _cropZone = null;
-                        _cropDragOrig = null;
-                        _cropDragStart = null;
-                      }),
-                      child: CustomPaint(
-                        size: Size.infinite,
-                        painter: _CropPainter(_cropRect!),
+                    : null,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CustomPaint(
+                      size: Size.infinite,
+                      painter: _EditPainter(
+                        base: base,
+                        strokes: List.of(_strokes),
+                        pixelated: _pixelated,
                       ),
                     ),
-                ],
-              ),
+                    // 裁剪模式：遮罩 + 可拖拽裁剪框，盖在标注层之上
+                    if (_cropMode && _cropRect != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (d) {
+                          final box =
+                              canvasContext.findRenderObject()! as RenderBox;
+                          final pos = _normalize(
+                            box.globalToLocal(d.globalPosition),
+                            box.size,
+                          );
+                          final zone = _cropHitZone(pos, box.size);
+                          setState(() {
+                            _cropZone = zone;
+                            _cropDragOrig = _cropRect;
+                            _cropDragStart = pos;
+                          });
+                        },
+                        onPanUpdate: (d) {
+                          final box =
+                              canvasContext.findRenderObject()! as RenderBox;
+                          final pos = _normalize(
+                            box.globalToLocal(d.globalPosition),
+                            box.size,
+                          );
+                          final zone = _cropZone;
+                          final orig = _cropDragOrig;
+                          if (zone == null || orig == null) return;
+                          setState(() {
+                            _cropRect = _updatedCropRect(zone, orig, pos);
+                          });
+                        },
+                        onPanEnd: (_) => setState(() {
+                          _cropZone = null;
+                          _cropDragOrig = null;
+                          _cropDragStart = null;
+                        }),
+                        child: CustomPaint(
+                          size: Size.infinite,
+                          painter: _CropPainter(_cropRect!),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -980,9 +1037,7 @@ class _ImageEditPageState extends State<ImageEditPage> {
                   color: c,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: _color == c
-                        ? AppColors.primary
-                        : Colors.white24,
+                    color: _color == c ? AppColors.primary : Colors.white24,
                     width: _color == c ? 2.5 : 1,
                   ),
                 ),
@@ -1005,8 +1060,10 @@ class _ImageEditPageState extends State<ImageEditPage> {
             children: [
               TextButton(
                 onPressed: _busy ? null : _cancelCrop,
-                child: const Text('取消',
-                    style: TextStyle(color: Colors.white70, fontSize: 15)),
+                child: const Text(
+                  '取消',
+                  style: TextStyle(color: Colors.white70, fontSize: 15),
+                ),
               ),
               const Spacer(),
               TextButton(
@@ -1014,13 +1071,16 @@ class _ImageEditPageState extends State<ImageEditPage> {
                 style: TextButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 8,
+                  ),
                   shape: const StadiumBorder(),
                 ),
-                child: const Text('完成',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                child: const Text(
+                  '完成',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
@@ -1040,16 +1100,19 @@ class _ImageEditPageState extends State<ImageEditPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon,
-                    size: 22,
-                    color: active ? AppColors.primary : Colors.white70),
+                Icon(
+                  icon,
+                  size: 22,
+                  color: active ? AppColors.primary : Colors.white70,
+                ),
                 const SizedBox(height: 2),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: active
-                            ? AppColors.primary
-                            : Colors.white60)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: active ? AppColors.primary : Colors.white60,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1068,9 +1131,10 @@ class _ImageEditPageState extends State<ImageEditPage> {
               children: [
                 Icon(icon, size: 22, color: Colors.white70),
                 const SizedBox(height: 2),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.white60)),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 11, color: Colors.white60),
+                ),
               ],
             ),
           ),
@@ -1121,11 +1185,11 @@ class _Annotation {
   final String text;
 
   double get widthFactor => switch (kind) {
-        _Tool.pen => 0.006,
-        _Tool.arrow => 0.005,
-        _Tool.mosaic => 0.055,
-        _Tool.text => 0.055,
-      };
+    _Tool.pen => 0.006,
+    _Tool.arrow => 0.005,
+    _Tool.mosaic => 0.055,
+    _Tool.text => 0.055,
+  };
 }
 
 /// 标注绘制：实时预览与烘焙共用同一套逻辑，保证所见即所得。
@@ -1177,8 +1241,12 @@ void _drawAnnotations(
         final pix = pixelated;
         if (pix == null) continue;
         final paint = Paint()
-          ..shader = ui.ImageShader(pix, TileMode.clamp, TileMode.clamp,
-              Matrix4.identity().storage)
+          ..shader = ui.ImageShader(
+            pix,
+            TileMode.clamp,
+            TileMode.clamp,
+            Matrix4.identity().storage,
+          )
           ..style = PaintingStyle.stroke
           ..strokeWidth = strokeWidth
           ..strokeCap = StrokeCap.round
@@ -1195,7 +1263,8 @@ void _drawAnnotations(
 ui.Paragraph _buildTextParagraph(_Annotation s, double imgW, Color color) {
   final fontSize = s.widthFactor * imgW;
   return (ui.ParagraphBuilder(
-          ui.ParagraphStyle(textAlign: TextAlign.left, fontSize: fontSize))
+          ui.ParagraphStyle(textAlign: TextAlign.left, fontSize: fontSize),
+        )
         ..pushStyle(ui.TextStyle(color: color))
         ..addText(s.text))
       .build()
@@ -1205,8 +1274,11 @@ ui.Paragraph _buildTextParagraph(_Annotation s, double imgW, Color color) {
 void _drawTextStroke(Canvas canvas, _Annotation s, double imgW, double imgH) {
   final anchor = Offset(s.points.first.dx * imgW, s.points.first.dy * imgH);
   // 居中于锚点；先画右下偏移的暗色投影再画本体，任意底色可读
-  final shadow =
-      _buildTextParagraph(s, imgW, Colors.black.withValues(alpha: 0.6));
+  final shadow = _buildTextParagraph(
+    s,
+    imgW,
+    Colors.black.withValues(alpha: 0.6),
+  );
   final topLeft = Offset(
     anchor.dx - shadow.longestLine / 2,
     anchor.dy - shadow.height / 2,
@@ -1270,8 +1342,12 @@ class _CropPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final r = Rect.fromLTRB(rect.left * size.width, rect.top * size.height,
-        rect.right * size.width, rect.bottom * size.height);
+    final r = Rect.fromLTRB(
+      rect.left * size.width,
+      rect.top * size.height,
+      rect.right * size.width,
+      rect.bottom * size.height,
+    );
     // 四块遮罩：上、下、左、右
     final mask = Paint()..color = Colors.black.withValues(alpha: 0.55);
     canvas.drawRect(Rect.fromLTRB(0, 0, size.width, r.top), mask);

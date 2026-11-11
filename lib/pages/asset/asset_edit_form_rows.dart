@@ -45,8 +45,7 @@ class AssetDayRow extends StatelessWidget {
   }
 
   /// 显示文案：已选显示"每月 X 日"，未选显示占位
-  String _dayText(int? day) =>
-      day == null ? '选填，点此选择' : '每月 $day 日';
+  String _dayText(int? day) => day == null ? '选填，点此选择' : '每月 $day 日';
 
   /// 行尾图标：已选显示 ×（点清除），未选显示 >；
   /// 两者同为 22×22 盒子，切换时位置不跳

@@ -15,6 +15,7 @@ import '../../widgets/bill_list_item.dart';
 import '../../widgets/debt_flow_row.dart';
 import '../../widgets/debt_note_detail_sheet.dart';
 import '../../widgets/institution_logo.dart';
+import '../../widgets/loading_placeholder.dart';
 import '../../widgets/section_card.dart';
 import '../stats/stats_page.dart';
 import 'asset_edit_page.dart';
@@ -66,20 +67,23 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
                 ),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimens.pagePadding,
-              AppDimens.gapSection,
-              AppDimens.pagePadding,
-              24,
-            ),
-            children: [
-              // 账户被删除（非归档）时概览不展示；归档账户照常
-              if (asset != null) _SummaryCard(asset: asset),
-              if (asset != null) const SizedBox(height: AppDimens.gapSection),
-              if (view != null) _FlowCard(view: view),
-            ],
-          ),
+          body: snapshot.hasError
+              ? const ErrorPlaceholder(text: '账户数据加载失败，请返回重试')
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppDimens.pagePadding,
+                    AppDimens.gapSection,
+                    AppDimens.pagePadding,
+                    24,
+                  ),
+                  children: [
+                    // 账户被删除（非归档）时概览不展示；归档账户照常
+                    if (asset != null) _SummaryCard(asset: asset),
+                    if (asset != null)
+                      const SizedBox(height: AppDimens.gapSection),
+                    if (view != null) _FlowCard(view: view),
+                  ],
+                ),
         );
       },
     );

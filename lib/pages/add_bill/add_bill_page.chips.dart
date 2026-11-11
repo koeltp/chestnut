@@ -7,11 +7,11 @@ mixin _Chips on _AddBillBase {
   /// 点击弹出日期滚轮（内含今/昨/前快捷与时间选择入口）。
   Widget _buildChipRow() {
     final now = DateTime.now();
-    final diff = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).difference(DateTime(_draft.date.year, _draft.date.month, _draft.date.day)).inDays;
+    final diff = DateTime(now.year, now.month, now.day)
+        .difference(
+          DateTime(_draft.date.year, _draft.date.month, _draft.date.day),
+        )
+        .inDays;
     final hh = (_draft.timeMinute ~/ 60).toString().padLeft(2, '0');
     final mm = (_draft.timeMinute % 60).toString().padLeft(2, '0');
     final label = switch (diff) {
@@ -366,8 +366,10 @@ mixin _Chips on _AddBillBase {
           top: Radius.circular(AppDimens.radiusHeader),
         ),
       ),
-      builder: (_) =>
-          WheelDatePicker(initial: _draft.date, initialMinute: _draft.timeMinute),
+      builder: (_) => WheelDatePicker(
+        initial: _draft.date,
+        initialMinute: _draft.timeMinute,
+      ),
     );
     if (picked != null) {
       setState(() {

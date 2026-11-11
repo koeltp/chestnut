@@ -62,7 +62,8 @@ class PhotoStagingService {
     return '${DateTime.now().millisecondsSinceEpoch}_$rand.jpg';
   }
 
-  static String _yyyymm(DateTime d) => '${d.year.toString().padLeft(4, '0')}'
+  static String _yyyymm(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}'
       '${d.month.toString().padLeft(2, '0')}';
 
   static String _yyyymmdd(DateTime d) =>

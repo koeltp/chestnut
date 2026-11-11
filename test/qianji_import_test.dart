@@ -48,17 +48,16 @@ void main() {
 
   group('splitTags', () {
     test('多种分隔符混合', () {
-      expect(
-        QianjiImportService.splitTags('早餐,午餐 晚餐、夜宵'),
-        ['早餐', '午餐', '晚餐', '夜宵'],
-      );
+      expect(QianjiImportService.splitTags('早餐,午餐 晚餐、夜宵'), [
+        '早餐',
+        '午餐',
+        '晚餐',
+        '夜宵',
+      ]);
     });
 
     test('去空去重保序', () {
-      expect(
-        QianjiImportService.splitTags('早餐, 早餐 ,午餐,,午餐'),
-        ['早餐', '午餐'],
-      );
+      expect(QianjiImportService.splitTags('早餐, 早餐 ,午餐,,午餐'), ['早餐', '午餐']);
     });
 
     test('空串返回空列表', () {
@@ -69,19 +68,15 @@ void main() {
 
   group('buildGroups', () {
     final now = DateTime(2026, 10, 7);
-    QianjiBill bill(
-      BillType type,
-      String cat1,
-      String cat2,
-      int cents,
-    ) => QianjiBill(
-      dateTime: now,
-      type: type,
-      cat1: cat1,
-      cat2: cat2,
-      note: '',
-      amountCents: cents,
-    );
+    QianjiBill bill(BillType type, String cat1, String cat2, int cents) =>
+        QianjiBill(
+          dateTime: now,
+          type: type,
+          cat1: cat1,
+          cat2: cat2,
+          note: '',
+          amountCents: cents,
+        );
 
     test('按 (类型,一级,二级) 分组，笔数降序', () {
       final bills = [

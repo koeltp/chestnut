@@ -86,9 +86,7 @@ class PrivacyPolicyPage extends StatelessWidget {
             '更新安装包经 SHA-256 与文件大小双重校验后才会提示安装。',
           ),
           _SectionTitle('六、未成年人保护'),
-          _Paragraph(
-            '本应用为通用记账工具，不针对未成年人设计，也不主动收集未成年人信息。',
-          ),
+          _Paragraph('本应用为通用记账工具，不针对未成年人设计，也不主动收集未成年人信息。'),
           _SectionTitle('七、政策更新'),
           _Paragraph(
             '本政策可能随功能调整而更新，更新后将在本页面与网页版同步公示。'

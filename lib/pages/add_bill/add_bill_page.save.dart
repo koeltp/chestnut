@@ -59,7 +59,9 @@ mixin _SaveAndBudget on _AddBillBase {
             lat: _draft.selectedPoint?.lat,
             lng: _draft.selectedPoint?.lng,
             assetId: _draft.selectedAssetId,
-            toAssetId: _draft.type == BillType.transfer ? _draft.toAssetId : null,
+            toAssetId: _draft.type == BillType.transfer
+                ? _draft.toAssetId
+                : null,
             createdAt: bill.createdAt,
           ),
         );
@@ -80,7 +82,9 @@ mixin _SaveAndBudget on _AddBillBase {
             lat: Value(_draft.selectedPoint?.lat),
             lng: Value(_draft.selectedPoint?.lng),
             assetId: Value(_draft.selectedAssetId),
-            toAssetId: Value(_draft.type == BillType.transfer ? _draft.toAssetId : null),
+            toAssetId: Value(
+              _draft.type == BillType.transfer ? _draft.toAssetId : null,
+            ),
           ),
         );
         savedBillId = billId;

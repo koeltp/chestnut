@@ -159,10 +159,7 @@ class _InstitutionPickerSheetState extends State<_InstitutionPickerSheet> {
                     }
                     final def = (row as _ItemRow).def;
                     return ListTile(
-                      leading: InstitutionLogo(
-                        name: def.name,
-                        size: 36,
-                      ),
+                      leading: InstitutionLogo(name: def.name, size: 36),
                       title: Text(
                         def.name,
                         style: const TextStyle(
@@ -179,4 +176,3 @@ class _InstitutionPickerSheetState extends State<_InstitutionPickerSheet> {
     );
   }
 }
-

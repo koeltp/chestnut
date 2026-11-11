@@ -7,12 +7,13 @@ import 'package:chestnut/widgets/stream_cache_mixin.dart';
 ///
 /// 复用 StatefulBuilder 的 State 测试方法：把 mixin 混入一个简单的
 /// Widget State，通过 GlobalKey 拿到实例后验证缓存行为。
+///
+/// 重点覆盖单订阅约束：drift 查询流只能 listen 一次，任何"复用已订阅
+/// 实例"的行为都会让页面抛 Bad state: Stream has already been listened to。
 void main() {
-  testWidgets('ensureStream: 相同 key 多次调用返回同一 Stream 实例', (tester) async {
+  testWidgets('相同 slot + key 返回同一 Stream 实例', (tester) async {
     final key = GlobalKey<_CacheTestState>();
-    await tester.pumpWidget(MaterialApp(
-      home: _CacheTest(key: key),
-    ));
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
     await tester.pumpAndSettle();
 
     var factoryCalls = 0;
@@ -22,20 +23,18 @@ void main() {
     }
 
     final state = key.currentState!;
-    final a = state.ensureStream<int>('x', factory);
-    final b = state.ensureStream<int>('x', factory);
-    final c = state.ensureStream<int>('x', factory);
+    final a = state.ensureSingleStream<int>('bills', 'x', factory);
+    final b = state.ensureSingleStream<int>('bills', 'x', factory);
+    final c = state.ensureSingleStream<int>('bills', 'x', factory);
 
     expect(a, same(b));
     expect(b, same(c));
     expect(factoryCalls, 1);
   });
 
-  testWidgets('ensureStream: 不同 key 返回不同 Stream 实例', (tester) async {
+  testWidgets('不同 key 返回不同 Stream 实例', (tester) async {
     final key = GlobalKey<_CacheTestState>();
-    await tester.pumpWidget(MaterialApp(
-      home: _CacheTest(key: key),
-    ));
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
     await tester.pumpAndSettle();
 
     var factoryCalls = 0;
@@ -45,18 +44,59 @@ void main() {
     }
 
     final state = key.currentState!;
-    final a = state.ensureStream<int>('a', factory);
-    final b = state.ensureStream<int>('b', factory);
+    final a = state.ensureSingleStream<int>('bills', '2026-11', factory);
+    final b = state.ensureSingleStream<int>('bills', '2024-07', factory);
 
     expect(a, isNot(same(b)));
     expect(factoryCalls, 2);
   });
 
+  testWidgets('切走再切回同一 key：必须给新实例（旧实例已订阅过）', (tester) async {
+    final key = GlobalKey<_CacheTestState>();
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
+    await tester.pumpAndSettle();
+
+    final state = key.currentState!;
+    final first = state.ensureSingleStream<int>(
+      'bills',
+      '2024-07',
+      () => Stream.value(1),
+    );
+    state.ensureSingleStream<int>('bills', '2024-08', () => Stream.value(2));
+    final back = state.ensureSingleStream<int>(
+      'bills',
+      '2024-07',
+      () => Stream.value(3),
+    );
+
+    // drift 流是单订阅的：复用 first 会让新订阅抛
+    // Bad state: Stream has already been listened to
+    expect(back, isNot(same(first)));
+  });
+
+  testWidgets('不同 slot 互不影响', (tester) async {
+    final key = GlobalKey<_CacheTestState>();
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
+    await tester.pumpAndSettle();
+
+    final state = key.currentState!;
+    final bills = state.ensureSingleStream<int>(
+      'bills',
+      'k',
+      () => Stream.value(1),
+    );
+    final compare = state.ensureSingleStream<int>(
+      'compare',
+      'k',
+      () => Stream.value(2),
+    );
+
+    expect(bills, isNot(same(compare)));
+  });
+
   testWidgets('ensureFuture: 相同 key 多次调用返回同一 Future 实例', (tester) async {
     final key = GlobalKey<_CacheTestState>();
-    await tester.pumpWidget(MaterialApp(
-      home: _CacheTest(key: key),
-    ));
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
     await tester.pumpAndSettle();
 
     var factoryCalls = 0;
@@ -74,42 +114,39 @@ void main() {
     expect(await a, 42);
   });
 
-  testWidgets('invalidate 清除指定 key，invalidateAll 清空全部', (tester) async {
+  testWidgets('invalidateAll 同时清空 Future 与流槽位', (tester) async {
     final key = GlobalKey<_CacheTestState>();
-    await tester.pumpWidget(MaterialApp(
-      home: _CacheTest(key: key),
-    ));
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
     await tester.pumpAndSettle();
 
-    var factoryCalls = 0;
-    Stream<int> factory() {
-      factoryCalls++;
+    var streamCalls = 0;
+    Stream<int> streamFactory() {
+      streamCalls++;
       return Stream.value(1);
     }
 
+    var futureCalls = 0;
+    Future<int> futureFactory() async {
+      futureCalls++;
+      return 1;
+    }
+
     final state = key.currentState!;
-    state.ensureStream<int>('keep', factory);
-    state.ensureStream<int>('remove', factory);
-    expect(factoryCalls, 2);
+    state.ensureSingleStream<int>('bills', 'k', streamFactory);
+    await state.ensureFuture<int>('tags', futureFactory);
+    expect(streamCalls, 1);
+    expect(futureCalls, 1);
 
-    // invalidate 单 key：只有被清的那个重建
-    state.invalidate('remove');
-    state.ensureStream<int>('keep', factory);
-    state.ensureStream<int>('remove', factory);
-    expect(factoryCalls, 3);
-
-    // invalidateAll 全清
     state.invalidateAll();
-    state.ensureStream<int>('keep', factory);
-    state.ensureStream<int>('remove', factory);
-    expect(factoryCalls, 5);
+    state.ensureSingleStream<int>('bills', 'k', streamFactory);
+    await state.ensureFuture<int>('tags', futureFactory);
+    expect(streamCalls, 2);
+    expect(futureCalls, 2);
   });
 
   testWidgets('invalidate 不存在的 key 不报错', (tester) async {
     final key = GlobalKey<_CacheTestState>();
-    await tester.pumpWidget(MaterialApp(
-      home: _CacheTest(key: key),
-    ));
+    await tester.pumpWidget(MaterialApp(home: _CacheTest(key: key)));
     await tester.pumpAndSettle();
     expect(() => key.currentState!.invalidate('nonexistent'), returnsNormally);
   });
@@ -122,7 +159,8 @@ class _CacheTest extends StatefulWidget {
   State<_CacheTest> createState() => _CacheTestState();
 }
 
-class _CacheTestState extends State<_CacheTest> with StreamCacheMixin<_CacheTest> {
+class _CacheTestState extends State<_CacheTest>
+    with StreamCacheMixin<_CacheTest> {
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
 }

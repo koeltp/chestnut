@@ -55,8 +55,9 @@ class _CategoryManagePageState extends State<CategoryManagePage> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final t in BillType.values
-                .where((t) => t != BillType.transfer))
+            for (final t in BillType.values.where(
+              (t) => t != BillType.transfer,
+            ))
               _TopTab(
                 label: t.label,
                 selected: _type == t,

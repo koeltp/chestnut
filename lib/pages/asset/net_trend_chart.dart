@@ -23,7 +23,6 @@ class NetTrendChart extends StatefulWidget {
     required this.currentNetCents,
     required this.masked,
     this.pannable = false,
-    this.leadingFadeColor,
   });
 
   final NetTrendRange range;
@@ -32,10 +31,6 @@ class NetTrendChart extends StatefulWidget {
   final bool masked;
   final bool pannable;
 
-  /// 是否在绘图区左边缘画渐隐：只在传入颜色（通常是卡片背景色）且
-  /// 确实有更早数据被窗口裁掉时出现；全屏页不传，保持干净
-  final Color? leadingFadeColor;
-
   @override
   State<NetTrendChart> createState() => _NetTrendChartState();
 }
@@ -43,9 +38,6 @@ class NetTrendChart extends StatefulWidget {
 /// 数据点圆点的半径与描边：圆点可见阈值也由它们推出，不再单独写死
 const double kTrendDotRadius = 2.5;
 const double kTrendDotStroke = 1.2;
-
-/// 卡片左边缘渐隐的宽度：被窗口裁掉更早数据时，用来暗示左边还有
-const double kTrendFadeWidth = 16;
 
 class _NetTrendChartState extends State<NetTrendChart>
     with SingleTickerProviderStateMixin {
@@ -423,29 +415,6 @@ class _NetTrendChartState extends State<NetTrendChart>
             clipBehavior: Clip.none,
             children: [
               chart,
-              // 卡片被窗口裁掉更早数据时，左边缘渐隐暗示"左边还有"；
-              // 只盖绘图区，不盖左轴刻度，也不吃点击
-              if (widget.leadingFadeColor != null && points.length > windowSize)
-                Positioned(
-                  left: leftPad,
-                  top: 0,
-                  width: kTrendFadeWidth,
-                  height: plotHeight,
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            widget.leadingFadeColor!,
-                            widget.leadingFadeColor!.withValues(alpha: 0),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               if (selIndex != null) ...[
                 // 高亮圆点：压在曲线数据点上，比普通圆点更醒目
                 Positioned(

@@ -130,8 +130,9 @@ class _AssetPickSheet extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           // 信用卡副行顶在名称下方；资产行内容少，整体垂直居中
-          crossAxisAlignment:
-              hasLimit ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          crossAxisAlignment: hasLimit
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
             AssetCircleIcon(category: asset.category),
             const SizedBox(width: 12),
@@ -159,7 +160,9 @@ class _AssetPickSheet extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: owed ? AppColors.expense : AppColors.textPrimary,
+                          color: owed
+                              ? AppColors.expense
+                              : AppColors.textPrimary,
                         ),
                       ),
                     ],

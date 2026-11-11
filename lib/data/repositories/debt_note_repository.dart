@@ -33,8 +33,9 @@ class DebtNoteRepository {
   late final _assetRepo = AssetRepository(_db);
 
   /// 借据照片暂存服务（debt_photos 目录）：选图/压缩/转正路径共用
-  final PhotoStagingService photos =
-      PhotoStagingService(dirName: 'debt_photos');
+  final PhotoStagingService photos = PhotoStagingService(
+    dirName: 'debt_photos',
+  );
 
   /// 把一批暂存照片按借款日期转正到月份目录并落 debt_note_images 行
   /// （uploadState = pending，由调用方触发上传）；
@@ -59,7 +60,9 @@ class DebtNoteRepository {
         await src.copy(dest);
         await src.delete();
       }
-      final id = await _db.into(_db.debtNoteImages).insert(
+      final id = await _db
+          .into(_db.debtNoteImages)
+          .insert(
             DebtNoteImagesCompanion.insert(
               noteId: noteId,
               objectKey: photos.objectKeyFor(occurredOn, name),
@@ -69,8 +72,9 @@ class DebtNoteRepository {
             ),
           );
       result.add(
-        await (_db.select(_db.debtNoteImages)..where((i) => i.id.equals(id)))
-            .getSingle(),
+        await (_db.select(
+          _db.debtNoteImages,
+        )..where((i) => i.id.equals(id))).getSingle(),
       );
     }
     return result;
@@ -80,11 +84,10 @@ class DebtNoteRepository {
 
   /// 监听全部借条（借款日期倒序，最近记录在前）
   Stream<List<DebtNote>> watchAll() {
-    return (_db.select(_db.debtNotes)
-          ..orderBy([
-            (n) => OrderingTerm.desc(n.borrowedAt),
-            (n) => OrderingTerm.desc(n.id),
-          ]))
+    return (_db.select(_db.debtNotes)..orderBy([
+          (n) => OrderingTerm.desc(n.borrowedAt),
+          (n) => OrderingTerm.desc(n.id),
+        ]))
         .watch();
   }
 
@@ -125,9 +128,9 @@ class DebtNoteRepository {
 
   /// 监听关联某账户的借条（删除资产前检查引用用）
   Future<List<DebtNote>> getByRelatedAsset(int assetId) {
-    return (_db.select(_db.debtNotes)
-          ..where((n) => n.relatedAssetId.equals(assetId)))
-        .get();
+    return (_db.select(
+      _db.debtNotes,
+    )..where((n) => n.relatedAssetId.equals(assetId))).get();
   }
 
   /// 监听关联某账户的借条流（账户明细页）：借出 = 钱从此账户出、
@@ -175,10 +178,11 @@ class DebtNoteRepository {
   /// 某借条照片数量（attachStagedPhotos 追加 sort 用）
   Future<int> countPhotosByNoteId(int noteId) async {
     final count = _db.debtNoteImages.id.count();
-    final row = await (_db.selectOnly(_db.debtNoteImages)
-          ..addColumns([count])
-          ..where(_db.debtNoteImages.noteId.equals(noteId)))
-        .getSingle();
+    final row =
+        await (_db.selectOnly(_db.debtNoteImages)
+              ..addColumns([count])
+              ..where(_db.debtNoteImages.noteId.equals(noteId)))
+            .getSingle();
     return row.read(count) ?? 0;
   }
 
@@ -240,8 +244,9 @@ class DebtNoteRepository {
         amountCents: amountCents,
         revert: false,
       );
-      return (_db.select(_db.debtNotes)..where((n) => n.id.equals(id)))
-          .getSingle();
+      return (_db.select(
+        _db.debtNotes,
+      )..where((n) => n.id.equals(id))).getSingle();
     });
   }
 
@@ -272,16 +277,17 @@ class DebtNoteRepository {
         revert: true,
       );
       for (final photoId in removedPhotoIds) {
-        final rows = await (_db.select(_db.debtNoteImages)
-              ..where((i) => i.id.equals(photoId)))
-            .get();
+        final rows = await (_db.select(
+          _db.debtNoteImages,
+        )..where((i) => i.id.equals(photoId))).get();
         for (final image in rows) {
           await deletePhoto(image, client: client);
         }
       }
       await attachStagedPhotos(existing.id, borrowedAt, stagedPhotoPaths);
-      await (_db.update(_db.debtNotes)..where((n) => n.id.equals(existing.id)))
-          .write(
+      await (_db.update(
+        _db.debtNotes,
+      )..where((n) => n.id.equals(existing.id))).write(
         DebtNotesCompanion(
           personName: Value(personName),
           amountCents: Value(amountCents),
@@ -300,8 +306,9 @@ class DebtNoteRepository {
         revert: false,
       );
     });
-    return (_db.select(_db.debtNotes)..where((n) => n.id.equals(existing.id)))
-        .getSingle();
+    return (_db.select(
+      _db.debtNotes,
+    )..where((n) => n.id.equals(existing.id))).getSingle();
   }
 
   /// 删除借条：记录、照片与关联账户余额影响同步撤销；
@@ -311,8 +318,9 @@ class DebtNoteRepository {
     S3CompatibleClient? client,
   }) async {
     await _db.transaction(() async {
-      await (_db.delete(_db.debtNotes)..where((n) => n.id.equals(note.id)))
-          .go();
+      await (_db.delete(
+        _db.debtNotes,
+      )..where((n) => n.id.equals(note.id))).go();
       await _applyDebtNoteEffect(
         note.direction,
         relatedAssetId: note.relatedAssetId,
@@ -334,8 +342,9 @@ class DebtNoteRepository {
     DebtNoteImage image, {
     S3CompatibleClient? client,
   }) async {
-    await (_db.delete(_db.debtNoteImages)..where((i) => i.id.equals(image.id)))
-        .go();
+    await (_db.delete(
+      _db.debtNoteImages,
+    )..where((i) => i.id.equals(image.id))).go();
     final file = File(image.localPath);
     if (await file.exists()) {
       try {
@@ -363,22 +372,23 @@ class DebtNoteRepository {
     Uint8List bytes, {
     S3CompatibleClient? client,
   }) async {
-    final note = await (_db.select(_db.debtNotes)
-          ..where((n) => n.id.equals(old.noteId)))
-        .getSingle();
+    final note = await (_db.select(
+      _db.debtNotes,
+    )..where((n) => n.id.equals(old.noteId))).getSingle();
     final stagedPath = await photos.stage(bytes);
     final src = File(stagedPath);
     if (!await src.exists()) return null;
     final name = photos.finalFileName(note.borrowedAt, old.noteId);
-    final dest =
-        p.join((await photos.monthDir(note.borrowedAt)).path, name);
+    final dest = p.join((await photos.monthDir(note.borrowedAt)).path, name);
     try {
       await src.rename(dest);
     } on FileSystemException {
       await src.copy(dest);
       await src.delete();
     }
-    final id = await _db.into(_db.debtNoteImages).insert(
+    final id = await _db
+        .into(_db.debtNoteImages)
+        .insert(
           DebtNoteImagesCompanion.insert(
             noteId: old.noteId,
             objectKey: photos.objectKeyFor(note.borrowedAt, name),
@@ -387,9 +397,9 @@ class DebtNoteRepository {
             sort: Value(old.sort),
           ),
         );
-    final created = await (_db.select(_db.debtNoteImages)
-          ..where((i) => i.id.equals(id)))
-        .getSingle();
+    final created = await (_db.select(
+      _db.debtNoteImages,
+    )..where((i) => i.id.equals(id))).getSingle();
     await deletePhoto(old, client: client);
     return created;
   }
@@ -429,7 +439,10 @@ class DebtNoteRepository {
 
   /// 借据照片同步计数流（总数 + 未同步数）：同步页统计与红点角标的数据源
   Stream<({int total, int pending})> watchSyncCount() {
-    return _db.select(_db.debtNoteImages).watch().map(
+    return _db
+        .select(_db.debtNoteImages)
+        .watch()
+        .map(
           (rows) => (
             total: rows.length,
             pending: rows
@@ -445,11 +458,15 @@ class DebtNoteRepository {
 
   /// 上传单张：本地文件已丢的记录直接作废（图片本体没了，记录只剩
   /// 空壳；借条本体不受影响）；上传失败改 failed 等待补传，不在这里重试
-  Future<bool> _uploadOne(DebtNoteImage image, S3CompatibleClient client) async {
+  Future<bool> _uploadOne(
+    DebtNoteImage image,
+    S3CompatibleClient client,
+  ) async {
     final file = File(image.localPath);
     if (!await file.exists()) {
-      await (_db.delete(_db.debtNoteImages)..where((i) => i.id.equals(image.id)))
-          .go();
+      await (_db.delete(
+        _db.debtNoteImages,
+      )..where((i) => i.id.equals(image.id))).go();
       return false;
     }
     await _updateUploadState(image.id, BillImageUploadState.uploading);

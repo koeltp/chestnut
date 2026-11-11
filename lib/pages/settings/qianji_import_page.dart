@@ -59,7 +59,10 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
       categories.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
       // 解析在 isolate 中执行，不卡 UI 线程
-      final parsed = await compute(QianjiImportService.parseFile, widget.filePath);
+      final parsed = await compute(
+        QianjiImportService.parseFile,
+        widget.filePath,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -293,8 +296,8 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
               ),
             )
           : _error != null
-              ? _buildError()
-              : _buildBody(),
+          ? _buildError()
+          : _buildBody(),
     );
   }
 
@@ -511,10 +514,7 @@ class _QianjiImportPageState extends State<QianjiImportPage> {
                 ],
               ),
             ),
-            Text(
-              stateText,
-              style: TextStyle(fontSize: 13, color: stateColor),
-            ),
+            Text(stateText, style: TextStyle(fontSize: 13, color: stateColor)),
             const SizedBox(width: 4),
             const Icon(
               Icons.chevron_right,

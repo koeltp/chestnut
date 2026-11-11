@@ -373,16 +373,15 @@ class _AppErrorScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 Text(
                   '抱歉出错了',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   '可以重启 App 恢复正常使用',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 if (isDebug) ...[
@@ -391,7 +390,9 @@ class _AppErrorScreen extends StatelessWidget {
                     constraints: const BoxConstraints(maxHeight: 200),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: SingleChildScrollView(

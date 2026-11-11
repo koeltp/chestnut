@@ -103,9 +103,11 @@ class _TagManagePageState extends State<TagManagePage> {
     if (result.name == tag.name && result.color == tag.color) return;
     if (!mounted) return;
     try {
-      await context
-          .read<TagRepository>()
-          .updateTag(tag.id, result.name, result.color);
+      await context.read<TagRepository>().updateTag(
+        tag.id,
+        result.name,
+        result.color,
+      );
       unawaited(_refresh());
     } catch (e) {
       if (mounted) showAppToast(context, '保存失败：$e');
@@ -143,15 +145,24 @@ class _TagManagePageState extends State<TagManagePage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: AppColors.expense),
-                title: const Text('删除', style: TextStyle(color: AppColors.expense)),
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: AppColors.expense,
+                ),
+                title: const Text(
+                  '删除',
+                  style: TextStyle(color: AppColors.expense),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _confirmDelete(tag);
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.bar_chart, color: AppColors.textPrimary),
+                leading: const Icon(
+                  Icons.bar_chart,
+                  color: AppColors.textPrimary,
+                ),
                 title: const Text('查看统计数据'),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -173,13 +184,14 @@ class _TagManagePageState extends State<TagManagePage> {
   /// 删除二次确认
   Future<void> _confirmDelete(Tag tag) async {
     // 删除前先查引用数量，让用户明确影响范围
-    final refCount =
-        await context.read<TagRepository>().countBillsByTagId(tag.id);
+    final refCount = await context.read<TagRepository>().countBillsByTagId(
+      tag.id,
+    );
     if (!mounted) return;
     final impact = refCount == 0
         ? '当前没有账单使用此标签。'
         : '有 $refCount 笔账单使用此标签，删除后这些账单将失去该标签'
-            '（账单本身不受影响）。';
+              '（账单本身不受影响）。';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -210,9 +222,10 @@ class _TagManagePageState extends State<TagManagePage> {
     if (result == null) return;
     if (!mounted) return;
     try {
-      await context
-          .read<TagRepository>()
-          .addTag(result.name, color: result.color);
+      await context.read<TagRepository>().addTag(
+        result.name,
+        color: result.color,
+      );
       unawaited(_refresh());
     } catch (e) {
       if (mounted) showAppToast(context, '创建失败：$e');
@@ -239,10 +252,7 @@ class _TagManagePageState extends State<TagManagePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        centerTitle: true,
-        title: const Text('标签管理'),
-      ),
+      appBar: AppBar(centerTitle: true, title: const Text('标签管理')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

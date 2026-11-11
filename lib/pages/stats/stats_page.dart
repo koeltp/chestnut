@@ -10,7 +10,6 @@ import '../../providers/bill_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/money_util.dart';
-import '../../widgets/app_segmented.dart';
 import '../../widgets/loading_placeholder.dart';
 import '../../widgets/pie_chart_card.dart';
 import '../../widgets/stream_cache_mixin.dart';
@@ -340,17 +339,22 @@ class StatsPageState extends State<StatsPage> with StreamCacheMixin<StatsPage> {
 
   /// 当前视图的账单流（用 Mixin 缓存，key 为 StatsQuery.fingerprint）
   Stream<List<Bill>> _billsStream(BillProvider provider) =>
-      ensureStream<List<Bill>>('bills-${_query.fingerprint}', () => provider.statsQueryStream(_query));
+      // 单槽缓存：同一查询条件下复用同一实例（不重订阅），
+      // 条件一变就换新流——drift 流是单订阅的，旧实例切回来也不能再用
+      ensureSingleStream<List<Bill>>('bills', _query.fingerprint, () {
+        return provider.statsQueryStream(_query);
+      });
 
   /// 去年同期对比流（用 Mixin 缓存）：按月/按年整体平移一年；
   /// 自定义区间、"全部"与分类视图无对比基准，给同步空流占位
   Stream<List<Bill>> _compareStream(BillProvider provider) {
     final q = _query;
-    final none = q.categoryId != null || q.custom != null || q.period == HomePeriod.all;
+    final none =
+        q.categoryId != null || q.custom != null || q.period == HomePeriod.all;
     final key = none
         ? 'compare-none'
         : 'compare-${q.period.name}-${q.month.year}-${q.month.month}';
-    return ensureStream<List<Bill>>(key, () {
+    return ensureSingleStream<List<Bill>>('compare', key, () {
       if (none) return Stream.value(const <Bill>[]);
       final prevQuery = q.copyWith(
         period: q.period,
@@ -423,78 +427,131 @@ class StatsPageState extends State<StatsPage> with StreamCacheMixin<StatsPage> {
                 ),
               ],
             ),
-            body: StreamBuilder<List<Bill>>(
-              stream: _billsStream(provider),
-              builder: (context, snapshot) {
-                // 换流空窗（筛选变化重订阅 drift 流）显示加载态，
-                // 而不是当空列表顶"暂无账单"空态，避免闪现误导
-                if (!snapshot.hasData) {
-                  return const LoadingPlaceholder();
-                }
-                final bills = snapshot.data!;
-                // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
-                // 标签批量查询也按 bills-id 集合缓存，集合不变时 StreamBuilder
-                // 不重订阅、Future 不重建（用 Mixin ensureStream/ensureFuture）
-                final ids = bills.map((b) => b.id).toList();
-                final idsKey = ids.join(',');
-                final imageStream = ensureStream<Set<int>>(
-                  'images-$idsKey',
-                  () => context.read<BillImageRepository>().watchBillIdsWithImages(ids),
-                );
-                final tagsFuture = ensureFuture<Map<int, List<Tag>>>(
-                  'tags-$idsKey',
-                  () => context.read<TagRepository>().getTagsByBillIds(ids),
-                );
-                // 标签批量加载（既用于条目显示也用于按选中标签过滤）
-                return FutureBuilder<Map<int, List<Tag>>>(
-                  future: tagsFuture,
-                  builder: (context, tagSnapshot) {
-                    final tagsByBill =
-                        tagSnapshot.data ?? const <int, List<Tag>>{};
-                    // 标签过滤：账单挂了任一选中标签即保留；未选标签则全部保留
-                    final visible = _query.tagIds.isEmpty
-                        ? bills
-                        : bills
-                              .where(
-                                (b) => (tagsByBill[b.id] ?? const []).any(
-                                  (t) => _query.tagIds.contains(t.id),
-                                ),
-                              )
-                              .toList();
-                    return StreamBuilder<Set<int>>(
-                      stream: imageStream,
-                      builder: (context, imgSnapshot) {
-                        final imageBillIds = imgSnapshot.data ?? const <int>{};
-                        return StreamBuilder<List<Bill>>(
-                          stream: _compareStream(provider),
-                          builder: (context, prevSnapshot) {
-                            return StreamBuilder<Map<int, Asset>>(
-                              // id → 资产映射：条目金额下方账户小字查名
-                              stream: context
-                                  .read<AssetProvider>()
-                                  .assetsMapStream(),
-                              builder: (context, assetSnapshot) {
-                                return _buildBody(
-                                  visible,
-                                  categories,
-                                  viewCat,
-                                  isAllView,
-                                  prevSnapshot.data ?? const <Bill>[],
-                                  tagsByBill: tagsByBill,
-                                  imageBillIds: imageBillIds,
-                                  assets:
-                                      assetSnapshot.data ??
-                                      const <int, Asset>{},
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+            body: Column(
+              children: [
+                // 头部只依赖查询参数、不依赖账单数据：放在数据流外层，
+                // 切月换流时它保持不动，不会跟着 loading 一起消失
+                StatsHeader(
+                  isAllView: isAllView,
+                  type: _query.type,
+                  onTypeChanged: (t) =>
+                      setState(() => _query = _query.copyWith(type: t)),
+                  items: _stripItems,
+                  period: _query.period,
+                  month: _query.month,
+                  isCustom: _query.custom != null,
+                  onTap: _onStripTap,
+                ),
+                Expanded(
+                  child: StreamBuilder<List<Bill>>(
+                    // 不挂按条件的 ValueKey：换流时 StreamBuilder 会保留
+                    // 上一份快照，页面不塌陷成整页 loading。旧结果原地留到
+                    // 新数据到达后替换，切换期由顶部细进度条提示。
+                    // （挂 key 会重建子树、丢旧快照 → 每次切条件都白屏）
+                    stream: _billsStream(provider),
+                    builder: (context, snapshot) {
+                      // 出错与"还没数据"必须区分：否则错误会一直停在转圈
+                      if (snapshot.hasError) {
+                        return const ErrorPlaceholder();
+                      }
+                      // 只有首屏才会走到这里：换流时旧快照被保留，
+                      // 不会把"换条件"误判成"没有数据"
+                      if (!snapshot.hasData) {
+                        return const LoadingPlaceholder();
+                      }
+                      final bills = snapshot.data!;
+                      // 换条件后新流尚未吐出首个数据：内容还是上一份快照，
+                      // 顶部细进度条说明"正在刷新"，不把旧结果伪装成新结果
+                      final switching =
+                          snapshot.connectionState == ConnectionState.waiting;
+                      // 图片标记改为订阅流（bill_images 表增删实时刷新角标）；
+                      // 标签批量查询用 Future 缓存，账单集合不变时不重复查询
+                      final ids = bills.map((b) => b.id).toList();
+                      final idsKey = ids.join(',');
+                      final imageStream = ensureSingleStream<Set<int>>(
+                        'images',
+                        idsKey,
+                        () => context
+                            .read<BillImageRepository>()
+                            .watchBillIdsWithImages(ids),
+                      );
+                      final tagsFuture = ensureFuture<Map<int, List<Tag>>>(
+                        'tags-$idsKey',
+                        () =>
+                            context.read<TagRepository>().getTagsByBillIds(ids),
+                      );
+                      // 标签批量加载（既用于条目显示也用于按选中标签过滤）
+                      return Stack(
+                        children: [
+                          FutureBuilder<Map<int, List<Tag>>>(
+                            future: tagsFuture,
+                            builder: (context, tagSnapshot) {
+                              final tagsByBill =
+                                  tagSnapshot.data ?? const <int, List<Tag>>{};
+                              // 标签过滤：账单挂了任一选中标签即保留；未选标签则全部保留
+                              final visible = _query.tagIds.isEmpty
+                                  ? bills
+                                  : bills
+                                        .where(
+                                          (b) => (tagsByBill[b.id] ?? const [])
+                                              .any(
+                                                (t) => _query.tagIds.contains(
+                                                  t.id,
+                                                ),
+                                              ),
+                                        )
+                                        .toList();
+                              return StreamBuilder<Set<int>>(
+                                stream: imageStream,
+                                builder: (context, imgSnapshot) {
+                                  final imageBillIds =
+                                      imgSnapshot.data ?? const <int>{};
+                                  return StreamBuilder<List<Bill>>(
+                                    stream: _compareStream(provider),
+                                    builder: (context, prevSnapshot) {
+                                      return StreamBuilder<Map<int, Asset>>(
+                                        // id → 资产映射：条目金额下方账户小字查名
+                                        stream: context
+                                            .read<AssetProvider>()
+                                            .assetsMapStream(),
+                                        builder: (context, assetSnapshot) {
+                                          return _buildBody(
+                                            visible,
+                                            categories,
+                                            viewCat,
+                                            isAllView,
+                                            prevSnapshot.data ?? const <Bill>[],
+                                            tagsByBill: tagsByBill,
+                                            imageBillIds: imageBillIds,
+                                            assets:
+                                                assetSnapshot.data ??
+                                                const <int, Asset>{},
+                                          );
+                                        },
+                                      );
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                          // 贴顶细进度条：不占布局、不打断阅读，仅提示刷新中
+                          if (switching)
+                            const Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: LinearProgressIndicator(
+                                minHeight: 2,
+                                backgroundColor: Colors.transparent,
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           );
         },
@@ -624,53 +681,6 @@ class StatsPageState extends State<StatsPage> with StreamCacheMixin<StatsPage> {
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        // 固定头部：全部视图多一行收支类型分段器，滚动时整体钉在顶部
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: StatsHeaderDelegate(
-            height:
-                StatsHeaderDelegate.stripHeight +
-                (isAllView ? StatsHeaderDelegate.segHeight : 0),
-            child: Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  if (isAllView)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppDimens.pagePadding,
-                        vertical: 6,
-                      ),
-                      child: Center(
-                        child: AppSegmented<BillType>(
-                          // 等分风格：两项各占一半无缝贴合，
-                          // 总宽仍为内容自然宽（窄条居中不变）
-                          fit: AppSegmentedFit.equal,
-                          options: [
-                            for (final t in BillType.values.where(
-                              (t) => t != BillType.transfer,
-                            ))
-                              (t, t.label),
-                          ],
-                          colors: const [AppColors.expense, AppColors.income],
-                          selected: _query.type,
-                          onChanged: (t) =>
-                              setState(() => _query = _query.copyWith(type: t)),
-                        ),
-                      ),
-                    ),
-                  StatsPeriodStrip(
-                    items: _stripItems,
-                    period: _query.period,
-                    month: _query.month,
-                    isCustom: _query.custom != null,
-                    onTap: _onStripTap,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
         SliverToBoxAdapter(
           child: StatsSummaryCard(
             isExpense: isExpense,

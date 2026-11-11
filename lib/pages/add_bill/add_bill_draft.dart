@@ -59,7 +59,10 @@ class AddBillDraft {
   /// 从已有账单回填草稿：编辑/复制模式共用。
   /// [nowMinute] 兜底旧账单缺时间的情况（timeMinute 为 null 时用当前时刻）
   factory AddBillDraft.fromBill(Bill bill, {required int nowMinute}) {
-    return AddBillDraft(date: bill.date, timeMinute: bill.timeMinute ?? nowMinute)
+    return AddBillDraft(
+        date: bill.date,
+        timeMinute: bill.timeMinute ?? nowMinute,
+      )
       ..type = bill.type
       // 零头为 0 时省略小数：用户输入整数保存，回填时不显示 xxx.00
       ..amountText = MoneyUtil.centsToYuanTrimmed(bill.amountCents)

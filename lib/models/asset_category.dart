@@ -75,20 +75,64 @@ abstract final class AssetGroups {
     AssetCategoryDef('微信', SimpleIcons.wechat, 0xFF07C160, brand: true),
     // 同公司子产品不共用主品牌 logo，统一用钱包图标，仅以颜色暗示归属
     AssetCategoryDef('微信零钱通', Icons.account_balance_wallet, 0xFF07C160),
-    AssetCategoryDef('支付宝', SimpleIcons.alipay, 0xFF1677FF, brandSvg: 'assets/images/brands/alipay.svg'),
-    AssetCategoryDef('余额宝', Icons.account_balance_wallet, 0xFF1677FF, brandSvg: 'assets/images/brands/yuebao.svg'),
-    AssetCategoryDef('余利宝', Icons.account_balance_wallet, 0xFF1677FF, brandSvg: 'assets/images/brands/yulibao.svg'),
-    AssetCategoryDef('小荷包', Icons.account_balance_wallet, 0xFF1677FF, brandSvg: 'assets/images/brands/xiaohuo.svg'),
+    AssetCategoryDef(
+      '支付宝',
+      SimpleIcons.alipay,
+      0xFF1677FF,
+      brandSvg: 'assets/images/brands/alipay.svg',
+    ),
+    AssetCategoryDef(
+      '余额宝',
+      Icons.account_balance_wallet,
+      0xFF1677FF,
+      brandSvg: 'assets/images/brands/yuebao.svg',
+    ),
+    AssetCategoryDef(
+      '余利宝',
+      Icons.account_balance_wallet,
+      0xFF1677FF,
+      brandSvg: 'assets/images/brands/yulibao.svg',
+    ),
+    AssetCategoryDef(
+      '小荷包',
+      Icons.account_balance_wallet,
+      0xFF1677FF,
+      brandSvg: 'assets/images/brands/xiaohuo.svg',
+    ),
     // 云闪付/京东/拼多多/数币用 iconfont 下载的白色剪影 SVG（自带底板）
-    AssetCategoryDef('云闪付', Icons.credit_card, 0xFFE21A26, brand: true, brandSvg: 'assets/images/brands/unionpay.svg'),
+    AssetCategoryDef(
+      '云闪付',
+      Icons.credit_card,
+      0xFFE21A26,
+      brand: true,
+      brandSvg: 'assets/images/brands/unionpay.svg',
+    ),
     AssetCategoryDef('银行卡', Icons.account_balance, 0xFF5C6BC0),
     AssetCategoryDef('公积金', Icons.home_work, 0xFF26A69A),
     AssetCategoryDef('QQ钱包', SimpleIcons.qq, 0xFF12B7F5, brand: true),
-    AssetCategoryDef('京东金融', Icons.shopping_cart, 0xFFE1251B, brand: true, brandSvg: 'assets/images/brands/jd_finance.svg'),
+    AssetCategoryDef(
+      '京东金融',
+      Icons.shopping_cart,
+      0xFFE1251B,
+      brand: true,
+      brandSvg: 'assets/images/brands/jd_finance.svg',
+    ),
     AssetCategoryDef('医保', Icons.local_hospital, 0xFFEF5350),
-    AssetCategoryDef('数字人民币', Icons.currency_yuan, 0xFFD4312B, brand: true, brandSvg: 'assets/images/brands/digital_rmb.svg'),
+    AssetCategoryDef(
+      '数字人民币',
+      Icons.currency_yuan,
+      0xFFD4312B,
+      brand: true,
+      brandSvg: 'assets/images/brands/digital_rmb.svg',
+    ),
     AssetCategoryDef('华为钱包', SimpleIcons.huawei, 0xFFCF0A2C, brand: true),
-    AssetCategoryDef('多多钱包', Icons.shopping_bag, 0xFFE02E24, brand: true, brandSvg: 'assets/images/brands/pdd.svg'),
+    AssetCategoryDef(
+      '多多钱包',
+      Icons.shopping_bag,
+      0xFFE02E24,
+      brand: true,
+      brandSvg: 'assets/images/brands/pdd.svg',
+    ),
     AssetCategoryDef('Paypal', SimpleIcons.paypal, 0xFF002991, brand: true),
     AssetCategoryDef('其它', Icons.more_horiz, 0xFF9E9E9E),
   ]);
@@ -100,10 +144,20 @@ abstract final class AssetGroups {
     // 花呗/借呗为支付宝子产品，不共用主品牌 logo，统一钱包图标
     AssetCategoryDef('花呗', Icons.account_balance_wallet, 0xFF1677FF),
     AssetCategoryDef('借呗', Icons.account_balance_wallet, 0xFF1677FF),
-    AssetCategoryDef('京东白条', Icons.receipt_long, 0xFFE1251B,
-        brand: true, brandSvg: 'assets/images/brands/jd_baitiao.svg'),
-    AssetCategoryDef('美团月付', SimpleIcons.meituan, 0xFFFFD100,
-        brand: true, darkGlyph: true),
+    AssetCategoryDef(
+      '京东白条',
+      Icons.receipt_long,
+      0xFFE1251B,
+      brand: true,
+      brandSvg: 'assets/images/brands/jd_baitiao.svg',
+    ),
+    AssetCategoryDef(
+      '美团月付',
+      SimpleIcons.meituan,
+      0xFFFFD100,
+      brand: true,
+      darkGlyph: true,
+    ),
     // 抖音与 TikTok 同一音符标识
     AssetCategoryDef('抖音月付', SimpleIcons.tiktok, 0xFF161823, brand: true),
     // 微信分付为微信子产品，不共用主品牌 logo
@@ -158,13 +212,7 @@ abstract final class AssetGroups {
   ]);
 
   /// 全部组（主界面组列表与分类选择器的展示顺序）
-  static const List<AssetGroupDef> all = [
-    fund,
-    credit,
-    prepaid,
-    invest,
-    debt,
-  ];
+  static const List<AssetGroupDef> all = [fund, credit, prepaid, invest, debt];
 
   /// 按分类名查定义（未命中返回 null：旧数据/异常数据兜底用）
   static AssetCategoryDef? categoryOf(String name) {

@@ -171,11 +171,7 @@ class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
             '01',
             style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
           ),
-          Icon(
-            Icons.chevron_right,
-            size: 20,
-            color: AppColors.textSecondary,
-          ),
+          Icon(Icons.chevron_right, size: 20, color: AppColors.textSecondary),
         ],
       ),
     );
@@ -353,7 +349,9 @@ class _PeriodPickerDialogState extends State<PeriodPickerDialog> {
                       softWrap: false,
                       style: TextStyle(
                         fontSize: 17,
-                        fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+                        fontWeight: selected
+                            ? FontWeight.w500
+                            : FontWeight.w400,
                         color: selected ? Colors.white : AppColors.textPrimary,
                       ),
                     ),

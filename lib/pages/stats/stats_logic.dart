@@ -83,7 +83,11 @@ List<CategoryEntry> aggregateByCategory(
   }
   final entries = [
     for (final e in sums.entries)
-      (category: categories[e.key], name: categories[e.key]!.name, cents: e.value),
+      (
+        category: categories[e.key],
+        name: categories[e.key]!.name,
+        cents: e.value,
+      ),
   ];
   entries.sort((a, b) => b.cents.compareTo(a.cents));
   return entries;
@@ -110,7 +114,11 @@ List<CategoryEntry> pieEntries(
   }
   final entries = [
     for (final e in subSums.entries)
-      (category: categories[e.key], name: categories[e.key]!.name, cents: e.value),
+      (
+        category: categories[e.key],
+        name: categories[e.key]!.name,
+        cents: e.value,
+      ),
   ];
   if (direct > 0) entries.add((category: null, name: '未细分', cents: direct));
   entries.sort((a, b) => b.cents.compareTo(a.cents));

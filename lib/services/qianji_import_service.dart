@@ -172,9 +172,7 @@ abstract final class QianjiImportService {
       rethrow; // 业务校验错误：文案原样给 UI
     } catch (_) {
       // isolate 传输等意外异常：与解码失败同口径
-      throw const QianjiImportException(
-        '无法解析该文件，请确认是钱迹导出的 Excel 文件',
-      );
+      throw const QianjiImportException('无法解析该文件，请确认是钱迹导出的 Excel 文件');
     }
   }
 
@@ -184,9 +182,7 @@ abstract final class QianjiImportService {
     try {
       excel = Excel.decodeBytes(bytes);
     } catch (_) {
-      throw const QianjiImportException(
-        '无法解析该文件，请确认是钱迹导出的 Excel 文件',
-      );
+      throw const QianjiImportException('无法解析该文件，请确认是钱迹导出的 Excel 文件');
     }
     if (excel.tables.isEmpty) {
       throw const QianjiImportException('文件中没有数据表');
@@ -236,9 +232,7 @@ abstract final class QianjiImportService {
           note: _cellAt(row, iNote).trim(),
           amountCents: amount,
           // 标签列可选；多标签按逗号/顿号/空格分割，去空去重
-          tags: iTag < 0
-              ? const []
-              : splitTags(_cellAt(row, iTag)),
+          tags: iTag < 0 ? const [] : splitTags(_cellAt(row, iTag)),
         ),
       );
     }
@@ -439,10 +433,11 @@ abstract final class QianjiImportService {
     // 关联标签：查出本批次全部账单 id，按顺序与 group.bills 对齐，
     // 批量写入 bill_tags（batch 单事务）
     if (tagNameToId.isNotEmpty) {
-      final batchBills = await (db.select(db.bills)
-            ..where((b) => b.importBatchId.equals(batchId))
-            ..orderBy([(b) => OrderingTerm.asc(b.id)]))
-          .get();
+      final batchBills =
+          await (db.select(db.bills)
+                ..where((b) => b.importBatchId.equals(batchId))
+                ..orderBy([(b) => OrderingTerm.asc(b.id)]))
+              .get();
       // 按 groups 顺序展开所有 bill.tags，与 batchBills 按插入顺序对齐
       final allTags = [
         for (final g in groups)
@@ -454,10 +449,7 @@ abstract final class QianjiImportService {
           final tagId = tagNameToId[name];
           if (tagId != null) {
             tagRows.add(
-              BillTagsCompanion.insert(
-                billId: batchBills[i].id,
-                tagId: tagId,
-              ),
+              BillTagsCompanion.insert(billId: batchBills[i].id, tagId: tagId),
             );
           }
         }
@@ -531,7 +523,9 @@ abstract final class QianjiImportService {
           .write(const CategoriesCompanion(isFallback: Value(true)));
       return target;
     }
-    final id = await db.into(db.categories).insert(
+    final id = await db
+        .into(db.categories)
+        .insert(
           CategoriesCompanion.insert(
             name: _fallbackName,
             iconCode: Icons.more_horiz.codePoint,
@@ -553,9 +547,9 @@ abstract final class QianjiImportService {
   }
 
   /// 整批撤销：删除某次导入的全部账单，返回删除条数
-  static Future<int> deleteBatch(AppDatabase db, int batchId) =>
-      (db.delete(db.bills)..where((bl) => bl.importBatchId.equals(batchId)))
-          .go();
+  static Future<int> deleteBatch(AppDatabase db, int batchId) => (db.delete(
+    db.bills,
+  )..where((bl) => bl.importBatchId.equals(batchId))).go();
 
   /// 导入前留底：当前库快照存为"钱迹导入前备份"（幂等失败不阻断）
   ///

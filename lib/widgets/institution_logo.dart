@@ -41,8 +41,8 @@ class InstitutionLogo extends StatelessWidget {
       );
     }
     // 以机构名做种子取色板下标：同名机构颜色稳定
-    final color = AppColors
-        .tagPalette[name.hashCode.abs() % AppColors.tagPalette.length];
+    final color =
+        AppColors.tagPalette[name.hashCode.abs() % AppColors.tagPalette.length];
     return Container(
       width: d,
       height: d,

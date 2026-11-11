@@ -65,10 +65,7 @@ class _LockScreenState extends State<LockScreen> {
         const SizedBox(height: 8),
         Row(
           children: [
-            IconButton(
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back),
-            ),
+            IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back)),
             const SizedBox(width: 4),
             Text(
               title,
@@ -183,11 +180,7 @@ class _SecurityVerifyBodyState extends State<SecurityVerifyBody> {
     final answerHash = settings.securityAnswerHash;
     final question = settings.securityQuestion;
     if (salt == null || answerHash == null || question == null) return;
-    final ok = PasscodeUtil.verify(
-      salt,
-      _controller.text.trim(),
-      answerHash,
-    );
+    final ok = PasscodeUtil.verify(salt, _controller.text.trim(), answerHash);
     if (!mounted) return;
     if (ok) {
       widget.onPassed();
@@ -303,17 +296,11 @@ class _ResetPasscodeBodyState extends State<ResetPasscodeBody> {
           const SizedBox(height: 8),
           Text(
             _errorText!,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.expense,
-            ),
+            style: const TextStyle(fontSize: 13, color: AppColors.expense),
           ),
         ],
         const SizedBox(height: 24),
-        PinPadInput(
-          key: ValueKey(settingFirst),
-          onCompleted: _onCompleted,
-        ),
+        PinPadInput(key: ValueKey(settingFirst), onCompleted: _onCompleted),
       ],
     );
   }

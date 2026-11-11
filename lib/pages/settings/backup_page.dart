@@ -272,9 +272,8 @@ class _BackupPageState extends State<BackupPage> {
             value: enabled,
             onChanged: _busyAction != null
                 ? null
-                : (v) => context
-                      .read<SettingsProvider>()
-                      .setAutoBackupEnabled(v),
+                : (v) =>
+                      context.read<SettingsProvider>().setAutoBackupEnabled(v),
           ),
         ],
       ),
@@ -294,44 +293,47 @@ class _BackupPageState extends State<BackupPage> {
       child: backups == null
           ? const SizedBox(height: 56)
           : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 14, 16, 2),
-                child: Text(
-                  '历史备份',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 14, 16, 2),
+                  child: Text(
+                    '历史备份',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
-                child: Text(
-                  '以下为系统自动生成的备份，点击可恢复，长按可删除',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ),
-              if (backups.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
                   child: Text(
-                    '暂无历史备份（升级、装回旧版或恢复数据时会自动生成）',
+                    '以下为系统自动生成的备份，点击可恢复，长按可删除',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
                   ),
-                )
-              else
-                for (final (i, backup) in backups.indexed) ...[
-                  if (i > 0) const Divider(indent: 16, endIndent: 16),
-                  _backupTile(backup),
-                ],
-            ],
-        ),
+                ),
+                if (backups.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: Text(
+                      '暂无历史备份（升级、装回旧版或恢复数据时会自动生成）',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  )
+                else
+                  for (final (i, backup) in backups.indexed) ...[
+                    if (i > 0) const Divider(indent: 16, endIndent: 16),
+                    _backupTile(backup),
+                  ],
+              ],
+            ),
     );
   }
 
@@ -342,10 +344,10 @@ class _BackupPageState extends State<BackupPage> {
     final subtitle = corrupted
         ? '文件已损坏，无法恢复'
         : blocked
-            ? '来自更新版本（v${backup.fileVersion}），请先升级 App 再恢复'
-            // 时间精确到秒：一分钟内连续多次导入的留底也能分清先后
-            : '${DateFormat('yyyy/MM/dd HH:mm:ss').format(backup.modifiedAt)} · '
-            '${(backup.sizeBytes / 1024).toStringAsFixed(0)} KB';
+        ? '来自更新版本（v${backup.fileVersion}），请先升级 App 再恢复'
+        // 时间精确到秒：一分钟内连续多次导入的留底也能分清先后
+        : '${DateFormat('yyyy/MM/dd HH:mm:ss').format(backup.modifiedAt)} · '
+              '${(backup.sizeBytes / 1024).toStringAsFixed(0)} KB';
     final enabled = !blocked && !corrupted && _busyAction == null;
     return InkWell(
       onTap: enabled ? () => _restoreFromPath(backup.path) : null,
@@ -439,9 +441,7 @@ class _BackupPageState extends State<BackupPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除备份'),
-        content: Text(
-          '删除后该份「${_kindName(backup.kind)}」无法找回，确定删除？',
-        ),
+        content: Text('删除后该份「${_kindName(backup.kind)}」无法找回，确定删除？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -525,9 +525,9 @@ class _BackupPageState extends State<BackupPage> {
       final db = context.read<AppDatabase>();
       final file = await BackupService().exportBackup(db);
       if (!mounted) return;
-      final stamp = p.basenameWithoutExtension(
-        file.path,
-      ).replaceFirst('chestnut_export_', '');
+      final stamp = p
+          .basenameWithoutExtension(file.path)
+          .replaceFirst('chestnut_export_', '');
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path, mimeType: 'application/x-sqlite3')],
@@ -552,9 +552,9 @@ class _BackupPageState extends State<BackupPage> {
     try {
       final db = context.read<AppDatabase>();
       final source = await BackupService().exportBackup(db);
-      final stamp = p.basenameWithoutExtension(
-        source.path,
-      ).replaceFirst('chestnut_export_', '');
+      final stamp = p
+          .basenameWithoutExtension(source.path)
+          .replaceFirst('chestnut_export_', '');
       final saved = await FilePicker.saveFile(
         dialogTitle: '保存备份',
         fileName: '栗子记账备份_$stamp.sqlite',
@@ -564,9 +564,7 @@ class _BackupPageState extends State<BackupPage> {
       if (await source.exists()) await source.delete();
       if (!mounted) return;
       // file_picker 13 的 saveFile 返回 Uri，转字符串后解析
-      _toast(
-        saved == null ? '已取消保存' : _friendlySavePath(saved.toString()),
-      );
+      _toast(saved == null ? '已取消保存' : _friendlySavePath(saved.toString()));
     } catch (e) {
       _toast('保存失败：$e');
     } finally {

@@ -27,7 +27,7 @@ Future<void> showBillImageSheet(
   required List<BillImage> existing,
   required List<String> staged,
   required void Function(List<BillImage> existing, List<String> staged)
-      onChanged,
+  onChanged,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -150,10 +150,7 @@ class _BillImageSheetState extends State<BillImageSheet> {
   /// 已入库图删旧存新"落地
   void _preview(int index, String openHeroTag) {
     // 与网格一致的混排顺序：已入库图在前、暂存图在后
-    final paths = [
-      ..._existing.map((e) => e.localPath),
-      ..._staged,
-    ];
+    final paths = [..._existing.map((e) => e.localPath), ..._staged];
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PhotoViewerPage(
@@ -175,17 +172,13 @@ class _BillImageSheetState extends State<BillImageSheet> {
   ///   新记录继承原 sort，并立即触发上传
   Future<void> _editImage(String path) async {
     final edited = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(
-        builder: (_) => ImageEditPage(sourcePath: path),
-      ),
+      MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: path)),
     );
     if (edited == null || !mounted) return;
     try {
-      final existingIndex =
-          _existing.indexWhere((e) => e.localPath == path);
+      final existingIndex = _existing.indexWhere((e) => e.localPath == path);
       if (existingIndex >= 0) {
-        final client =
-            context.read<CloudStorageProvider>().createClient();
+        final client = context.read<CloudStorageProvider>().createClient();
         final created = await widget.repo.replaceImage(
           _existing[existingIndex],
           edited,
@@ -250,11 +243,7 @@ class _BillImageSheetState extends State<BillImageSheet> {
               ),
               const SizedBox(height: 4),
               // 图片网格：外层滚动兜底多图撑高，网格本身不滚
-              Flexible(
-                child: SingleChildScrollView(
-                  child: _buildGrid(),
-                ),
-              ),
+              Flexible(child: SingleChildScrollView(child: _buildGrid())),
               const SizedBox(height: 12),
               // 底部全宽保存：关闭面板，胶囊随 onChanged 已同步为图片(N)
               SizedBox(
@@ -265,8 +254,9 @@ class _BillImageSheetState extends State<BillImageSheet> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppDimens.radiusControl),
+                      borderRadius: BorderRadius.circular(
+                        AppDimens.radiusControl,
+                      ),
                     ),
                   ),
                   child: const Text(
@@ -285,20 +275,15 @@ class _BillImageSheetState extends State<BillImageSheet> {
   /// 图片网格：已入库图 + 暂存图按序混排，末尾追加「添加」格。
   /// 固定 56px 正方形格（与详情弹窗缩略图同尺寸），Wrap 流式换行
   Widget _buildGrid() {
-    final paths = <String>[
-      ..._existing.map((e) => e.localPath),
-      ..._staged,
-    ];
+    final paths = <String>[..._existing.map((e) => e.localPath), ..._staged];
     final cells = <Widget>[
       for (final image in _existing)
         _ThumbCell(
           path: image.localPath,
           heroTag: 'db-${image.id}',
           onRemove: () => _remove(existing: image),
-          onTap: () => _preview(
-            paths.indexOf(image.localPath),
-            'db-${image.id}',
-          ),
+          onTap: () =>
+              _preview(paths.indexOf(image.localPath), 'db-${image.id}'),
         ),
       for (final path in _staged)
         _ThumbCell(
@@ -409,7 +394,11 @@ class _AddCell extends StatelessWidget {
                 ),
               )
             : const Center(
-                child: Icon(Icons.add, size: 24, color: AppColors.textSecondary),
+                child: Icon(
+                  Icons.add,
+                  size: 24,
+                  color: AppColors.textSecondary,
+                ),
               ),
       ),
     );

@@ -27,9 +27,9 @@ class ExportService {
     final billIds = bills.map((b) => b.id).toList();
     final tagRows = billIds.isEmpty
         ? const []
-        : await (_db.select(_db.billTags)
-              ..where((bt) => bt.billId.isIn(billIds)))
-            .get();
+        : await (_db.select(
+            _db.billTags,
+          )..where((bt) => bt.billId.isIn(billIds))).get();
     final tagMap = await _db.select(_db.tags).get();
     final tagById = {for (final t in tagMap) t.id: t};
     final tagsByBill = <int, List<String>>{};

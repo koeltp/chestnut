@@ -11,13 +11,12 @@ import '../add_bill/wheel_date_picker.dart';
 import '../settings/tag_manage_page.dart';
 
 /// 筛选面板应用回调：区间（起止均含当天）+ 关键词 + 标签 + 分类
-typedef FilterApplyCallback =
-    void Function(
-      ({DateTime? start, DateTime? end}) range,
-      String keyword,
-      Set<int> tagIds,
-      Set<int> categoryIds,
-    );
+typedef FilterApplyCallback = void Function(
+  ({DateTime? start, DateTime? end}) range,
+  String keyword,
+  Set<int> tagIds,
+  Set<int> categoryIds,
+);
 
 /// 漏斗筛选面板（统计页）
 ///
@@ -63,8 +62,9 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
   late final _keywordCtrl = TextEditingController(text: widget.initialKeyword);
 
   late final Set<int> _selectedTagIds = Set<int>.from(widget.initialTagIds);
-  late final Set<int> _selectedCategoryIds =
-      Set<int>.from(widget.initialCategoryIds);
+  late final Set<int> _selectedCategoryIds = Set<int>.from(
+    widget.initialCategoryIds,
+  );
 
   List<Tag> _allTags = [];
 
@@ -154,17 +154,13 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
   }
 
   /// 比较区间是否与某快捷预设一致（两端都按日期粒度）
-  bool _rangeEquals(
-    DateTime? s1,
-    DateTime? e1,
-    DateTime? s2,
-    DateTime? e2,
-  ) {
+  bool _rangeEquals(DateTime? s1, DateTime? e1, DateTime? s2, DateTime? e2) {
     bool same(DateTime? a, DateTime? b) {
       if (a == null && b == null) return true;
       if (a == null || b == null) return false;
       return a.year == b.year && a.month == b.month && a.day == b.day;
     }
+
     return same(s1, s2) && same(e1, e2);
   }
 
@@ -239,9 +235,7 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
     for (final root in _typeCategories.where((c) => c.parentId == null)) {
       final groupIds = [
         root.id,
-        ..._typeCategories
-            .where((c) => c.parentId == root.id)
-            .map((c) => c.id),
+        ..._typeCategories.where((c) => c.parentId == root.id).map((c) => c.id),
       ];
       if (groupIds.any(draft.contains)) {
         initialExpandedId = root.id;
@@ -329,9 +323,11 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
     );
     count.dispose();
     if (confirmed == true && mounted) {
-      setState(() => _selectedCategoryIds
-        ..clear()
-        ..addAll(draft));
+      setState(
+        () => _selectedCategoryIds
+          ..clear()
+          ..addAll(draft),
+      );
     }
   }
 
@@ -357,9 +353,11 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
       ),
     );
     if (confirmed == true && mounted) {
-      setState(() => _selectedTagIds
-        ..clear()
-        ..addAll(draft));
+      setState(
+        () => _selectedTagIds
+          ..clear()
+          ..addAll(draft),
+      );
     }
   }
 
@@ -432,8 +430,7 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
                   ),
                   child: const Text(
                     '搜索',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -446,13 +443,13 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
 
   /// 分区标题
   Widget _sectionTitle(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textPrimary,
+    ),
+  );
 
   /// 关键词输入框
   Widget _buildKeywordField() {
@@ -462,15 +459,19 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
       decoration: InputDecoration(
         isDense: true,
         hintText: '搜索备注、地点、分类',
-        hintStyle:
-            const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        hintStyle: const TextStyle(
+          fontSize: 13,
+          color: AppColors.textSecondary,
+        ),
         prefixIcon: const Icon(
           Icons.search,
           size: 20,
           color: AppColors.textSecondary,
         ),
-        prefixIconConstraints:
-            const BoxConstraints(minWidth: 40, minHeight: 40),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 40,
+          minHeight: 40,
+        ),
         suffixIcon: ValueListenableBuilder<TextEditingValue>(
           valueListenable: _keywordCtrl,
           builder: (context, value, _) {
@@ -485,12 +486,16 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
             );
           },
         ),
-        suffixIconConstraints:
-            const BoxConstraints(minWidth: 40, minHeight: 40),
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 40,
+          minHeight: 40,
+        ),
         filled: true,
         fillColor: AppColors.background,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 13,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(22),
           borderSide: BorderSide.none,
@@ -543,9 +548,9 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
   /// 点胶囊重新进弹层编辑；点"选择分类"进入
   Widget _buildCategorySection() {
     final roots = _typeCategories.where((c) => c.parentId == null);
-    final pills = [
-      for (final root in roots) _groupPill(root),
-    ].whereType<({String label, Color color, bool full})>().toList();
+    final pills = [for (final root in roots) _groupPill(root)]
+        .whereType<({String label, Color color, bool full})>()
+        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -623,8 +628,10 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
             const SizedBox(width: 2),
             Text(
               label,
-              style:
-                  const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
             ),
           ],
         ),
@@ -780,8 +787,9 @@ class _TagMultiSelector extends StatefulWidget {
 
 class _TagMultiSelectorState extends State<_TagMultiSelector> {
   late List<Tag> _tags = widget.tags;
-  late final ValueNotifier<int> _count =
-      ValueNotifier<int>(widget.draft.length);
+  late final ValueNotifier<int> _count = ValueNotifier<int>(
+    widget.draft.length,
+  );
 
   @override
   void dispose() {
@@ -835,10 +843,7 @@ class _TagMultiSelectorState extends State<_TagMultiSelector> {
                 ),
               ),
               const Spacer(),
-              TextButton(
-                onPressed: _openManage,
-                child: const Text('管理'),
-              ),
+              TextButton(onPressed: _openManage, child: const Text('管理')),
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
                 child: const Text('取消'),
@@ -855,53 +860,53 @@ class _TagMultiSelectorState extends State<_TagMultiSelector> {
               width: double.infinity,
               child: _tags.isNotEmpty
                   ? Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final t in _tags)
-                        GestureDetector(
-                          onTap: () => _toggle(t.id),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              // 未选白底彩框；选中实底白字
-                              color: widget.draft.contains(t.id)
-                                  ? Color(t.color)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(
-                                AppDimens.radiusCard,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final t in _tags)
+                          GestureDetector(
+                            onTap: () => _toggle(t.id),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
                               ),
-                              border: Border.all(color: Color(t.color)),
-                            ),
-                            child: Text(
-                              t.name,
-                              style: TextStyle(
-                                fontSize: 13,
+                              decoration: BoxDecoration(
+                                // 未选白底彩框；选中实底白字
                                 color: widget.draft.contains(t.id)
-                                    ? Colors.white
-                                    : Color(t.color),
-                                fontWeight: widget.draft.contains(t.id)
-                                    ? FontWeight.w500
-                                    : FontWeight.w400,
+                                    ? Color(t.color)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(
+                                  AppDimens.radiusCard,
+                                ),
+                                border: Border.all(color: Color(t.color)),
+                              ),
+                              child: Text(
+                                t.name,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: widget.draft.contains(t.id)
+                                      ? Colors.white
+                                      : Color(t.color),
+                                  fontWeight: widget.draft.contains(t.id)
+                                      ? FontWeight.w500
+                                      : FontWeight.w400,
+                                ),
                               ),
                             ),
                           ),
+                      ],
+                    )
+                  : const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        '暂无标签，点右上角"管理"创建',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
                         ),
-                    ],
-                  )
-                : const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      '暂无标签，点右上角"管理"创建',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
                       ),
                     ),
-                  ),
             ),
           ),
         ),

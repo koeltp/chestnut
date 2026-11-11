@@ -57,7 +57,9 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
   /// 当前选中图标的固定分类色：预览与图标网格选中态共用，
   /// 颜色由图标唯一决定，保存时写入同一颜色
   int get _colorValue =>
-      _manualColor ?? kCategoryIconColorMap[_iconCode] ?? kCategoryColorChoices.first;
+      _manualColor ??
+      kCategoryIconColorMap[_iconCode] ??
+      kCategoryColorChoices.first;
 
   /// 手动选择的分类色：非空时不再随换图标联动（点预览选色后置值）
   int? _manualColor;
@@ -328,10 +330,7 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
         contentPadding: EdgeInsets.zero,
         counterText: '',
         hintText: '输入分类名称',
-        hintStyle: TextStyle(
-          fontSize: 14,
-          color: AppColors.textSecondary,
-        ),
+        hintStyle: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         border: InputBorder.none,
       ),
       style: const TextStyle(
@@ -553,7 +552,10 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
   /// 普通模式单选（名称跟随带出）；批量模式多选（每个选中图标
   /// 各建一个分类）。每个图标固定自己的分类色：未选中浅色底 +
   /// 彩色图标，选中实底白图标，与记一笔页分类格子风格一致。
-  Widget _buildIconGrid(List<CategoryIconItem> items, {bool scrollable = false}) {
+  Widget _buildIconGrid(
+    List<CategoryIconItem> items, {
+    bool scrollable = false,
+  }) {
     return GridView.builder(
       // 定高区域内滚动浏览；搜索模式保持 shrinkWrap 随内容撑开
       shrinkWrap: !scrollable,
@@ -689,7 +691,8 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
           CategoriesCompanion.insert(
             name: _labelOf(code),
             iconCode: code,
-            colorValue: kCategoryIconColorMap[code] ?? kCategoryColorChoices.first,
+            colorValue:
+                kCategoryIconColorMap[code] ?? kCategoryColorChoices.first,
             type: widget.type,
             parentId: Value(parentId),
             sortOrder: Value(nextSort),

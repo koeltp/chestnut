@@ -104,7 +104,8 @@ class _AssetEditPageState extends State<_AssetEditPage> {
   /// 新增时直接预填分类名（钱迹式，用户可改）；
   /// 切换分类时：名称为空或等于旧默认值则跟随新默认，用户改过则保留
   late final TextEditingController _name = TextEditingController(
-    text: widget.existing?.name ??
+    text:
+        widget.existing?.name ??
         widget.initialInstitution ??
         widget.category.name,
   );
@@ -129,8 +130,9 @@ class _AssetEditPageState extends State<_AssetEditPage> {
 
   /// 已选所属机构：编辑态取独立 institution 列（与名称互不影响），
   /// 新增态取主流程预选结果
-  late String? _institution =
-      _editing ? widget.existing!.institution : widget.initialInstitution;
+  late String? _institution = _editing
+      ? widget.existing!.institution
+      : widget.initialInstitution;
 
   bool _saving = false;
 
@@ -194,8 +196,8 @@ class _AssetEditPageState extends State<_AssetEditPage> {
   /// 其他机构跨组可选，券商组排最前天然即首屏）
   Set<String> get _institutionSections =>
       _category.name == '信用卡' || _category.name == '银行卡'
-          ? kBankSectionFilter
-          : kInvestSectionFilter;
+      ? kBankSectionFilter
+      : kInvestSectionFilter;
 
   /// 选择所属机构：选完更新独立 institution 字段；
   /// 名称为空或仍是默认名（分类名/旧机构名）时跟随填入新机构名
@@ -325,9 +327,10 @@ class _AssetEditPageState extends State<_AssetEditPage> {
 
   /// 取消归档（已归档资产进编辑页时的「归档」按钮变恢复语义）
   Future<void> _unarchive() async {
-    await context
-        .read<AssetProvider>()
-        .setArchived(widget.existing!, archived: false);
+    await context.read<AssetProvider>().setArchived(
+      widget.existing!,
+      archived: false,
+    );
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -399,61 +402,52 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         padding: const EdgeInsets.fromLTRB(16, AppDimens.gapSection, 16, 24),
         children: [
           // 基本信息：账户类型 / 名称 / 金额（信用卡组追加动态字段）
-          FormRowsCard(rows: [
-            // 账户类型行（钱迹式）：所属机构并进本行展示——选了机构的
-            // 分类显示机构名 + logo（如"招商银行"），机构吸收分类身份；
-            // 无机构分类显示分类名 + 分类图标。点击换分类，选中带机构的
-            // 分类后联动弹机构选择层
-            FormRow(
-              label: '账户类型',
-              onTap: _pickCategory,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _showInstitutionPicker && institutionHasLogo(_institution)
-                      ? InstitutionLogo(name: _institution!, size: 32)
-                      : AssetCircleIcon(category: _category.name, size: 32),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      _showInstitutionPicker && _institution != null
-                          ? _institution!
-                          : _category.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: AppColors.textPrimary,
+          FormRowsCard(
+            rows: [
+              // 账户类型行（钱迹式）：所属机构并进本行展示——选了机构的
+              // 分类显示机构名 + logo（如"招商银行"），机构吸收分类身份；
+              // 无机构分类显示分类名 + 分类图标。点击换分类，选中带机构的
+              // 分类后联动弹机构选择层
+              FormRow(
+                label: '账户类型',
+                onTap: _pickCategory,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _showInstitutionPicker && institutionHasLogo(_institution)
+                        ? InstitutionLogo(name: _institution!, size: 32)
+                        : AssetCircleIcon(category: _category.name, size: 32),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        _showInstitutionPicker && _institution != null
+                            ? _institution!
+                            : _category.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 22,
-                    color: AppColors.textSecondary,
-                  ),
-                ],
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 22,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            FormInputRow(
-              label: '资产名称',
-              controller: _name,
-              hint: _category.name,
-              maxLength: 20,
-              textInputAction: TextInputAction.next,
-            ),
-            FormInputRow(
-              label: _valueLabel,
-              controller: _value,
-              hint: '0.00',
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: MoneyUtil.amountInputFormatters,
-              textInputAction: TextInputAction.next,
-              suffix: 'CNY',
-            ),
-            if (_isCreditGroup) ...[
               FormInputRow(
-                label: '总额度',
-                controller: _creditLimit,
-                hint: '如 50000',
+                label: '资产名称',
+                controller: _name,
+                hint: _category.name,
+                maxLength: 20,
+                textInputAction: TextInputAction.next,
+              ),
+              FormInputRow(
+                label: _valueLabel,
+                controller: _value,
+                hint: '0.00',
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -461,35 +455,57 @@ class _AssetEditPageState extends State<_AssetEditPage> {
                 textInputAction: TextInputAction.next,
                 suffix: 'CNY',
               ),
-              AssetDayRow(
-                label: '出账日',
-                day: _billDay,
-                onPick: () => _pickDay(isBillDay: true),
-                onClear: () => setState(() => _billDay = null),
-              ),
-              AssetDayRow(
-                label: '还款日',
-                day: _repayDay,
-                onPick: () => _pickDay(isBillDay: false),
-                onClear: () => setState(() => _repayDay = null),
-              ),
+              if (_isCreditGroup) ...[
+                FormInputRow(
+                  label: '总额度',
+                  controller: _creditLimit,
+                  hint: '如 50000',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: MoneyUtil.amountInputFormatters,
+                  textInputAction: TextInputAction.next,
+                  suffix: 'CNY',
+                ),
+                AssetDayRow(
+                  label: '出账日',
+                  day: _billDay,
+                  onPick: () => _pickDay(isBillDay: true),
+                  onClear: () => setState(() => _billDay = null),
+                ),
+                AssetDayRow(
+                  label: '还款日',
+                  day: _repayDay,
+                  onPick: () => _pickDay(isBillDay: false),
+                  onClear: () => setState(() => _repayDay = null),
+                ),
+              ],
             ],
-          ]),
+          ),
           const SizedBox(height: AppDimens.gapMd),
           // 计入总资产开关：关闭后仅展示，不参与净值/占比统计
-          FormRowsCard(rows: [
-            FormSwitchRow(
-              label: '计入总资产',
-              subtitle: '关闭后仅在列表展示，不参与净值统计',
-              value: _includeInNet,
-              onChanged: (v) => setState(() => _includeInNet = v),
-            ),
-          ]),
+          FormRowsCard(
+            rows: [
+              FormSwitchRow(
+                label: '计入总资产',
+                subtitle: '关闭后仅在列表展示，不参与净值统计',
+                value: _includeInNet,
+                onChanged: (v) => setState(() => _includeInNet = v),
+              ),
+            ],
+          ),
           const SizedBox(height: AppDimens.gapMd),
           // 备注独立一张卡
-          FormRowsCard(rows: [
-            FormInputRow(label: '备注', controller: _note, hint: '选填', maxLength: 50),
-          ]),
+          FormRowsCard(
+            rows: [
+              FormInputRow(
+                label: '备注',
+                controller: _note,
+                hint: '选填',
+                maxLength: 50,
+              ),
+            ],
+          ),
         ],
       ),
     );

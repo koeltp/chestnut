@@ -36,7 +36,6 @@ part 'add_bill_page.chips.dart';
 part 'add_bill_page.transfer.dart';
 part 'add_bill_page.save.dart';
 
-
 /// 记一笔页面
 ///
 /// 新增、编辑与复制共用：传入 [editBill] 进入编辑模式（保存覆盖原记录）；
@@ -253,22 +252,20 @@ class _AddBillPageState extends _AddBillBase
     _keyboardWasVisible = visible;
     // 订阅资产流：缓存未归档账户供账户条/弹窗渲染；账户被删除或
     // 归档时清掉悬挂的已选 id，避免保存时关联到失效账户
-    _assetsSub ??= context
-        .read<AssetProvider>()
-        .activeStream()
-        .listen((list) {
-          if (!mounted) return;
-          setState(() {
-            _allAssets = list;
-            if (_draft.selectedAssetId != null &&
-                !list.any((a) => a.id == _draft.selectedAssetId)) {
-              _draft.selectedAssetId = null;
-            }
-            if (_draft.toAssetId != null && !list.any((a) => a.id == _draft.toAssetId)) {
-              _draft.toAssetId = null;
-            }
-          });
-        });
+    _assetsSub ??= context.read<AssetProvider>().activeStream().listen((list) {
+      if (!mounted) return;
+      setState(() {
+        _allAssets = list;
+        if (_draft.selectedAssetId != null &&
+            !list.any((a) => a.id == _draft.selectedAssetId)) {
+          _draft.selectedAssetId = null;
+        }
+        if (_draft.toAssetId != null &&
+            !list.any((a) => a.id == _draft.toAssetId)) {
+          _draft.toAssetId = null;
+        }
+      });
+    });
   }
 
   @override
@@ -513,10 +510,16 @@ class _AddBillPageState extends _AddBillBase
     setState(() {
       if (_discountMode) {
         if (_draft.discountText.isEmpty) return;
-        _draft.discountText = _draft.discountText.substring(0, _draft.discountText.length - 1);
+        _draft.discountText = _draft.discountText.substring(
+          0,
+          _draft.discountText.length - 1,
+        );
       } else {
         if (_draft.amountText.isEmpty) return;
-        _draft.amountText = _draft.amountText.substring(0, _draft.amountText.length - 1);
+        _draft.amountText = _draft.amountText.substring(
+          0,
+          _draft.amountText.length - 1,
+        );
       }
     });
   }

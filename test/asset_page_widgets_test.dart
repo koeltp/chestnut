@@ -102,9 +102,7 @@ void main() {
     expect(find.text('已归档 (1)'), findsNothing);
 
     // 归档：折叠区出现并展示资产行
-    await tester.runAsync(
-      () => provider.setArchived(asset, archived: true),
-    );
+    await tester.runAsync(() => provider.setArchived(asset, archived: true));
     await tester.pumpAndSettle();
     expect(find.text('已归档 (1)'), findsOneWidget);
 

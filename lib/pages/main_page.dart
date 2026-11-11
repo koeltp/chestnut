@@ -56,19 +56,12 @@ class _MainPageState extends State<MainPage> {
         showAppToast(context, '再按一次退出');
       },
       child: Scaffold(
-        extendBody: false,
-        // extendBodyBehindAppBar / extendBody 默认 false，Scaffold body
-        // 不会自动避让 centerDocked FAB 的 notch 凹陷区。
-        // BottomAppBar 高 56 + FAB notch 凹陷约 72 + 余量 = 128，
-        // 所有子页面共享这一避让，不再需要每页各算
-        body: MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            padding: MediaQuery.of(context).padding.copyWith(
-                  bottom: MediaQuery.of(context).padding.bottom + 128,
-                ),
-          ),
-          child: IndexedStack(index: _index, children: _pages),
-        ),
+        // body 本来就结束在底部导航栏上沿，各页面的 SafeArea 只该吃系统的
+        // 底部安全区。之前在这里把 padding.bottom 额外加了 128（想给 FAB
+        // 缺口让位），结果所有页面都被 SafeArea 当成系统安全区吃掉，底部
+        // 凭空多出一大块空白、内容被顶起——FAB 上沿只比导航栏高半个按钮，
+        // 各页自己的底部留白足够，不需要全局垫高
+        body: IndexedStack(index: _index, children: _pages),
         // 记账按钮：主题统一栗子棕圆形，突出核心动作
         floatingActionButton: FloatingActionButton(
           onPressed: _openAddBill,
@@ -80,37 +73,43 @@ class _MainPageState extends State<MainPage> {
           notchMargin: 8,
           color: AppColors.card,
           elevation: 8,
-          child: SizedBox(
-            height: 56,
-            child: Row(
-              children: [
-                _buildTab(
-                  icon: Icons.receipt_long_outlined,
-                  activeIcon: Icons.receipt_long,
-                  label: '明细',
-                  tabIndex: 0,
-                ),
-                _buildTab(
-                  icon: Icons.pie_chart_outline,
-                  activeIcon: Icons.pie_chart,
-                  label: '统计',
-                  tabIndex: 1,
-                ),
-                // 中央为记账按钮预留缺口
-                const SizedBox(width: 64),
-                _buildTab(
-                  icon: Icons.savings_outlined,
-                  activeIcon: Icons.savings,
-                  label: '预算',
-                  tabIndex: 2,
-                ),
-                _buildTab(
-                  icon: Icons.person_outline,
-                  activeIcon: Icons.person,
-                  label: '我的',
-                  tabIndex: 3,
-                ),
-              ],
+          // 底部安全区只在这里处理一次：全面屏机型的系统手势条/三键栏会画在
+          // 应用之上，导航栏不垫 inset，标签就会落进系统手势区。页面各自
+          // 不再吃底部安全区（统一 SafeArea(bottom: false)）
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 56,
+              child: Row(
+                children: [
+                  _buildTab(
+                    icon: Icons.receipt_long_outlined,
+                    activeIcon: Icons.receipt_long,
+                    label: '明细',
+                    tabIndex: 0,
+                  ),
+                  _buildTab(
+                    icon: Icons.pie_chart_outline,
+                    activeIcon: Icons.pie_chart,
+                    label: '统计',
+                    tabIndex: 1,
+                  ),
+                  // 中央为记账按钮预留缺口
+                  const SizedBox(width: 64),
+                  _buildTab(
+                    icon: Icons.savings_outlined,
+                    activeIcon: Icons.savings,
+                    label: '预算',
+                    tabIndex: 2,
+                  ),
+                  _buildTab(
+                    icon: Icons.person_outline,
+                    activeIcon: Icons.person,
+                    label: '我的',
+                    tabIndex: 3,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

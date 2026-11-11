@@ -48,20 +48,19 @@ class AppSegmented<T> extends StatelessWidget {
       // 等分不撑满：IntrinsicWidth 先测内容自然总宽，
       // 再以该宽 tight 约束 Row，Expanded 各分一等份（无缝）
       AppSegmentedFit.equal => IntrinsicWidth(
-          child: Row(
-            children: [
-              for (var i = 0; i < options.length; i++)
-                Expanded(child: _segment(i)),
-            ],
-          ),
-        ),
-      // 撑满：吃满外部约束宽度，Expanded 各分一等份（无缝）
-      AppSegmentedFit.stretch => Row(
+        child: Row(
           children: [
             for (var i = 0; i < options.length; i++)
               Expanded(child: _segment(i)),
           ],
         ),
+      ),
+      // 撑满：吃满外部约束宽度，Expanded 各分一等份（无缝）
+      AppSegmentedFit.stretch => Row(
+        children: [
+          for (var i = 0; i < options.length; i++) Expanded(child: _segment(i)),
+        ],
+      ),
     };
 
     // 无内边距：选中段才能满格遮住灰底
@@ -115,9 +114,7 @@ class _Segment extends StatelessWidget {
         curve: Curves.easeOut,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? color : Colors.transparent,
-        ),
+        decoration: BoxDecoration(color: selected ? color : Colors.transparent),
         child: Text(
           label,
           maxLines: 1,

@@ -28,7 +28,8 @@ class Bills extends Table {
   IntColumn get discountCents => integer().nullable()();
 
   /// 所属分类；null = 转账（转账无分类语义）
-  IntColumn get categoryId => integer().nullable().references(Categories, #id)();
+  IntColumn get categoryId =>
+      integer().nullable().references(Categories, #id)();
 
   /// 备注，可为空
   TextColumn get note => text().nullable()();

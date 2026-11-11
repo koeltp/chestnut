@@ -151,9 +151,7 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
             IconButton(
               tooltip: '同步状态',
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const CloudSyncPage(),
-                ),
+                MaterialPageRoute<void>(builder: (_) => const CloudSyncPage()),
               ),
               icon: Badge(
                 isLabelVisible: sync.pendingTotal > 0,
@@ -229,7 +227,11 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
           const SizedBox(height: 12),
           _field(controller: _bucket, label: '桶名（Bucket）', hint: '存储桶名称'),
           const SizedBox(height: 12),
-          _field(controller: _accessKey, label: 'Access Key ID', hint: '访问密钥 ID'),
+          _field(
+            controller: _accessKey,
+            label: 'Access Key ID',
+            hint: '访问密钥 ID',
+          ),
           const SizedBox(height: 12),
           _field(
             controller: _secretKey,
@@ -242,8 +244,7 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
                 size: 20,
                 color: AppColors.textSecondary,
               ),
-              onPressed: () =>
-                  setState(() => _secretVisible = !_secretVisible),
+              onPressed: () => setState(() => _secretVisible = !_secretVisible),
             ),
           ),
           const SizedBox(height: 12),
@@ -272,9 +273,7 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
                     ),
                   ),
                   Icon(
-                    _guideOpen
-                        ? Icons.expand_less
-                        : Icons.expand_more,
+                    _guideOpen ? Icons.expand_less : Icons.expand_more,
                     size: 20,
                     color: AppColors.primary,
                   ),
@@ -332,9 +331,7 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
           if (_testPassed != null) ...[
             const SizedBox(height: 8),
             Text(
-              _testPassed!
-                  ? '连接成功，可以启用图片云存储了'
-                  : _testError ?? '连接失败，请检查各项配置',
+              _testPassed! ? '连接成功，可以启用图片云存储了' : _testError ?? '连接失败，请检查各项配置',
               style: TextStyle(
                 fontSize: 12,
                 color: _testPassed! ? AppColors.income : AppColors.expense,
@@ -394,8 +391,8 @@ class _CloudStoragePageState extends State<CloudStoragePage> {
                   enabled
                       ? '已启用 · ${cloud.bucket}'
                       : canEnable
-                          ? '测试通过，可开启'
-                          : '需先通过"测试连接"',
+                      ? '测试通过，可开启'
+                      : '需先通过"测试连接"',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,

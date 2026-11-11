@@ -55,11 +55,21 @@ void main() {
     test('关键词命中备注（英文大小写不敏感）与分类名', () {
       final bills = [bill(1, 1, 100, note: 'Milk Tea'), bill(2, 3, 200)];
       expect(
-        filterBills(bills, categories: categories, range: (null, null), keyword: 'milk'),
+        filterBills(
+          bills,
+          categories: categories,
+          range: (null, null),
+          keyword: 'milk',
+        ),
         [bills[0]],
       );
       expect(
-        filterBills(bills, categories: categories, range: (null, null), keyword: '交通'),
+        filterBills(
+          bills,
+          categories: categories,
+          range: (null, null),
+          keyword: '交通',
+        ),
         [bills[1]],
       );
     });
@@ -109,14 +119,10 @@ void main() {
     });
 
     test('转账账单一律排除（转账不挂分类，不参与统计）', () {
-      final bills = [
-        bill(1, 1, 100),
-        bill(2, 1, 200, type: BillType.transfer),
-      ];
-      expect(
-        filterBills(bills, categories: categories, range: (null, null)),
-        [bills[0]],
-      );
+      final bills = [bill(1, 1, 100), bill(2, 1, 200, type: BillType.transfer)];
+      expect(filterBills(bills, categories: categories, range: (null, null)), [
+        bills[0],
+      ]);
     });
 
     test('全部视图多选：勾一级即含子分类账单（与聚合上浮口径一致）', () {

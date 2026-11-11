@@ -151,15 +151,17 @@ class S3CompatibleClient {
     try {
       // send 返回流式响应，收集成完整响应（对象尺寸为压缩后小图，安全）
       final streamed = await _http
-          .send(http.Request(method, url)
-            ..headers['x-amz-date'] = amzDate
-            ..headers['x-amz-content-sha256'] = payloadHash
-            ..headers['Authorization'] =
-                'AWS4-HMAC-SHA256 Credential=$accessKeyId/$scope, '
-                    'SignedHeaders=host;x-amz-content-sha256;x-amz-date, '
-                    'Signature=$signature'
-            ..headers['Content-Type'] = contentType
-            ..bodyBytes = body ?? Uint8List(0))
+          .send(
+            http.Request(method, url)
+              ..headers['x-amz-date'] = amzDate
+              ..headers['x-amz-content-sha256'] = payloadHash
+              ..headers['Authorization'] =
+                  'AWS4-HMAC-SHA256 Credential=$accessKeyId/$scope, '
+                  'SignedHeaders=host;x-amz-content-sha256;x-amz-date, '
+                  'Signature=$signature'
+              ..headers['Content-Type'] = contentType
+              ..bodyBytes = body ?? Uint8List(0),
+          )
           .timeout(const Duration(seconds: 30));
       return await http.Response.fromStream(streamed);
     } on SocketException {
@@ -193,12 +195,13 @@ class S3CompatibleClient {
   /// AWS S3 规范的 URI 编码：仅非保留字符不编码，其余按 UTF-8 百分号
   /// 编码；encodeComponent 会放过 '!' "'" '(' ')' '*' 这几个子分隔符，
   /// 按 SigV4 要求补齐编码
-  String _awsUriEncode(String s) => Uri.encodeComponent(s)
-      .replaceAll('!', '%21')
-      .replaceAll("'", '%27')
-      .replaceAll('(', '%28')
-      .replaceAll(')', '%29')
-      .replaceAll('*', '%2A');
+  String _awsUriEncode(String s) =>
+      Uri.encodeComponent(s)
+          .replaceAll('!', '%21')
+          .replaceAll("'", '%27')
+          .replaceAll('(', '%28')
+          .replaceAll(')', '%29')
+          .replaceAll('*', '%2A');
 
   /// HMAC-SHA256（输入为字节、消息为 UTF-8 文本），返回原始字节
   List<int> _hmac(List<int> key, String message) =>
@@ -253,8 +256,7 @@ class S3CompatibleClient {
       // 响应体不是预期 XML（代理页/网关页等）退回通用提示
     }
     return switch (code) {
-      'InvalidAccessKeyId' =>
-        'Access Key ID 无效（HTTP 403），请确认复制完整、没有多余空格',
+      'InvalidAccessKeyId' => 'Access Key ID 无效（HTTP 403），请确认复制完整、没有多余空格',
       'SignatureDoesNotMatch' =>
         'Secret Access Key 不正确（HTTP 403），签名校验未通过。'
             'Secret 只在创建令牌时显示一次，丢失需重新创建 API 令牌',

@@ -305,8 +305,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 if (_info.forceUpdate) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.expense.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
@@ -403,8 +405,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           switch (value) {
             null when _received < 0 => '正在校验安装包…',
             null => '正在下载 · ${_mb(_received)} MB',
-            final v => '正在下载 ${(v * 100).toStringAsFixed(0)}%'
-                ' · ${_mb(_received)}/${_mb(_total)} MB',
+            final v =>
+              '正在下载 ${(v * 100).toStringAsFixed(0)}%'
+                  ' · ${_mb(_received)}/${_mb(_total)} MB',
           },
           style: const TextStyle(
             fontSize: 12,
@@ -485,9 +488,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               Expanded(child: _subtleButton('取消', onTap: _dismiss)),
               const SizedBox(width: 12),
             ],
-            Expanded(
-              child: _filledButton('重试', onTap: _startDownload),
-            ),
+            Expanded(child: _filledButton('重试', onTap: _startDownload)),
           ],
         );
       case _Phase.idle:
@@ -502,9 +503,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 Expanded(child: _subtleButton('去备份', onTap: _goBackup)),
                 if (!_info.forceUpdate) ...[
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _subtleButton('以后再说', onTap: _dismiss),
-                  ),
+                  Expanded(child: _subtleButton('以后再说', onTap: _dismiss)),
                 ],
               ],
             ),
@@ -514,7 +513,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   }
 
   /// 主按钮：蓝底白字；置灰表示不可点
-  Widget _filledButton(String text, {VoidCallback? onTap, bool enabled = true}) {
+  Widget _filledButton(
+    String text, {
+    VoidCallback? onTap,
+    bool enabled = true,
+  }) {
     return SizedBox(
       height: 42,
       child: FilledButton(
@@ -549,10 +552,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 15,
-            color: AppColors.textPrimary,
-          ),
+          style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
         ),
       ),
     );

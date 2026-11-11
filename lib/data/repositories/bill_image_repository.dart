@@ -24,8 +24,7 @@ class BillImageRepository {
   final AppDatabase _db;
 
   /// 账单图片暂存服务（receipts 目录）：选图/压缩/转正路径共用
-  final PhotoStagingService photos =
-      PhotoStagingService(dirName: 'receipts');
+  final PhotoStagingService photos = PhotoStagingService(dirName: 'receipts');
 
   // ---------- 入库（账单保存时） ----------
 
@@ -42,8 +41,7 @@ class BillImageRepository {
       final src = File(path);
       if (!await src.exists()) continue;
       final fileName = photos.finalFileName(occurredOn, billId);
-      final dest =
-          p.join((await photos.monthDir(occurredOn)).path, fileName);
+      final dest = p.join((await photos.monthDir(occurredOn)).path, fileName);
       // 同一分区内 rename 是原子操作，比 copy+delete 快且不留中间态
       try {
         await src.rename(dest);
@@ -52,7 +50,9 @@ class BillImageRepository {
         await src.copy(dest);
         await src.delete();
       }
-      final id = await _db.into(_db.billImages).insert(
+      final id = await _db
+          .into(_db.billImages)
+          .insert(
             BillImagesCompanion.insert(
               billId: billId,
               objectKey: photos.objectKeyFor(occurredOn, fileName),
@@ -62,8 +62,9 @@ class BillImageRepository {
             ),
           );
       result.add(
-        await (_db.select(_db.billImages)..where((i) => i.id.equals(id)))
-            .getSingle(),
+        await (_db.select(
+          _db.billImages,
+        )..where((i) => i.id.equals(id))).getSingle(),
       );
     }
     return result;
@@ -98,8 +99,7 @@ class BillImageRepository {
   /// 一次性查询——删图不更新 bills 表，快照会让角标残留
   Stream<Set<int>> watchBillIdsWithImages(List<int> billIds) {
     if (billIds.isEmpty) return Stream.value(const <int>{});
-    return (_db.select(_db.billImages)
-          ..where((i) => i.billId.isIn(billIds)))
+    return (_db.select(_db.billImages)..where((i) => i.billId.isIn(billIds)))
         .watch()
         .map((rows) => rows.map((r) => r.billId).toSet());
   }
@@ -107,10 +107,11 @@ class BillImageRepository {
   /// 某账单图片数量（记一笔页图片(N) 计数用）
   Future<int> countImagesByBillId(int billId) async {
     final count = _db.billImages.id.count();
-    final row = await (_db.selectOnly(_db.billImages)
-          ..addColumns([count])
-          ..where(_db.billImages.billId.equals(billId)))
-        .getSingle();
+    final row =
+        await (_db.selectOnly(_db.billImages)
+              ..addColumns([count])
+              ..where(_db.billImages.billId.equals(billId)))
+            .getSingle();
     return row.read(count) ?? 0;
   }
 
@@ -150,7 +151,10 @@ class BillImageRepository {
   /// 图片同步计数流（总数 + 未同步数）：同步页统计与各处红点角标的
   /// 数据源。个人记账量级表很小，全表 watch 后 Dart 端过滤足够
   Stream<({int total, int pending})> watchSyncCount() {
-    return _db.select(_db.billImages).watch().map(
+    return _db
+        .select(_db.billImages)
+        .watch()
+        .map(
           (rows) => (
             total: rows.length,
             pending: rows
@@ -169,8 +173,9 @@ class BillImageRepository {
   Future<bool> _uploadOne(BillImage image, S3CompatibleClient client) async {
     final file = File(image.localPath);
     if (!await file.exists()) {
-      await (_db.delete(_db.billImages)..where((i) => i.id.equals(image.id)))
-          .go();
+      await (_db.delete(
+        _db.billImages,
+      )..where((i) => i.id.equals(image.id))).go();
       return false;
     }
     await _updateUploadState(image.id, BillImageUploadState.uploading);
@@ -189,8 +194,9 @@ class BillImageRepository {
   }
 
   Future<void> _updateUploadState(int id, BillImageUploadState state) {
-    return (_db.update(_db.billImages)..where((i) => i.id.equals(id)))
-        .write(BillImagesCompanion(uploadState: Value(state)));
+    return (_db.update(_db.billImages)..where((i) => i.id.equals(id))).write(
+      BillImagesCompanion(uploadState: Value(state)),
+    );
   }
 
   // ---------- 读取兜底与删除 ----------
@@ -215,9 +221,13 @@ class BillImageRepository {
 
   /// 删除单张图片：记录与本地文件同步删；云存储已启用时异步删云端
   /// 对象（失败留孤儿可接受，静默不打扰）
-  Future<void> deleteImage(BillImage image, {S3CompatibleClient? client}) async {
-    await (_db.delete(_db.billImages)..where((i) => i.id.equals(image.id)))
-        .go();
+  Future<void> deleteImage(
+    BillImage image, {
+    S3CompatibleClient? client,
+  }) async {
+    await (_db.delete(
+      _db.billImages,
+    )..where((i) => i.id.equals(image.id))).go();
     final file = File(image.localPath);
     if (await file.exists()) {
       try {
@@ -249,9 +259,9 @@ class BillImageRepository {
     Uint8List bytes, {
     S3CompatibleClient? client,
   }) async {
-    final bill = await (_db.select(_db.bills)
-          ..where((b) => b.id.equals(old.billId)))
-        .getSingle();
+    final bill = await (_db.select(
+      _db.bills,
+    )..where((b) => b.id.equals(old.billId))).getSingle();
     final stagedPath = await photos.stage(bytes);
     final src = File(stagedPath);
     if (!await src.exists()) return null;
@@ -265,7 +275,9 @@ class BillImageRepository {
       await src.copy(dest);
       await src.delete();
     }
-    final id = await _db.into(_db.billImages).insert(
+    final id = await _db
+        .into(_db.billImages)
+        .insert(
           BillImagesCompanion.insert(
             billId: old.billId,
             objectKey: photos.objectKeyFor(bill.date, fileName),
@@ -274,9 +286,9 @@ class BillImageRepository {
             sort: Value(old.sort),
           ),
         );
-    final created = await (_db.select(_db.billImages)
-          ..where((i) => i.id.equals(id)))
-        .getSingle();
+    final created = await (_db.select(
+      _db.billImages,
+    )..where((i) => i.id.equals(id))).getSingle();
     await deleteImage(old, client: client);
     return created;
   }

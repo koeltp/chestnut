@@ -48,8 +48,9 @@ class SystemDownloadSnapshot {
 /// [channel] 仅供测试注入；生产用默认通道。
 class SystemDownloader {
   SystemDownloader({MethodChannel? channel})
-      : _channel = channel ??
-            const MethodChannel('top.taipi.chestnut/system_downloader');
+    : _channel =
+          channel ??
+          const MethodChannel('top.taipi.chestnut/system_downloader');
 
   final MethodChannel _channel;
 
@@ -78,8 +79,9 @@ class SystemDownloader {
   /// 查询下载快照；通道异常原样抛 [PlatformException]，
   /// 记录不存在时返回 status=0 的快照而非 null（与原生约定一致）
   Future<SystemDownloadSnapshot> query(int id) async {
-    final raw =
-        await _channel.invokeMethod<Map<Object?, Object?>>('query', {'id': id});
+    final raw = await _channel.invokeMethod<Map<Object?, Object?>>('query', {
+      'id': id,
+    });
     if (raw == null) {
       return const SystemDownloadSnapshot(status: 0, received: 0, total: -1);
     }
@@ -93,7 +95,8 @@ class SystemDownloader {
   }
 
   /// 取消并删除下载（含半途/已落盘文件）
-  Future<void> cancel(int id) => _channel.invokeMethod<void>('cancel', {'id': id});
+  Future<void> cancel(int id) =>
+      _channel.invokeMethod<void>('cancel', {'id': id});
 
   /// 清空更新目录里的历次残留 APK
   Future<void> cleanup() => _channel.invokeMethod<void>('cleanup');

@@ -95,11 +95,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
                     color: Colors.black.withValues(alpha: 0.45),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.close,
-                    size: 20,
-                    color: Colors.white,
-                  ),
+                  child: const Icon(Icons.close, size: 20, color: Colors.white),
                 ),
               ),
             ),
@@ -111,9 +107,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
                 alignment: Alignment.bottomCenter,
                 child: Container(
                   margin: EdgeInsets.only(
-                    bottom: widget.onEdit != null
-                        ? _bottomBarExtent + 16
-                        : 20,
+                    bottom: widget.onEdit != null ? _bottomBarExtent + 16 : 20,
                   ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -156,12 +150,13 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
                         borderRadius: BorderRadius.circular(8),
                         child: const Padding(
                           padding: EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 10),
+                            horizontal: 8,
+                            vertical: 10,
+                          ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.edit,
-                                  size: 18, color: Colors.white),
+                              Icon(Icons.edit, size: 18, color: Colors.white),
                               SizedBox(width: 6),
                               Text(
                                 '编辑',
@@ -182,7 +177,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 22, vertical: 8),
+                            horizontal: 22,
+                            vertical: 8,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(999),
                           ),

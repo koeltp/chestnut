@@ -101,6 +101,8 @@ flutter run --release
 
 不插数据线调试（二维码配对 / adb 直连组合）的实操命令见 [docs/development.md](docs/development.md)。
 
+第一次接手这个项目，先读[docs/onboarding.md](docs/onboarding.md)：数据流、分层职责、状态与流的铁律、高风险区与上手任务。
+
 ## 发布构建
 
 只打 arm64 架构（近十年安卓手机均为该架构）：

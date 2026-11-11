@@ -69,10 +69,7 @@ class DebtFlowRow extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.divider,
-                          width: 1,
-                        ),
+                        border: Border.all(color: AppColors.divider, width: 1),
                       ),
                       child: const Icon(
                         Icons.photo_camera,
@@ -185,10 +182,7 @@ class DebtFlowRow extends StatelessWidget {
       ),
       child: const Text(
         '未计入',
-        style: TextStyle(
-          fontSize: 10,
-          color: AppColors.textSecondary,
-        ),
+        style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
       ),
     );
   }

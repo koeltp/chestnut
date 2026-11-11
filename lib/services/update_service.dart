@@ -51,9 +51,10 @@ class UpdateInfo {
       sha256: hash is String && hash.isNotEmpty ? hash.toLowerCase() : null,
       fileSize: json['fileSize'] is int ? json['fileSize'] as int : null,
       forceUpdate: json['forceUpdate'] == true,
-      releaseNotes: (json['releaseNotes'] as List?)
-              ?.whereType<String>()
-              .toList(growable: false) ??
+      releaseNotes:
+          (json['releaseNotes'] as List?)?.whereType<String>().toList(
+            growable: false,
+          ) ??
           const <String>[],
       publishedAt: json['publishedAt'] as String?,
     );
@@ -125,14 +126,14 @@ class _PendingDownload {
   }
 
   Map<String, dynamic> toJson() => {
-        'downloadId': downloadId,
-        'versionCode': info.versionCode,
-        'versionName': info.versionName,
-        'apkUrl': info.apkUrl,
-        'sha256': info.sha256,
-        'fileSize': info.fileSize,
-        'fileName': fileName,
-      };
+    'downloadId': downloadId,
+    'versionCode': info.versionCode,
+    'versionName': info.versionName,
+    'apkUrl': info.apkUrl,
+    'sha256': info.sha256,
+    'fileSize': info.fileSize,
+    'fileName': fileName,
+  };
 
   final int downloadId;
   final UpdateInfo info;
@@ -151,8 +152,8 @@ class _PendingDownload {
 class UpdateService {
   /// [client] 与 [downloader] 仅供测试注入 mock；生产路径不传按需自建
   UpdateService({http.Client? client, SystemDownloader? downloader})
-      : _injectedClient = client,
-        _downloader = downloader ?? SystemDownloader();
+    : _injectedClient = client,
+      _downloader = downloader ?? SystemDownloader();
 
   final http.Client? _injectedClient;
   final SystemDownloader _downloader;
@@ -225,12 +226,14 @@ class UpdateService {
     // CDN 按完整 URL（含查询串）缓存对象：同名 APK 被新版本替换后，
     // 各边缘节点可能在缓存 TTL 内继续吐旧包，必须带时间戳强制回源
     final original = Uri.parse(info.apkUrl);
-    final url = original.replace(
-      queryParameters: <String, String>{
-        ...original.queryParameters,
-        't': '${DateTime.now().millisecondsSinceEpoch}',
-      },
-    ).toString();
+    final url = original
+        .replace(
+          queryParameters: <String, String>{
+            ...original.queryParameters,
+            't': '${DateTime.now().millisecondsSinceEpoch}',
+          },
+        )
+        .toString();
     final int id;
     try {
       id = await _downloader.start(

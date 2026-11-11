@@ -85,7 +85,10 @@ void main() {
         apkUrl: 'u',
         publishedAt: '2026-10-24T06:12:05+00:00',
       );
-      expect(info.publishedAtLocalText, matches(RegExp(r'^\d{4}-\d{2}-\d{2} ')));
+      expect(
+        info.publishedAtLocalText,
+        matches(RegExp(r'^\d{4}-\d{2}-\d{2} ')),
+      );
     });
 
     test('缺失或非法值返回 null 而不是抛异常', () {
@@ -212,7 +215,8 @@ void main() {
         versionCode: 1,
         versionName: '1',
         apkUrl: 'u',
-        sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+        sha256:
+            '0000000000000000000000000000000000000000000000000000000000000000',
       );
       await expectLater(
         service.verifyApk(write(bytes), info),
@@ -230,8 +234,7 @@ void main() {
       final service = UpdateService();
       final file = write(bytes);
       // 用文件的真实摘要构造应匹配的清单
-      final realSha =
-          (await sha256.bind(file.openRead()).last).toString();
+      final realSha = (await sha256.bind(file.openRead()).last).toString();
       final real = UpdateInfo(
         versionCode: 1,
         versionName: '1',
@@ -279,20 +282,21 @@ void main() {
       handlers = {};
       handlers['cancel'] = (_) => 1;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(const MethodChannel(channelName),
-              (call) async {
-        final handler = handlers[call.method];
-        if (handler == null) throw MissingPluginException();
-        switch (call.method) {
-          case 'start':
-            startArgs.add(call.arguments);
-          case 'cancel':
-            cancelArgs.add(call.arguments);
-          case 'cleanup':
-            cleanupCount++;
-        }
-        return handler(call.arguments);
-      });
+          .setMockMethodCallHandler(const MethodChannel(channelName), (
+            call,
+          ) async {
+            final handler = handlers[call.method];
+            if (handler == null) throw MissingPluginException();
+            switch (call.method) {
+              case 'start':
+                startArgs.add(call.arguments);
+              case 'cancel':
+                cancelArgs.add(call.arguments);
+              case 'cleanup':
+                cleanupCount++;
+            }
+            return handler(call.arguments);
+          });
       SharedPreferences.setMockInitialValues(<String, Object>{});
     });
 
@@ -303,16 +307,16 @@ void main() {
     });
 
     UpdateService service() => UpdateService(
-          downloader: SystemDownloader(channel: const MethodChannel(channelName)),
-        );
+      downloader: SystemDownloader(channel: const MethodChannel(channelName)),
+    );
 
     UpdateInfo info({String? sha256, int? fileSize}) => UpdateInfo(
-          versionCode: 6029,
-          versionName: '9.9.9',
-          apkUrl: 'https://example.com/chestnut-9.9.9.apk',
-          sha256: sha256,
-          fileSize: fileSize,
-        );
+      versionCode: 6029,
+      versionName: '9.9.9',
+      apkUrl: 'https://example.com/chestnut-9.9.9.apk',
+      sha256: sha256,
+      fileSize: fileSize,
+    );
 
     /// 用真实字节构造一条"系统下载完成"的记录，返回待校验文件
     Future<File> seedCompletedDownload(
@@ -324,12 +328,12 @@ void main() {
       handlers['start'] = (_) => 4242;
       handlers['cleanup'] = (_) => null;
       handlers['query'] = (_) => {
-            'status': SystemDownloadStatus.successful,
-            'received': content.length,
-            'total': content.length,
-            'localUri': Uri.file(file.path).toString(),
-            'reason': 0,
-          };
+        'status': SystemDownloadStatus.successful,
+        'received': content.length,
+        'total': content.length,
+        'localUri': Uri.file(file.path).toString(),
+        'reason': 0,
+      };
       await svc.startDownload(info());
       return file;
     }
@@ -343,20 +347,23 @@ void main() {
       expect(startArgs, hasLength(1));
       final args = startArgs.single as Map<Object?, Object?>;
       expect(args['fileName'], 'chestnut-9.9.9.apk');
-      expect((args['url'] as String).contains('t='), isTrue,
-          reason: 'CDN 缓存穿透时间戳必须带上');
+      expect(
+        (args['url'] as String).contains('t='),
+        isTrue,
+        reason: 'CDN 缓存穿透时间戳必须带上',
+      );
       expect(args['title'], '栗子记账 v9.9.9');
       expect(args['sha256'], 'deadbeef', reason: '校验参数透传给原生 Worker');
       expect(args['fileSize'], 100);
 
       // 凭据已落库：能查到进行中快照
       handlers['query'] = (_) => {
-            'status': SystemDownloadStatus.running,
-            'received': 10,
-            'total': 100,
-            'localUri': '',
-            'reason': 0,
-          };
+        'status': SystemDownloadStatus.running,
+        'received': 10,
+        'total': 100,
+        'localUri': '',
+        'reason': 0,
+      };
       final snapshot = await svc.pollDownloadSnapshot();
       expect(snapshot, isNotNull);
       expect(snapshot!.status, SystemDownloadStatus.running);
@@ -371,8 +378,11 @@ void main() {
       await expectLater(
         service().startDownload(info()),
         throwsA(
-          isA<UpdateException>()
-              .having((e) => e.message, 'message', '无法开始下载，请稍后再试'),
+          isA<UpdateException>().having(
+            (e) => e.message,
+            'message',
+            '无法开始下载，请稍后再试',
+          ),
         ),
       );
     });
@@ -397,24 +407,26 @@ void main() {
       handlers['start'] = (_) => 4242;
       handlers['cleanup'] = (_) => null;
       handlers['query'] = (_) => {
-            'status': SystemDownloadStatus.successful,
-            'received': 4,
-            'total': 4,
-            'localUri': Uri.file(file.path).toString(),
-            'reason': 0,
-          };
+        'status': SystemDownloadStatus.successful,
+        'received': 4,
+        'total': 4,
+        'localUri': Uri.file(file.path).toString(),
+        'reason': 0,
+      };
       // 清单给的 sha 与文件实际内容不符
       await svc.startDownload(
         info(
-          sha256:
-              '0000000000000000000000000000000000000000000000000000000000000000',
+          sha256: '0000000000000000000000000000000000000000000000000000000000000000',
         ),
       );
       await expectLater(
         svc.consumeDownloadedApk(),
         throwsA(
-          isA<UpdateException>()
-              .having((e) => e.message, 'message', contains('哈希校验失败')),
+          isA<UpdateException>().having(
+            (e) => e.message,
+            'message',
+            contains('哈希校验失败'),
+          ),
         ),
       );
       expect(await file.exists(), isFalse, reason: '校验失败的残包应被删除');
@@ -426,18 +438,21 @@ void main() {
       handlers['start'] = (_) => 4242;
       handlers['cleanup'] = (_) => null;
       handlers['query'] = (_) => {
-            'status': SystemDownloadStatus.successful,
-            'received': 4,
-            'total': 4,
-            'localUri': 'content://downloads/x.apk',
-            'reason': 0,
-          };
+        'status': SystemDownloadStatus.successful,
+        'received': 4,
+        'total': 4,
+        'localUri': 'content://downloads/x.apk',
+        'reason': 0,
+      };
       await svc.startDownload(info());
       await expectLater(
         svc.consumeDownloadedApk(),
         throwsA(
-          isA<UpdateException>()
-              .having((e) => e.message, 'message', '无法定位下载的安装包'),
+          isA<UpdateException>().having(
+            (e) => e.message,
+            'message',
+            '无法定位下载的安装包',
+          ),
         ),
       );
       expect(await svc.pollDownloadSnapshot(), isNull);
@@ -448,12 +463,12 @@ void main() {
       handlers['start'] = (_) => 4242;
       handlers['cleanup'] = (_) => null;
       handlers['query'] = (_) => {
-            'status': SystemDownloadStatus.running,
-            'received': 1,
-            'total': 10,
-            'localUri': '',
-            'reason': 0,
-          };
+        'status': SystemDownloadStatus.running,
+        'received': 1,
+        'total': 10,
+        'localUri': '',
+        'reason': 0,
+      };
       await svc.startDownload(info());
       await svc.cancelDownload();
       expect(cancelArgs, hasLength(1));
@@ -474,12 +489,12 @@ void main() {
       handlers['start'] = (_) => 4242;
       handlers['cleanup'] = (_) => null;
       handlers['query'] = (_) => {
-            'status': SystemDownloadStatus.running,
-            'received': 1,
-            'total': 10,
-            'localUri': '',
-            'reason': 0,
-          };
+        'status': SystemDownloadStatus.running,
+        'received': 1,
+        'total': 10,
+        'localUri': '',
+        'reason': 0,
+      };
       await svc.startDownload(info());
 
       // 同版本：复用，不动系统任务

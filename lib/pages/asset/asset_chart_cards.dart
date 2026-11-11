@@ -188,8 +188,6 @@ class _CardTrendChartState extends State<_CardTrendChart> {
           history: snapshot.data!,
           currentNetCents: widget.currentNetCents,
           masked: widget.masked,
-          // 卡片背景色：被裁掉更早数据时左边缘渐隐，暗示可进全屏看
-          leadingFadeColor: Colors.white,
         );
       },
     );

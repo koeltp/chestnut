@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
-import '../../data/net_value_agg.dart' show netDayKey;
 import '../../data/repositories/asset_repository.dart' show AssetSummary;
 import '../../providers/asset_provider.dart';
 import '../../providers/cloud_storage_provider.dart';
@@ -88,7 +86,9 @@ class SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 底部安全区由主框架的导航栏统一处理，页面只避让状态栏
     return SafeArea(
+      bottom: false,
       child: ListView(
         controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(
@@ -353,18 +353,6 @@ class SettingsPageState extends State<SettingsPage> {
               context,
             ).push(MaterialPageRoute<void>(builder: (_) => const AboutPage())),
           ),
-          // 调试包专用：造净值历史，检查日/月/季/年四档的疏密与刻度
-          if (kDebugMode) ...[
-            const Divider(indent: 16, endIndent: 16),
-            _menuItem(
-              context,
-              icon: Icons.science_outlined,
-              color: AppColors.textSecondary,
-              title: '净值测试数据',
-              subtitle: '调试专用：生成 / 清除 20 年净值序列',
-              onTap: () => _showNetSeedDialog(context),
-            ),
-          ],
         ],
       ),
     );
@@ -488,79 +476,6 @@ class SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
-  }
-
-  /// 调试包专用弹窗：生成 / 清除净值测试数据
-  Future<void> _showNetSeedDialog(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: const Text('净值测试数据'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              unawaited(_seedNetTrend(context));
-            },
-            child: const Text('生成 20 年净值序列'),
-          ),
-          SimpleDialogOption(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              unawaited(_clearNetTrend(context));
-            },
-            child: const Text('清除并重算'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 往每日净值表灌 20 年测试序列。
-  ///
-  /// 直接写净值表而不造假资产：曲线只读这张表，测试完点"清除并重算"
-  /// 即可复原；真实资产变动触发的重算也会覆盖这段区间。
-  /// 序列 = 长期上行 + 年周期波动 + 噪声，日档能看到波动、年档能看到趋势。
-  Future<void> _seedNetTrend(BuildContext context) async {
-    final db = context.read<AppDatabase>();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final start = DateTime(now.year - 19, 1, 1);
-    // 20 万起步，每年 +2.4 万
-    const baseCents = 200000 * 100;
-    const yearlyGrowthCents = 24000 * 100;
-    final rows = <NetValueDaysCompanion>[];
-    var day = start;
-    var i = 0;
-    while (day.isBefore(today)) {
-      final years = i / 365.25;
-      final season = math.sin(years * 2 * math.pi) * 40000 * 100;
-      final wobble =
-          math.sin(i * 0.31) * 12000 * 100 + math.sin(i * 1.7) * 3000 * 100;
-      rows.add(
-        NetValueDaysCompanion.insert(
-          day: netDayKey(day),
-          netCents: (baseCents + years * yearlyGrowthCents + season + wobble)
-              .round(),
-          updatedAt: now.millisecondsSinceEpoch,
-        ),
-      );
-      day = day.add(const Duration(days: 1));
-      i++;
-    }
-    await db.batch((b) => b.insertAllOnConflictUpdate(db.netValueDays, rows));
-    if (!context.mounted) return;
-    showAppToast(context, '已生成 ${rows.length} 天净值测试数据');
-  }
-
-  /// 清空净值表后按真实资产快照重算
-  Future<void> _clearNetTrend(BuildContext context) async {
-    final db = context.read<AppDatabase>();
-    // 表里只存昨天及以前的行，整表删掉再回填即可彻底复原
-    await db.delete(db.netValueDays).go();
-    await db.rebuildNetValueDays();
-    if (!context.mounted) return;
-    showAppToast(context, '已清除测试净值');
   }
 
   /// 导出 CSV 并调起系统分享

@@ -13,8 +13,9 @@ import 'package:intl/intl.dart';
 
 /// 性能基线测试：5 万笔账单量级下"全部"模式数据链路各环节耗时
 ///
-/// 只打印不硬断言（性能数字随机器/负载抖动，硬断言会随机挂），
-/// 用于决策统计页全部模式是否需要分页。跑法：
+/// 打印数字 + 宽松上限断言：阈值故意留 10 倍以上余量，只拦
+/// "数量级回退"（例如把 O(n) 写成 O(n²) 或逐行 DateTime.parse），
+/// 不因机器负载抖动随机挂。跑法：
 /// `flutter test test/perf_baseline_test.dart`
 ///
 /// 环节口径与统计页 _buildBody 一致：全量流首帧 → filterBills →
@@ -160,18 +161,32 @@ void main() {
       '  [perf] watchNetHistory 全量首帧（${history.length} 行）: '
       '${sw.elapsedMicroseconds / 1000} ms',
     );
+    expect(
+      sw.elapsedMicroseconds,
+      lessThan(1500 * 1000),
+      reason: '20 年全量首帧超过 1.5s，疑似查询/组装逻辑回退',
+    );
 
     // 环节 1：Dart 侧四档聚合（全屏全量口径）
     const currentNet = 6400000;
     for (final range in NetTrendRange.values) {
-      bench('netTrendPoints ${netTrendRangeLabel(range)}·全屏全量+纵轴', () {
-        final pts = netTrendPoints(
-          range: range,
-          history: history,
-          currentNetCents: currentNet,
-        );
-        netTrendYRange(pts);
-      });
+      final us = bench(
+        'netTrendPoints ${netTrendRangeLabel(range)}·全屏全量+纵轴',
+        () {
+          final pts = netTrendPoints(
+            range: range,
+            history: history,
+            currentNetCents: currentNet,
+          );
+          netTrendYRange(pts);
+        },
+      );
+      // 季档曾因逐行 DateTime.parse 飙到 280ms；这里用 250ms 兜住同类回退
+      expect(
+        us,
+        lessThan(250 * 1000),
+        reason: '${netTrendRangeLabel(range)} 档聚合超过 250ms，疑似逐行解析/重复遍历',
+      );
     }
 
     // 环节 2：对照——把"每期最后一条"下推到 SQL 的成本

@@ -97,10 +97,7 @@ class _PinPadInputState extends State<PinPadInput>
                     color: i < _digits.length
                         ? AppColors.primary
                         : Colors.transparent,
-                    border: Border.all(
-                      color: AppColors.primary,
-                      width: 1.5,
-                    ),
+                    border: Border.all(color: AppColors.primary, width: 1.5),
                   ),
                 ),
             ],
@@ -109,40 +106,40 @@ class _PinPadInputState extends State<PinPadInput>
         const SizedBox(height: 28),
         // 九宫格：3×4 布局，底行三键等分
         SizedBox(
-            width: 264,
-            child: Column(
-              children: [
-                // 行间距 16：键面之间留呼吸感，避免上下行挤在一起
-                for (final row in const [
-                  [1, 2, 3],
-                  [4, 5, 6],
-                  [7, 8, 9],
-                ]) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [for (final d in row) _key(d)],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                // 底行与上三行同用 spaceBetween：边缘键中心严格重合
-                // （Expanded 等分会让 0/退格相对 2/5/8、3/6/9 列偏内）；
-                // 指纹缺席时以 64 空占位保持键位不变
+          width: 264,
+          child: Column(
+            children: [
+              // 行间距 16：键面之间留呼吸感，避免上下行挤在一起
+              for (final row in const [
+                [1, 2, 3],
+                [4, 5, 6],
+                [7, 8, 9],
+              ]) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    widget.onBiometric != null
-                        ? _iconKey(
-                            widget.biometricIcon,
-                            onTap: widget.onBiometric!,
-                          )
-                        : const SizedBox(width: 64, height: 64),
-                    _key(0),
-                    _iconKey(Icons.backspace_outlined, onTap: _backspace),
-                  ],
+                  children: [for (final d in row) _key(d)],
                 ),
+                const SizedBox(height: 16),
               ],
-            ),
+              // 底行与上三行同用 spaceBetween：边缘键中心严格重合
+              // （Expanded 等分会让 0/退格相对 2/5/8、3/6/9 列偏内）；
+              // 指纹缺席时以 64 空占位保持键位不变
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  widget.onBiometric != null
+                      ? _iconKey(
+                          widget.biometricIcon,
+                          onTap: widget.onBiometric!,
+                        )
+                      : const SizedBox(width: 64, height: 64),
+                  _key(0),
+                  _iconKey(Icons.backspace_outlined, onTap: _backspace),
+                ],
+              ),
+            ],
           ),
+        ),
       ],
     );
   }

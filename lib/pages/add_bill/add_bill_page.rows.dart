@@ -25,7 +25,9 @@ mixin _NoteRows on _AddBillBase {
           GestureDetector(
             onTap: _showTagSheet,
             child: Text(
-              _draft.selectedTagIds.isEmpty ? '#' : '#(${_draft.selectedTagIds.length})',
+              _draft.selectedTagIds.isEmpty
+                  ? '#'
+                  : '#(${_draft.selectedTagIds.length})',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,

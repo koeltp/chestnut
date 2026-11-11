@@ -5,40 +5,78 @@ import '../../models/enums.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/date_label_util.dart';
 import '../../utils/money_util.dart';
+import '../../widgets/app_segmented.dart';
 import '../../widgets/bill_detail_sheet.dart';
 import '../../widgets/bill_list_item.dart';
 import '../../widgets/category_avatar.dart';
 import '../../widgets/section_card.dart';
 
-/// 固定头部代理：滚动时类型分段器与年月条整体钉在页面顶部
-class StatsHeaderDelegate extends SliverPersistentHeaderDelegate {
-  StatsHeaderDelegate({required this.child, required this.height});
+/// 页面固定头部：全部视图多一行收支类型分段器，下面是年月胶囊条。
+/// 只依赖查询参数、不依赖账单数据，所以放在数据流外层——
+/// 切月换流时头部保持不动，不会跟着 loading 一起消失。
+class StatsHeader extends StatelessWidget {
+  const StatsHeader({
+    super.key,
+    required this.isAllView,
+    required this.type,
+    required this.onTypeChanged,
+    required this.items,
+    required this.period,
+    required this.month,
+    required this.isCustom,
+    required this.onTap,
+  });
 
-  final Widget child;
-  final double height;
-
-  /// 年月条行（含底部 5px 渐变立体条）
-  static const double stripHeight = 51;
-
-  /// 收支类型分段器行（分段器高约 39，中文行高略大，留余量取 52）
-  static const double segHeight = 52;
+  final bool isAllView;
+  final BillType type;
+  final ValueChanged<BillType> onTypeChanged;
+  final List<(int, int?)> items;
+  final HomePeriod period;
+  final DateTime month;
+  final bool isCustom;
+  final void Function(int year, int? month) onTap;
 
   @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) => child;
-
-  @override
-  bool shouldRebuild(StatsHeaderDelegate oldDelegate) =>
-      oldDelegate.child != child || oldDelegate.height != height;
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isAllView)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimens.pagePadding,
+                vertical: 6,
+              ),
+              child: Center(
+                child: AppSegmented<BillType>(
+                  // 等分风格：两项各占一半无缝贴合，
+                  // 总宽仍为内容自然宽（窄条居中不变）
+                  fit: AppSegmentedFit.equal,
+                  options: [
+                    for (final t in BillType.values.where(
+                      (t) => t != BillType.transfer,
+                    ))
+                      (t, t.label),
+                  ],
+                  colors: const [AppColors.expense, AppColors.income],
+                  selected: type,
+                  onChanged: onTypeChanged,
+                ),
+              ),
+            ),
+          StatsPeriodStrip(
+            items: items,
+            period: period,
+            month: month,
+            isCustom: isCustom,
+            onTap: onTap,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 标题行下的年月胶囊条（固定在页面顶部，记一笔式底部立体效果）：
@@ -108,9 +146,7 @@ class _StatsPeriodStripState extends State<StatsPeriodStrip> {
       // 锚点始终按 month 字段（month 是筛选面板应用时设置的起点月）
       for (var i = 0; i < widget.items.length; i++) {
         final (y, m) = widget.items[i];
-        if (m != null &&
-            widget.month.year == y &&
-            widget.month.month == m) {
+        if (m != null && widget.month.year == y && widget.month.month == m) {
           return i;
         }
       }

@@ -121,10 +121,7 @@ class CategoryRepository {
   /// 账单备注追加"原分类:xx"（挂二级写"父/子"，与钱迹导入口径一致），
   /// 便于迁移后追溯原归属。预算按月迁移，目标同月已有预算时金额并入
   /// 目标行（(month, categoryId) 唯一约束，直接改挂会撞 UNIQUE 异常）
-  Future<void> migrateAndDeleteCategory(
-    int categoryId,
-    int targetCategoryId,
-  ) {
+  Future<void> migrateAndDeleteCategory(int categoryId, int targetCategoryId) {
     return _db.transaction(() async {
       final subs = await (_db.select(
         _db.categories,
@@ -155,17 +152,18 @@ class CategoryRepository {
       }
 
       // 账单整体改挂目标分类（删一级时其二级账单变为目标下的直挂）
-      await (_db.update(_db.bills)..where((b) => b.categoryId.isIn(ids)))
-          .write(BillsCompanion(categoryId: Value(targetCategoryId)));
+      await (_db.update(_db.bills)..where((b) => b.categoryId.isIn(ids))).write(
+        BillsCompanion(categoryId: Value(targetCategoryId)),
+      );
 
       // 预算按月迁移：同月已有目标预算则金额并入目标行并删源行，
       // 规避 (month, categoryId) 唯一约束
       final movedBudgets = await (_db.select(
         _db.budgets,
       )..where((b) => b.categoryId.isIn(ids))).get();
-      final targetBudgets = await (_db.select(_db.budgets)
-            ..where((b) => b.categoryId.equals(targetCategoryId)))
-          .get();
+      final targetBudgets = await (_db.select(
+        _db.budgets,
+      )..where((b) => b.categoryId.equals(targetCategoryId))).get();
       final targetByMonth = {for (final b in targetBudgets) b.month: b};
       for (final budget in movedBudgets) {
         final existing = targetByMonth[budget.month];
@@ -173,14 +171,16 @@ class CategoryRepository {
           await (_db.update(_db.budgets)..where((b) => b.id.equals(budget.id)))
               .write(BudgetsCompanion(categoryId: Value(targetCategoryId)));
         } else {
-          await (_db.update(_db.budgets)..where((b) => b.id.equals(existing.id)))
-              .write(
-                BudgetsCompanion(
-                  amountCents: Value(existing.amountCents + budget.amountCents),
-                ),
-              );
-          await (_db.delete(_db.budgets)..where((b) => b.id.equals(budget.id)))
-              .go();
+          await (_db.update(
+            _db.budgets,
+          )..where((b) => b.id.equals(existing.id))).write(
+            BudgetsCompanion(
+              amountCents: Value(existing.amountCents + budget.amountCents),
+            ),
+          );
+          await (_db.delete(
+            _db.budgets,
+          )..where((b) => b.id.equals(budget.id))).go();
         }
       }
 

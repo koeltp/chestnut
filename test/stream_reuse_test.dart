@@ -10,6 +10,7 @@ import 'package:chestnut/pages/home/home_page.dart';
 import 'package:chestnut/providers/asset_provider.dart';
 import 'package:chestnut/providers/bill_provider.dart';
 import 'package:chestnut/providers/cloud_storage_provider.dart';
+import 'package:chestnut/widgets/stream_cache_mixin.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -135,6 +136,54 @@ void main() {
     await tester.pump();
     expect(provider.snapshotCalls, 1);
   });
+
+  testWidgets('流缓存：切走再切回同一条件时给新流，不复用已订阅的实例', (tester) async {
+    final host = GlobalKey<_SlotHostState>();
+    await tester.pumpWidget(MaterialApp(home: _SlotHost(key: host)));
+    final state = host.currentState!;
+    expect(state.built.length, 1);
+    final first = state.built.first;
+
+    // 条件不变的重建：复用同一实例，不重订阅
+    state.rebuild();
+    await tester.pump();
+    expect(state.built.last, same(first));
+
+    // 条件变化：换新流
+    state.setKey('b');
+    await tester.pump();
+    expect(state.built.last, isNot(same(first)));
+
+    // 切回原条件：必须是新实例。drift 查询流是单订阅的，
+    // 复用已经 listen 过的旧实例会抛
+    // Bad state: Stream has already been listened to（统计页切月崩溃的根因）
+    state.setKey('a');
+    await tester.pump();
+    expect(state.built.last, isNot(same(first)));
+  });
+}
+
+/// 测试用宿主：每帧按当前 key 从 Mixin 取流并记录实例
+class _SlotHost extends StatefulWidget {
+  const _SlotHost({super.key});
+
+  @override
+  State<_SlotHost> createState() => _SlotHostState();
+}
+
+class _SlotHostState extends State<_SlotHost> with StreamCacheMixin<_SlotHost> {
+  final List<Stream<int>> built = [];
+  String _key = 'a';
+
+  void rebuild() => setState(() {});
+
+  void setKey(String key) => setState(() => _key = key);
+
+  @override
+  Widget build(BuildContext context) {
+    built.add(ensureSingleStream<int>('slot', _key, () => Stream.value(1)));
+    return const SizedBox.shrink();
+  }
 }
 
 /// 计数版流水视图仓储：记录 watchHomeFlow 被调用的次数

@@ -68,8 +68,7 @@ mixin _TransferArea on _AddBillBase {
   /// 决定还款提示卡是否显示，其它账户不显示
   bool get _isToCreditCard {
     final to = _assetById(_draft.toAssetId);
-    return to != null &&
-        AssetGroups.groupOf(to.category) == AssetGroups.credit;
+    return to != null && AssetGroups.groupOf(to.category) == AssetGroups.credit;
   }
 
   /// 转出/转入之间的分隔：贯穿左右的淡横线，互换浮钮叠压在线的中点
@@ -214,10 +213,7 @@ mixin _TransferArea on _AddBillBase {
   /// 弹窗选择转账账户：转出/转入均必选（allowNone = false），
   /// 下滑关闭等取消操作返回 null，保持当前值不变
   Future<void> _pickTransferAsset({required bool to}) async {
-    final result = await showAssetPickSheet(
-      context,
-      assets: _allAssets,
-    );
+    final result = await showAssetPickSheet(context, assets: _allAssets);
     if (result == null || !mounted) return;
     final pickedId = result.$1?.id;
     setState(() {

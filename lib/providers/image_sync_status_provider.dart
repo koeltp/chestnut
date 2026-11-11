@@ -58,11 +58,11 @@ class ImageSyncStatusProvider extends ChangeNotifier {
   var _debt = const (total: 0, pending: 0);
 
   ImageSyncCounts get counts => ImageSyncCounts(
-        receiptTotal: _receipt.total,
-        receiptPending: _receipt.pending,
-        debtTotal: _debt.total,
-        debtPending: _debt.pending,
-      );
+    receiptTotal: _receipt.total,
+    receiptPending: _receipt.pending,
+    debtTotal: _debt.total,
+    debtPending: _debt.pending,
+  );
 
   @override
   void dispose() {

@@ -22,20 +22,15 @@ class EmptyStateCard extends StatelessWidget {
   });
 
   /// 真空态："这个月还没有记账"
-  const EmptyStateCard.none({
-    super.key,
-    String? periodLabel,
-  })  : icon = Icons.savings_outlined,
-        title = periodLabel ?? '这个月还没有记账',
-        subtitle = '点击下方 + 记下第一笔吧',
-        actionLabel = null,
-        onAction = null;
+  const EmptyStateCard.none({super.key, String? periodLabel})
+    : icon = Icons.savings_outlined,
+      title = periodLabel ?? '这个月还没有记账',
+      subtitle = '点击下方 + 记下第一笔吧',
+      actionLabel = null,
+      onAction = null;
 
   /// 筛选后无数据
-  factory EmptyStateCard.filtered({
-    Key? key,
-    required VoidCallback onClear,
-  }) =>
+  factory EmptyStateCard.filtered({Key? key, required VoidCallback onClear}) =>
       EmptyStateCard._(
         key: key,
         icon: Icons.filter_alt_off_outlined,
@@ -49,15 +44,14 @@ class EmptyStateCard extends StatelessWidget {
   factory EmptyStateCard.customRange({
     Key? key,
     required VoidCallback onAdjust,
-  }) =>
-      EmptyStateCard._(
-        key: key,
-        icon: Icons.event_busy_outlined,
-        title: '该范围内暂无账单',
-        subtitle: '试试调整查询区间',
-        actionLabel: '调整区间',
-        onAction: onAdjust,
-      );
+  }) => EmptyStateCard._(
+    key: key,
+    icon: Icons.event_busy_outlined,
+    title: '该范围内暂无账单',
+    subtitle: '试试调整查询区间',
+    actionLabel: '调整区间',
+    onAction: onAdjust,
+  );
 
   /// 完全自定义
   factory EmptyStateCard.custom({
@@ -67,15 +61,14 @@ class EmptyStateCard extends StatelessWidget {
     required String subtitle,
     String? actionLabel,
     VoidCallback? onAction,
-  }) =>
-      EmptyStateCard._(
-        key: key,
-        icon: icon,
-        title: title,
-        subtitle: subtitle,
-        actionLabel: actionLabel,
-        onAction: onAction,
-      );
+  }) => EmptyStateCard._(
+    key: key,
+    icon: icon,
+    title: title,
+    subtitle: subtitle,
+    actionLabel: actionLabel,
+    onAction: onAction,
+  );
 
   final IconData icon;
   final String title;
@@ -114,7 +107,10 @@ class EmptyStateCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
           ),
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: AppDimens.gapMd),

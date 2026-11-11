@@ -21,8 +21,7 @@ class DebtNoteProvider extends ChangeNotifier {
   Future<String> stagePhoto(Uint8List raw) => _repo.photos.stage(raw);
 
   /// 丢弃一张暂存照片
-  Future<void> discardStagedPhoto(String path) =>
-      _repo.photos.discard(path);
+  Future<void> discardStagedPhoto(String path) => _repo.photos.discard(path);
 
   /// 某借条的全部照片（编辑页初始化回显用）
   Future<List<DebtNoteImage>> photosByNoteId(int noteId) =>
@@ -39,18 +38,17 @@ class DebtNoteProvider extends ChangeNotifier {
     int? relatedAssetId,
     bool includeInTotal = true,
     List<String> stagedPhotoPaths = const [],
-  }) =>
-      _repo.insertDebtNote(
-        direction: direction,
-        personName: personName,
-        amountCents: amountCents,
-        borrowedAt: borrowedAt,
-        repayDueAt: repayDueAt,
-        note: note,
-        relatedAssetId: relatedAssetId,
-        includeInTotal: includeInTotal,
-        stagedPhotoPaths: stagedPhotoPaths,
-      );
+  }) => _repo.insertDebtNote(
+    direction: direction,
+    personName: personName,
+    amountCents: amountCents,
+    borrowedAt: borrowedAt,
+    repayDueAt: repayDueAt,
+    note: note,
+    relatedAssetId: relatedAssetId,
+    includeInTotal: includeInTotal,
+    stagedPhotoPaths: stagedPhotoPaths,
+  );
 
   /// 更新借条（照片参数：removedPhotoIds 删已有照片、stagedPhotoPaths
   /// 加新照片，可同时传；client 非空时同步清理被删照片的云端对象）
@@ -66,25 +64,21 @@ class DebtNoteProvider extends ChangeNotifier {
     List<int> removedPhotoIds = const [],
     List<String> stagedPhotoPaths = const [],
     S3CompatibleClient? client,
-  }) =>
-      _repo.updateDebtNote(
-        existing,
-        personName: personName,
-        amountCents: amountCents,
-        borrowedAt: borrowedAt,
-        repayDueAt: repayDueAt,
-        note: note,
-        relatedAssetId: relatedAssetId,
-        includeInTotal: includeInTotal,
-        removedPhotoIds: removedPhotoIds,
-        stagedPhotoPaths: stagedPhotoPaths,
-        client: client,
-      );
+  }) => _repo.updateDebtNote(
+    existing,
+    personName: personName,
+    amountCents: amountCents,
+    borrowedAt: borrowedAt,
+    repayDueAt: repayDueAt,
+    note: note,
+    relatedAssetId: relatedAssetId,
+    includeInTotal: includeInTotal,
+    removedPhotoIds: removedPhotoIds,
+    stagedPhotoPaths: stagedPhotoPaths,
+    client: client,
+  );
 
   /// 删除借条（照片级联删除，client 非空时一并清云端对象）
-  Future<void> deleteDebtNote(
-    DebtNote note, {
-    S3CompatibleClient? client,
-  }) =>
+  Future<void> deleteDebtNote(DebtNote note, {S3CompatibleClient? client}) =>
       _repo.deleteDebtNote(note, client: client);
 }

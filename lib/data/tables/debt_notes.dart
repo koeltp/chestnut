@@ -28,7 +28,8 @@ class DebtNotes extends Table {
 
   /// 关联的资金类账户：借出 = 钱从此账户出（编辑时提示余额变化），
   /// 借入 = 钱累加到此账户；null = 不关联
-  IntColumn get relatedAssetId => integer().nullable().references(Assets, #id)();
+  IntColumn get relatedAssetId =>
+      integer().nullable().references(Assets, #id)();
 
   /// 借款日期（含时间）
   DateTimeColumn get borrowedAt => dateTime()();
@@ -37,7 +38,8 @@ class DebtNotes extends Table {
   DateTimeColumn get repayDueAt => dateTime().nullable()();
 
   /// 是否计入总借出/总借入：false = 仅台账记录，不参与净值统计
-  BoolColumn get includeInTotal => boolean().withDefault(const Constant(true))();
+  BoolColumn get includeInTotal =>
+      boolean().withDefault(const Constant(true))();
 
   /// 创建时间
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

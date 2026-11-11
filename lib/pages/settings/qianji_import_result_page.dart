@@ -130,9 +130,7 @@ class _QianjiImportResultPageState extends State<QianjiImportResultPage> {
                     ),
                     const SizedBox(height: 8),
                     if (result.fallbackCount > 0)
-                      _detailRow(
-                        '${result.fallbackCount} 笔未匹配分类，已计入「其他」',
-                      ),
+                      _detailRow('${result.fallbackCount} 笔未匹配分类，已计入「其他」'),
                     if (result.unsupportedCount > 0)
                       _detailRow(
                         '${result.unsupportedCount} 笔为退款/转账等不支持类型，已跳过',

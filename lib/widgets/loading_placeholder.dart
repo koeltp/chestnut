@@ -41,3 +41,36 @@ class LoadingPlaceholder extends StatelessWidget {
     );
   }
 }
+
+/// 数据流出错时的统一占位：和 [LoadingPlaceholder] 同一视觉体系，
+/// 但明确表达"是失败，不是还没加载完"——否则错误会被误认成空态或卡死
+class ErrorPlaceholder extends StatelessWidget {
+  const ErrorPlaceholder({super.key, this.text = '数据加载失败，请稍后重试'});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 28,
+            color: AppColors.textSecondary.withValues(alpha: 0.6),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

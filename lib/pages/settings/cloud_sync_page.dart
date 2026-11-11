@@ -62,9 +62,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
     final failed = _total - success;
     showAppToast(
       context,
-      failed <= 0
-          ? '补传完成 · 共 $success 张'
-          : '补传完成 · 成功 $success 张，失败 $failed 张',
+      failed <= 0 ? '补传完成 · 共 $success 张' : '补传完成 · 成功 $success 张，失败 $failed 张',
     );
   }
 
