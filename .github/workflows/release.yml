@@ -60,6 +60,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # 与 ci.yml 保持同一锁定版本，保证发版构建与 CI 检查、本地开发一致
+          flutter-version: 3.47.8
           cache: true
 
       - name: 安装依赖
