@@ -10,6 +10,7 @@ import 'package:chestnut/pages/home/home_page.dart';
 import 'package:chestnut/providers/asset_provider.dart';
 import 'package:chestnut/providers/bill_provider.dart';
 import 'package:chestnut/providers/cloud_storage_provider.dart';
+import 'package:chestnut/providers/settings_provider.dart';
 import 'package:chestnut/widgets/stream_cache_mixin.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -53,6 +54,10 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<BillProvider>.value(value: billProvider),
+          // 顶部卡背景依赖 SettingsProvider（首页真实依赖，需一并注入）
+          ChangeNotifierProvider<SettingsProvider>.value(
+            value: SettingsProvider(prefs),
+          ),
           Provider<AssetFlowViewRepository>.value(value: flowRepo),
         ],
         child: MaterialApp(

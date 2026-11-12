@@ -24,7 +24,8 @@ typedef FilterApplyCallback = void Function(
 /// 搜索框 → 账单日期快捷填充 → 起止日期 → 分类/标签二级弹层多选。
 /// 快捷日期只是"替用户把起止日期填好"，不独立执行、不关闭面板，
 /// 因此可与关键词/分类/标签自由组合。标签弹层内含"管理"入口，
-/// 方便临时新建标签。
+/// 方便临时新建标签。"重置"把草稿恢复默认（本月/无筛选），
+/// 同样不关面板、待确认。
 class StatsFilterSheet extends StatefulWidget {
   const StatsFilterSheet({
     super.key,
@@ -373,6 +374,21 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
     Navigator.pop(context);
   }
 
+  /// 点重置：面板草稿恢复默认（关键词清空、日期回本月、
+  /// 标签/分类全清）——只清草稿不关面板，仍需点"搜索"才生效；
+  /// 默认值与 Tab 同点重置（resetToTop：当月/无筛选）语义对齐
+  void _reset() {
+    setState(() {
+      _keywordCtrl.clear();
+      final r = _quickRange('本月');
+      _start = r.start;
+      _end = r.end;
+      _quick = '本月';
+      _selectedTagIds.clear();
+      _selectedCategoryIds.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -414,25 +430,58 @@ class _StatsFilterSheetState extends State<StatsFilterSheet> {
               const SizedBox(height: 20),
               _buildTagSection(),
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: FilledButton(
-                  onPressed: _apply,
-                  style: FilledButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(64, 36),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    backgroundColor: AppColors.primary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+              // 重置 + 搜索：重置为次要描边样式，搜索保持主视觉
+              Row(
+                children: [
+                  SizedBox(
+                    height: 44,
+                    child: OutlinedButton(
+                      onPressed: _reset,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        minimumSize: const Size(64, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: const BorderSide(color: AppColors.divider),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      child: const Text(
+                        '重置',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ),
                   ),
-                  child: const Text(
-                    '搜索',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: FilledButton(
+                        onPressed: _apply,
+                        style: FilledButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(64, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: AppColors.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: const Text(
+                          '搜索',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),

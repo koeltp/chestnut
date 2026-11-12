@@ -79,6 +79,8 @@ flutter:
     - assets/images/
     # 品牌 logo（SVG，账户分类用）
     - assets/images/brands/
+    # 首页顶部卡背景图：整目录声明，放入新图即自动出现在设置页选择器
+    - assets/images/backgrounds/
     # 更新记录页数据源：与仓库根目录 CHANGELOG.md 同源，发版时随包更新
     - CHANGELOG.md
 

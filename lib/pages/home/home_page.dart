@@ -13,9 +13,11 @@ import '../../models/enums.dart';
 import '../../models/summaries.dart';
 import '../../providers/bill_provider.dart';
 import '../../providers/lock_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/update_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
+import '../../theme/header_background.dart';
 import '../../utils/date_label_util.dart';
 import '../../utils/money_util.dart';
 import '../../widgets/bill_detail_sheet.dart';
@@ -340,8 +342,10 @@ class _SummaryHeader extends StatelessWidget {
     // 按查看模式决定顶栏标题与箭头行为：
     // 按月显示 yyyy年M月、按年显示 yyyy年、"全部"隐藏箭头
     final period = provider.period;
+    // watch 设置项：设置页切换背景后回到首页立即生效
+    final background = context.watch<SettingsProvider>().headerBackground;
     return Container(
-      decoration: const BoxDecoration(gradient: AppColors.headerGradient),
+      decoration: HeaderBackground.decoration(background),
       child: SafeArea(
         bottom: false,
         child: Padding(

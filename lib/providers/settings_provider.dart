@@ -23,6 +23,23 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 首页顶部卡背景的资产路径（HeaderBackground.kPrefKey 同键）；
+  /// null = 经典蓝渐变
+  static const _kHeaderBackground = 'header_background';
+
+  String? get headerBackground => _prefs.getString(_kHeaderBackground);
+
+  /// 切换顶部卡背景；传 null 表示回到经典蓝渐变
+  Future<void> setHeaderBackground(String? value) async {
+    if (value == headerBackground) return;
+    if (value == null) {
+      await _prefs.remove(_kHeaderBackground);
+    } else {
+      await _prefs.setString(_kHeaderBackground, value);
+    }
+    notifyListeners();
+  }
+
   /// 是否开启每日自动备份（公开常量：BackupService 启动时读同一键）
   static const kAutoBackupEnabled = 'auto_backup_enabled';
 

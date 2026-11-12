@@ -51,5 +51,5 @@ flutter test test/perf_baseline_test.dart
 flutter build apk --debug ; adb install -r build\app\outputs\flutter-apk\app-debug.apk ; adb shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 
 # 多设备/无线连接时用 -s 指定 IP:PORT（IP:PORT 换成 adb mdns services 查到的值）
-flutter build apk --debug ; adb -s 192.168.10.3:40845 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:40845 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
+flutter build apk --debug ; adb -s 192.168.10.3:43085 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:43085 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 ```

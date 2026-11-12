@@ -15,6 +15,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/export_service.dart';
 import '../../services/update_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/header_background.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/section_card.dart';
@@ -24,6 +25,7 @@ import 'about_page.dart';
 import 'backup_page.dart';
 import 'category_manage_page.dart';
 import 'cloud_storage_page.dart';
+import 'header_background_page.dart';
 import 'passcode_settings_page.dart';
 import 'tag_manage_page.dart';
 
@@ -242,6 +244,19 @@ class SettingsPageState extends State<SettingsPage> {
         children: [
           _menuItem(
             context,
+            icon: Icons.wallpaper_outlined,
+            color: AppColors.primary,
+            title: '顶部背景',
+            subtitle: _headerBackgroundLabel(),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const HeaderBackgroundPage(),
+              ),
+            ),
+          ),
+          const Divider(indent: 16, endIndent: 16),
+          _menuItem(
+            context,
             icon: Icons.category_outlined,
             color: AppColors.primary,
             title: '分类管理',
@@ -356,6 +371,14 @@ class SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  /// 当前顶部背景的展示名：经典蓝渐变 / 选中图片的文件显示名
+  String _headerBackgroundLabel() {
+    final bg = context.watch<SettingsProvider>().headerBackground;
+    return (bg == null || bg.isEmpty)
+        ? '经典蓝渐变'
+        : HeaderBackground.displayName(bg);
   }
 
   /// 单个菜单项
