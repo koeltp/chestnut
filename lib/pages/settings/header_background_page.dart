@@ -47,47 +47,29 @@ class _HeaderBackgroundPageState extends State<HeaderBackgroundPage> {
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             )
-          : ListView(
+          : GridView.count(
               padding: const EdgeInsets.all(AppDimens.pagePadding),
+              crossAxisCount: 2,
+              mainAxisSpacing: AppDimens.gapMd,
+              crossAxisSpacing: AppDimens.gapMd,
+              childAspectRatio: 4 / 3,
               children: [
-                GridView.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: AppDimens.gapMd,
-                  crossAxisSpacing: AppDimens.gapMd,
-                  childAspectRatio: 4 / 3,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _cell(
-                      label: '经典蓝渐变',
-                      selected: selected == null || selected.isEmpty,
-                      decoration: const BoxDecoration(
-                        gradient: AppColors.headerGradient,
-                      ),
-                      onTap: () => _select(null),
-                    ),
-                    for (final asset in assets)
-                      _cell(
-                        label: HeaderBackground.displayName(asset),
-                        selected: selected == asset,
-                        decoration:
-                            HeaderBackground.decoration(asset) as BoxDecoration,
-                        onTap: () => _select(asset),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: AppDimens.gapMd),
-                const Center(
-                  child: Text(
-                    '新增背景：把 bg_开头的图片放入 assets/images/backgrounds/'
-                    '目录即可自动出现在此处',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
+                _cell(
+                  label: '经典蓝渐变',
+                  selected: selected == null || selected.isEmpty,
+                  decoration: const BoxDecoration(
+                    gradient: AppColors.headerGradient,
                   ),
+                  onTap: () => _select(null),
                 ),
+                for (final asset in assets)
+                  _cell(
+                    label: HeaderBackground.displayName(asset),
+                    selected: selected == asset,
+                    decoration:
+                        HeaderBackground.decoration(asset) as BoxDecoration,
+                    onTap: () => _select(asset),
+                  ),
               ],
             ),
     );
