@@ -45,11 +45,15 @@ flutter test test/perf_baseline_test.dart
 ## 不扫码的直连组合
 
 只有一台机器、懒得扫码时：
+```
 
 ```bash
+# 生成二维码并在配对后自动连接
+adb-wifi-qr --connect
+
 # 构建调试包 → 安装到当前连接的设备 → 拉起 App
 flutter build apk --debug ; adb install -r build\app\outputs\flutter-apk\app-debug.apk ; adb shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 
 # 多设备/无线连接时用 -s 指定 IP:PORT（IP:PORT 换成 adb mdns services 查到的值）
-flutter build apk --debug ; adb -s 192.168.10.3:44927 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:44927 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
+flutter build apk --debug ; adb -s 192.168.10.3:37205 install -r build\app\outputs\flutter-apk\app-debug.apk ; adb -s 192.168.10.3:37205 shell monkey -p top.taipi.chestnut.debug -c android.intent.category.LAUNCHER 1
 ```

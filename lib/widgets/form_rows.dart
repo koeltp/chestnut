@@ -75,8 +75,10 @@ class FormRow extends StatelessWidget {
   }
 }
 
-/// 文本输入行：右侧无边框透明底输入框，默认右对齐（钱迹式）
-class FormInputRow extends StatelessWidget {
+/// 文本输入行：右侧无边框透明底输入框，默认右对齐（钱迹式）；
+/// 行尾后缀（如 CNY）可点——聚焦输入框并把光标定位到文本末尾，
+/// 适合右对齐金额"在末尾补数字"的习惯
+class FormInputRow extends StatefulWidget {
   const FormInputRow({
     super.key,
     required this.label,
@@ -103,36 +105,61 @@ class FormInputRow extends StatelessWidget {
   final String? suffix;
 
   @override
+  State<FormInputRow> createState() => _FormInputRowState();
+}
+
+class _FormInputRowState extends State<FormInputRow> {
+  late final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// 点后缀聚焦输入框，光标落到文本末尾（空文本时为 0）
+  void _focusAtEnd() {
+    _focus.requestFocus();
+    widget.controller.selection = TextSelection.collapsed(
+      offset: widget.controller.text.length,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FormRow(
-      label: label,
+      label: widget.label,
       child: Center(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Flexible(
               child: TextField(
-                controller: controller,
-                textAlign: textAlign,
-                keyboardType: keyboardType,
-                maxLength: maxLength,
-                inputFormatters: inputFormatters,
-                textInputAction: textInputAction,
+                controller: widget.controller,
+                focusNode: _focus,
+                textAlign: widget.textAlign,
+                keyboardType: widget.keyboardType,
+                maxLength: widget.maxLength,
+                inputFormatters: widget.inputFormatters,
+                textInputAction: widget.textInputAction,
                 decoration: InputDecoration(
-                  hintText: hint,
+                  hintText: widget.hint,
                   counterText: '',
                   isDense: true,
                   border: InputBorder.none,
                 ),
               ),
             ),
-            if (suffix != null) ...[
+            if (widget.suffix != null) ...[
               const SizedBox(width: 6),
-              Text(
-                suffix!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
+              GestureDetector(
+                onTap: _focusAtEnd,
+                child: Text(
+                  widget.suffix!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
             ],

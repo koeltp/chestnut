@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/bill_repository.dart';
 import '../../models/asset_category.dart';
 import '../../models/enums.dart';
 import '../../models/institutions.dart';
 import '../../providers/asset_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
+import '../../utils/credit_bill_cycle.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
 import '../../widgets/asset_circle_icon.dart';
@@ -120,6 +122,18 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         : MoneyUtil.centsToYuanTrimmed(widget.existing!.creditLimitCents!),
   );
 
+  /// 信用卡欠款拆分两子框（已出未还 / 未出账单）：
+  /// 总额恒为两者之和、不再单独输入，保存时合计写回 valueCents，
+  /// 拆分本身不落库（详见 credit_bill_cycle.dart）
+  late final TextEditingController _billed = TextEditingController();
+  late final TextEditingController _unbilled = TextEditingController();
+
+  /// 拆分录入区展开态（信用卡默认展开，点欠款行切换）
+  bool _splitExpanded = true;
+
+  /// 防重复预填标记：推算只在进页时填一次，此后不覆盖手动输入
+  bool _splitPrefilled = false;
+
   /// 出账日/还款日（1~31，null = 未填）：点行弹日历选择
   late int? _billDay = widget.existing?.billDay;
   late int? _repayDay = widget.existing?.repayDay;
@@ -169,6 +183,61 @@ class _AssetEditPageState extends State<_AssetEditPage> {
     _ => '余额',
   };
 
+  @override
+  void initState() {
+    super.initState();
+    if (_isCreditGroup) {
+      _billed.addListener(_onSplitChanged);
+      _unbilled.addListener(_onSplitChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _prefillSplit());
+    }
+  }
+
+  /// 拆分子框输入 → 只读欠款行实时刷新合计
+  void _onSplitChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// 拆分合计（分）：两框全空返回 null（调用方按 0 落库）
+  int? get _splitTotalCents {
+    final billed = MoneyUtil.yuanToCents(_billed.text.trim());
+    final unbilled = MoneyUtil.yuanToCents(_unbilled.text.trim());
+    if (billed == null && unbilled == null) return null;
+    return (billed ?? 0) + (unbilled ?? 0);
+  }
+
+  /// 拆分预填（仅进页一次，此后不覆盖手动输入）：
+  /// 有出账日 + 卡上流水 → 未出推算、已出 = 旧总额 − 未出；
+  /// 推算不出（未填出账日/无流水记录能力）→ 已出 = 旧总额，未出留空待填；
+  /// 新建卡不预填（两框留空，合计 0 = 未使用，合法）
+  Future<void> _prefillSplit() async {
+    final existing = widget.existing;
+    if (existing == null || _splitPrefilled) return;
+    _splitPrefilled = true;
+    final total = existing.valueCents;
+    int? unbilled;
+    try {
+      final bills = await context
+          .read<BillRepository>()
+          .watchBillsOfAsset(existing.id)
+          .first;
+      unbilled = unbilledCents(
+        billDay: existing.billDay,
+        now: DateTime.now(),
+        bills: bills,
+      );
+    } catch (_) {
+      // 取不到流水（如测试最小骨架）：按推算不出处理
+    }
+    if (!mounted) return;
+    setState(() {
+      if (unbilled != null) {
+        _unbilled.text = MoneyUtil.centsToYuanTrimmed(unbilled);
+      }
+      _billed.text = MoneyUtil.centsToYuanTrimmed(total - (unbilled ?? 0));
+    });
+  }
+
   /// 切换分类：编辑态只允许同 kind 的组（见类注释）；
   /// 名称无条件跟随新分类（用户要求切换即改名），选中"信用卡"/
   /// "银行卡"或投资理财组分类时联动弹机构层（卡类只看银行组，
@@ -180,11 +249,21 @@ class _AssetEditPageState extends State<_AssetEditPage> {
         : null;
     final def = await showAssetCategorySheet(context, groups: groups);
     if (def == null || !mounted) return;
+    final wasCredit = _isCreditGroup;
     final isCard = def.name == '信用卡' || def.name == '银行卡';
     final isInvest = AssetGroups.investCategories.contains(def.name);
     setState(() {
       _category = def;
       _name.text = def.name;
+      // 信用卡组进出时搬运欠款（总额语义不变，只换录入形态）：
+      // 进组把总数倒进"已出未还"，出组把拆分合计写回总数
+      if (!wasCredit && _isCreditGroup) {
+        _billed.text = _value.text;
+        _unbilled.clear();
+      } else if (wasCredit && !_isCreditGroup) {
+        final total = _splitTotalCents;
+        _value.text = total == null ? '' : MoneyUtil.centsToYuanTrimmed(total);
+      }
       if (!isCard && !isInvest) {
         _institution = null;
       }
@@ -235,7 +314,11 @@ class _AssetEditPageState extends State<_AssetEditPage> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final cents = MoneyUtil.yuanToCents(_value.text.trim());
+    // 信用卡组：欠款 = 拆分两子框之和（两框全空 = 0，未使用合法）；
+    // 其余组仍走单输入框
+    final cents = _isCreditGroup
+        ? (_splitTotalCents ?? 0)
+        : MoneyUtil.yuanToCents(_value.text.trim());
     if (name.isEmpty) {
       showAppToast(context, '请填写资产名称');
       return;
@@ -444,17 +527,80 @@ class _AssetEditPageState extends State<_AssetEditPage> {
                 maxLength: 20,
                 textInputAction: TextInputAction.next,
               ),
-              FormInputRow(
-                label: _valueLabel,
-                controller: _value,
-                hint: '0.00',
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+              // 金额行：信用卡组欠款只读（恒显示拆分之和，点行展开/收起
+              // 拆分录入），其余组单输入框
+              if (_isCreditGroup) ...[
+                FormRow(
+                  label: _valueLabel,
+                  onTap: () => setState(() => _splitExpanded = !_splitExpanded),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          MoneyUtil.centsToYuanGroupedTrimmed(
+                            _splitTotalCents ?? 0,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'CNY',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      Icon(
+                        _splitExpanded
+                            ? Icons.keyboard_arrow_down
+                            : Icons.chevron_right,
+                        size: 22,
+                        color: AppColors.textSecondary,
+                      ),
+                    ],
+                  ),
                 ),
-                inputFormatters: MoneyUtil.amountInputFormatters,
-                textInputAction: TextInputAction.next,
-                suffix: 'CNY',
-              ),
+                if (_splitExpanded) ...[
+                  FormInputRow(
+                    label: '已出未还',
+                    controller: _billed,
+                    hint: '0.00',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: MoneyUtil.amountInputFormatters,
+                    textInputAction: TextInputAction.next,
+                    suffix: 'CNY',
+                  ),
+                  FormInputRow(
+                    label: '未出账单',
+                    controller: _unbilled,
+                    hint: '0.00',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: MoneyUtil.amountInputFormatters,
+                    textInputAction: TextInputAction.next,
+                    suffix: 'CNY',
+                  ),
+                ],
+              ] else
+                FormInputRow(
+                  label: _valueLabel,
+                  controller: _value,
+                  hint: '0.00',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: MoneyUtil.amountInputFormatters,
+                  textInputAction: TextInputAction.next,
+                  suffix: 'CNY',
+                ),
               if (_isCreditGroup) ...[
                 FormInputRow(
                   label: '总额度',
