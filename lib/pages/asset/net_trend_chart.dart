@@ -341,9 +341,15 @@ class _NetTrendChartState extends State<NetTrendChart>
                 _selected! <= drawEnd)
             ? _selected
             : null;
-        final selX = selIndex == null
+        // 选中点的像素位置，供高亮圆点/气泡/三角对齐到曲线上。
+        // 单点窗口走"孤点居中"的 x 域垫片（minX=-1, maxX=1），x=0
+        // 实际画在绘图区正中——选中位也按 0.5 对齐，否则气泡会画到最左
+        final selRelX = selIndex == null
             ? 0.0
-            : leftPad + (selIndex - startExact) * pointPx;
+            : windowSize == 1
+            ? 0.5
+            : (selIndex - startExact) / (windowSize - 1);
+        final selX = selIndex == null ? 0.0 : leftPad + selRelX * plotWidth;
         final selY = selIndex == null
             ? 0.0
             : plotHeight -
