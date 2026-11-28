@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -230,9 +229,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
   /// · 已有照片：仓储层"删旧存新"立即替换（记录/文件/云端对象），
   ///   新记录继承原 sort，并触发上传；本地快照原位换新
   Future<void> _editImage(String path) async {
-    final edited = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: path)),
-    );
+    final edited = await pushImageEdit(context, path);
     if (edited == null || !mounted) return;
     try {
       final existingIndex = _existingPhotos.indexWhere(

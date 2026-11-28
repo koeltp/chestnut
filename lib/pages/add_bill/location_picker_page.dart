@@ -1,21 +1,25 @@
 import 'dart:async';
-import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:amap_map/amap_map.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:x_amap_base/x_amap_base.dart';
 
 import '../../services/amap_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/show_toast.dart';
+import 'location_pick_controller.dart';
+import 'map_marker_icons.dart';
+import 'system_locator.dart';
 
 /// 位置选择页（京东式"选点"）
 ///
 /// 上半高德地图：中心固定大头针，拖动地图即改选中心点；
 /// 下半当前中心附近地点列表；顶部支持关键词搜索。
 /// 选中后把 [LocationSelection]（地名 + 坐标）返回给记一笔页。
+///
+/// 职责分工：本页只保留地图交互状态机（移图/拖动判定/标记缓存）与
+/// UI 构建；附近列表与搜索的数据链路在 [LocationPickController]，
+/// 系统定位细节在 [SystemLocator]，标记图标绘制在 [MapMarkerIcons]。
 class LocationPickerPage extends StatefulWidget {
   const LocationPickerPage({super.key, this.initialName, this.initialPoint});
 
@@ -41,54 +45,28 @@ class LocationSelection {
   final String? fullAddress;
 }
 
-/// 列表条目（附近地点 / 搜索结果统一模型）
-class _Entry {
-  const _Entry({
-    required this.title,
-    this.subtitle = '',
-    this.distance,
-    this.location,
-    this.fullAddress,
-    this.highlight = false,
-  });
-
-  final String title;
-  final String subtitle;
-  final int? distance;
-  final Gcj02Point? location;
-
-  /// 条目自带的完整地址（当前选择点的逆地理结果）；POI/搜索条目
-  /// 通常缺省市，选中时在 _select 中现场逆地理补全
-  final String? fullAddress;
-
-  /// 高亮标红（首项"已保存的位置"）：提醒用户点它可原样保留旧位置
-  final bool highlight;
-}
-
 class _LocationPickerPageState extends State<LocationPickerPage> {
   final _service = AmapService();
+  final _locator = SystemLocator();
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+
+  late final LocationPickController _controller;
 
   AMapController? _mapController;
 
   /// 高德初始化只执行一次（didChangeDependencies 可能多次触发）
   bool _initializerRan = false;
 
-  /// 列表数据；null = 首次定位中尚未加载
-  List<_Entry>? _entries;
-  bool _loading = false;
-  String? _error;
-
-  /// 当前地图中心（GCJ-02），搜索时作就近参考
+  /// 当前地图中心（GCJ-02）：地图交互状态机的基准点，同步写入控制器
+  /// 供搜索就近参考；程序化移图与用户拖动都会更新
   Gcj02Point? _center;
-
-  /// 搜索关键词；非空为搜索模式，清空后回到附近列表
-  String _keyword = '';
-  Timer? _debounce;
 
   /// 系统实时定位在途标记：防止"回到当前位置"连点重复发起
   bool _locating = false;
+
+  /// 行政区条目地理编码飞行中：列表顶部进度条与控制器加载态共用展示
+  bool _geocoding = false;
 
   /// 保存位置的图钉图标（蓝色，代码绘制，避免依赖图片资源）
   BitmapDescriptor? _pinIcon;
@@ -121,18 +99,16 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   Marker? _savedMarker;
   Marker? _gpsMarker;
 
-  /// 已加载过附近列表的中心点。程序化 moveCamera 结束同样会回调
-  /// onCameraMoveEnd（原生不区分手势与代码移动），中心未变时跳过
-  /// 重复请求，避免定位移图/回到保存点后再白发一次逆地理。
-  Gcj02Point? _lastLoadedPoint;
-
-  /// 请求代数：发起新请求时自增；响应返回时代数不符说明已有更新的
-  /// 请求发出，丢弃过期结果，防止快速搜索/连续拖动时旧数据覆盖新数据
-  int _reqGen = 0;
-
   @override
   void initState() {
     super.initState();
+    // 控制器必须先于一切异步分支创建：权限被拒等早退路径不触碰控制器，
+    // 若延迟到首次使用才初始化，dispose 时会抛 LateInitializationError
+    _controller = LocationPickController(
+      service: _service,
+      savedName: widget.initialName,
+      savedPoint: widget.initialPoint,
+    );
     // 有保存定位（编辑账单）：一打开就回到保存的位置，地图与列表直接到位；
     // 同时后台静默定位以显示当前定位精度（不移图，不抢保存位置）
     // 无保存定位（新记账）：定位当前位置
@@ -164,55 +140,15 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    _controller.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
 
-  /// 生成图钉图标（经典 📍 造型：圆头 + 白孔 + 尖底）。
-  /// amap_map 的 defaultMarker 渲染样式不可控，改用离屏 Canvas 绘制位图，
-  /// fromBytes 交给原生 Marker 层，无需打包图片资源。
-  /// [color] 区分语义：保存位置用蓝、中心选点用红。
-  static Future<BitmapDescriptor> _renderPin(Color color) async {
-    const w = 96, h = 128;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    const center = Offset(w / 2, 44);
-    final paint = ui.Paint()..color = color;
-    // 头部圆
-    canvas.drawCircle(center, 32, paint);
-    // 尖底三角（底边与圆交叠，避免接缝）
-    final path = ui.Path()
-      ..moveTo(w / 2 - 21, 66)
-      ..lineTo(w / 2 + 21, 66)
-      ..lineTo(w / 2, 124)
-      ..close();
-    canvas.drawPath(path, paint);
-    // 白色内孔
-    canvas.drawCircle(center, 13, ui.Paint()..color = Colors.white);
-    final image = await recorder.endRecording().toImage(w, h);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-  }
-
-  /// GPS 当前位置小蓝点（白描边圆点，京东式）
-  static Future<BitmapDescriptor> _renderDot() async {
-    const s = 48;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    const c = Offset(s / 2, s / 2);
-    // 白色外圈充当描边，内层蓝色实心圆
-    canvas.drawCircle(c, 18, ui.Paint()..color = Colors.white);
-    canvas.drawCircle(c, 13, ui.Paint()..color = AppColors.primary);
-    final image = await recorder.endRecording().toImage(s, s);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-  }
-
   Future<void> _makeIcons() async {
-    final pin = await _renderPin(AppColors.primary);
-    final dot = await _renderDot();
+    final pin = await MapMarkerIcons.pin(AppColors.primary);
+    final dot = await MapMarkerIcons.dot();
     if (!mounted) return;
     setState(() {
       _pinIcon = pin;
@@ -254,80 +190,39 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   /// 检查权限后发起定位（系统缓存先行 + 系统实时定位主源）。
   /// [follow] 为 true 时定位结果驱动地图移动；false 只显示小蓝点。
   Future<void> _locateAndMove({bool follow = true}) async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _toast('请先开启系统定位服务');
-        return;
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        _toast('未授予定位权限，可在系统设置中开启');
-        return;
-      }
-    } catch (_) {
-      _toast('定位失败，请稍后重试');
+    final denial = await _locator.checkPermission();
+    if (!mounted) return;
+    if (denial != null) {
+      _toast(denial);
       return;
     }
     _followLocation = follow;
-    // 京东式"先显示、后精化"：先读系统最近缓存位置（毫秒级返回），
-    // 立即转 GCJ-02 上图，页面马上可用。缓存超过 10 分钟视为过期
-    //（避免跨城旧缓存误导读到错误城市）
-    try {
-      final last = await Geolocator.getLastKnownPosition();
-      final age = last == null
-          ? null
-          : DateTime.now().difference(last.timestamp);
-      if (last != null && age != null && age < const Duration(minutes: 10)) {
-        debugPrint('[定位] 系统缓存位置（${age.inSeconds}秒前）');
-        _applyLocation(
-          Wgs84ToGcj02.convert(last.latitude, last.longitude),
-          follow: follow,
-        );
-      }
-    } catch (_) {
-      // 缓存拿不到无所谓，实时定位还在后面
+    // 京东式"先显示、后精化"：先读系统最近缓存位置（毫秒级返回）立即
+    // 上图，页面马上可用；新鲜期与坐标转换都在 SystemLocator 内
+    final cache = await _locator.freshLastKnown();
+    if (cache != null) {
+      _applyLocation(cache, follow: follow);
     }
     if (_locating) return;
     // 后台启动实时定位，结果经回调回到本页，此处不等待
     unawaited(_locateBySystem());
   }
 
-  /// 系统实时定位主源。forceLocationManager 强走 Android LocationManager
-  ///（厂商融合定位服务，vivo 等无 GMS 设备回调可靠）。
-  /// 高德定位 SDK 已移除：其网络定位库在无 GMS 设备上 Wi-Fi 指纹未命中
-  /// 时会静默丢回调（连失败回调都没有），是"打开就超时"的根源。
-  /// 系统坐标为 WGS-84，转 GCJ-02 后使用。
+  /// 系统实时定位：结果经 _applyLocation 回到本页。失败时若缓存位置
+  /// 已上图过则不算失败（仅提示未刷新），否则复用列表区错误态展示
   Future<void> _locateBySystem() async {
     _locating = true;
     try {
-      debugPrint('[定位] 启动系统实时定位');
-      final pos = await Geolocator.getCurrentPosition(
-        // AndroidSettings 非 const 构造
-        locationSettings: AndroidSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 12),
-          forceLocationManager: true,
-        ),
-      );
-      debugPrint('[定位] 系统定位成功: ${pos.latitude}, ${pos.longitude}');
+      final point = await _locator.locate();
       if (!mounted) return;
-      _applyLocation(
-        Wgs84ToGcj02.convert(pos.latitude, pos.longitude),
-        follow: _followLocation,
-      );
+      _applyLocation(point, follow: _followLocation);
     } catch (e) {
       debugPrint('[定位] 系统定位失败: $e');
       if (!mounted) return;
-      // 缓存位置已经上图过：不算失败，仅提示未刷新
       if (_gpsPoint != null) {
         _toast('定位未刷新，可稍后重试');
       } else {
-        setState(() => _error = '定位失败，请重试');
+        _controller.reportError('定位失败，请重试');
       }
     } finally {
       _locating = false;
@@ -352,6 +247,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   /// 此时 moveCamera 会被吞掉——记下待移动状态，地图就绪后补飞。
   void _moveTo(Gcj02Point point) {
     _center = point;
+    _controller.center = point;
     _lastProgrammaticTarget = point;
     final controller = _mapController;
     if (controller == null) {
@@ -362,7 +258,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         CameraUpdate.newLatLngZoom(LatLng(point.lat, point.lng), 17.5),
       );
     }
-    _loadNear(point);
+    _controller.loadNear(point);
   }
 
   /// 拖动地图结束：加载新中心点附近列表（搜索模式下不覆盖搜索结果）。
@@ -370,200 +266,54 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   void _onCameraMoveEnd(CameraPosition position) {
     final target = position.target;
     _center = Gcj02Point(lat: target.latitude, lng: target.longitude);
+    _controller.center = _center;
     // 中心与最近一次程序化移图目标不符：用户手势拖动，此后定位不拽图
     final prog = _lastProgrammaticTarget;
-    if (prog == null || _distanceMeters(_center!, prog) > 1) {
+    if (prog == null || distanceMeters(_center!, prog) > 1) {
       _userDragged = true;
     }
-    if (_keyword.isNotEmpty) return;
-    final loaded = _lastLoadedPoint;
-    if (loaded != null && _distanceMeters(_center!, loaded) < 1) return;
-    _loadNear(_center!);
+    _controller.onCameraSettled(_center!);
   }
 
-  /// 加载中心点附近地点列表。
-  /// 列表主体来自周边搜索接口（全量 POI、按距离排序）；逆地理仅并行
-  /// 补充首项"当前选择点"的地址文本，失败时静默跳过不影响列表。
-  Future<void> _loadNear(Gcj02Point point) async {
-    final gen = ++_reqGen;
-    _lastLoadedPoint = point;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// 完整定位信息补全（点选与自定义创建共用）：
+  /// 优先"省市区街道"结构化拼接（纯行政区划，天然不含地标名），四段
+  /// 全空才退回 formatted 整串；追加点名前先查重（高德逆地理串末尾常
+  /// 自带地标，如"…紫云阁酒店 紫云阁酒店"），重叠时不再追加。
+  /// 超时/失败静默降级（返回 null 由记一笔页兜底），不阻塞选点。
+  /// [existing] 非空（当前选择点条目自带完整地址）直接沿用不再请求
+  Future<String?> _resolveFullAddress(
+    Gcj02Point point,
+    String name, {
+    String? existing,
+  }) async {
+    if (existing != null) return existing;
     try {
-      final regeoFuture = _service
+      final detail = await _service
           .regeoDetail(point)
-          .then<RegeoDetail?>((v) => v, onError: (Object _) => null);
-      final results = await Future.wait([_service.around(point), regeoFuture]);
-      final pois = results[0] as List<PoiItem>;
-      final detail = results[1] as RegeoDetail?;
-      // 首项地址用结构化行政区划（省市区镇）而非 formatted 整串：
-      // 针指在无店铺处时，高德会拿最近的 POI 名当锚点拼在末尾
-      // （如"…新市镇晚安家居(新市街店)"），名不副实；adminPath
-      // 只描述"针所在的位置"，与下方店铺条目形成"要店点店、
-      // 要位置点首项"的清晰分工
-      final address = detail == null
-          ? ''
-          : (detail.adminPath.isNotEmpty ? detail.adminPath : detail.formatted);
-      // 代数不符：期间已发起更新的请求（继续拖动/切搜索），丢弃过期结果
-      if (gen != _reqGen || !mounted) return;
-      // 中心点与已保存位置相距很近（50m 内）时，首项显示"已保存的位置"，
-      // 点击可原样带回；用户拖走地图后恢复显示中心点地址
-      final saved = widget.initialPoint;
-      final savedName = widget.initialName;
-      final atSaved =
-          saved != null &&
-          savedName != null &&
-          _distanceMeters(point, saved) < 50;
-      final entries = <_Entry>[
-        if (atSaved)
-          _Entry(
-            title: savedName,
-            subtitle: '已保存的位置',
-            location: saved,
-            highlight: true,
-          )
-        else if (address.isNotEmpty)
-          _Entry(
-            title: address,
-            subtitle: '当前选择点',
-            location: point,
-            // 结构化行政区划本身就是完整地址，选中时无需再补
-            fullAddress: address,
-          ),
-        ...pois.map(
-          (p) => _Entry(
-            title: p.name,
-            subtitle: p.address,
-            // 接口未带距离时按坐标现算（输入提示类数据无 distance 字段）
-            distance:
-                p.distance ??
-                (p.location != null
-                    ? _distanceMeters(p.location!, point).round()
-                    : null),
-            location: p.location,
-          ),
-        ),
-      ];
-      if (!mounted) return;
-      setState(() => _entries = entries);
-    } catch (e) {
-      // 留日志便于连机排查；界面仍统一轻提示
-      debugPrint('附近地点加载失败: $e');
-      if (gen != _reqGen || !mounted) return;
-      setState(() => _error = '加载失败，请重试');
-    } finally {
-      if (gen == _reqGen && mounted) setState(() => _loading = false);
-    }
-  }
-
-  /// 搜索框变化：防抖 400ms 后请求输入提示
-  void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    final keyword = value.trim();
-    if (keyword.isEmpty) {
-      setState(() => _keyword = '');
-      if (_center != null) _loadNear(_center!);
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      _search(keyword);
-    });
-  }
-
-  Future<void> _search(String keyword) async {
-    final gen = ++_reqGen;
-    setState(() {
-      _keyword = keyword;
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final tips = await _service.inputTips(keyword, _center);
-      // 代数不符：期间已切回附近列表或发起新搜索，丢弃过期结果
-      if (gen != _reqGen || !mounted) return;
-      setState(() {
-        _entries = tips
-            .map(
-              (t) => _Entry(
-                title: t.name,
-                subtitle: t.address,
-                location: t.location,
-              ),
-            )
-            .toList();
-      });
-    } catch (e) {
-      debugPrint('地点搜索失败: $e');
-      if (gen != _reqGen || !mounted) return;
-      setState(() => _error = '搜索失败，请重试');
-    } finally {
-      if (gen == _reqGen && mounted) setState(() => _loading = false);
-    }
+          .timeout(const Duration(seconds: 5));
+      final base = detail.adminPath.isNotEmpty
+          ? detail.adminPath
+          : detail.formatted;
+      if (base.isNotEmpty) {
+        return base.contains(name) ? base : '$base $name';
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// 创建自定义位置：搜索结果里没有想要的地点时，用输入的关键词
   /// 命名当前红针位置（地图中心）。坐标取当前中心（编辑账单时地图
-  /// 仍可飞回），fullAddress 现场逆地理补全（失败静默降级为 null，
-  /// 由记一笔页兜底），不阻塞返回
+  /// 仍可飞回），fullAddress 现场逆地理补全，不阻塞返回
   Future<void> _createCustom(String name) async {
     final point = _center;
     if (point == null) {
       _toast('地图尚未就绪，请稍后再试');
       return;
     }
-    var full = '';
-    try {
-      final detail = await _service
-          .regeoDetail(point)
-          .timeout(const Duration(seconds: 5));
-      // 与点店分支同款拼接：行政区划为底，追加点名（contains 查重防
-      // "菜市场 菜市场"式重复）。fullAddress 缺名字会导致详情显示
-      // 残缺、搜索（匹配 locationFull）搜不到自定义名
-      final base = detail.adminPath.isNotEmpty
-          ? detail.adminPath
-          : detail.formatted;
-      if (base.isNotEmpty) {
-        full = base.contains(name) ? base : '$base $name';
-      }
-    } catch (_) {}
+    final full = await _resolveFullAddress(point, name);
     if (!mounted) return;
     Navigator.of(context).pop(
-      LocationSelection(
-        name: name,
-        point: point,
-        fullAddress: full.isEmpty ? null : full,
-      ),
-    );
-  }
-
-  /// “创建新的位置”行（钱迹式）：搜索结果末尾的自定义入口
-  Widget _buildCreateItem() {
-    return InkWell(
-      onTap: () => _createCustom(_keyword),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '没有找到你的位置？',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '创建新的位置：$_keyword',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 15,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
+      LocationSelection(name: name, point: point, fullAddress: full),
     );
   }
 
@@ -572,36 +322,21 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   /// 无坐标（行政区类，如"四川省成都市"）→ 当作导航入口，地理编码
   /// 拿坐标后把地图飞过去、附近列表联动切换到该区域（异地补记场景：
   /// 搜城市名 → 飞过去 → 再搜店选店），不直接关闭页面
-  Future<void> _select(_Entry entry) async {
+  Future<void> _select(LocationEntry entry) async {
     final point = entry.location;
     if (point != null) {
-      // 完整定位信息：条目自带（当前选择点逆地理）优先；POI/搜索条目
-      // 现场逆地理补全——优先"省市区街道"结构化拼接（纯行政区划，
-      // 天然不含地标名），四段全空才退回 formatted 整串；追加点名前
-      // 先查重（高德逆地理串末尾常自带地标，如"…紫云阁酒店 紫云阁
-      // 酒店"），重叠时不再追加。超时/失败静默降级（fullAddress 为空
-      // 由记一笔页兜底），不阻塞选点
-      var full = entry.fullAddress;
-      if (full == null) {
-        try {
-          final detail = await _service
-              .regeoDetail(point)
-              .timeout(const Duration(seconds: 5));
-          final base = detail.adminPath.isNotEmpty
-              ? detail.adminPath
-              : detail.formatted;
-          if (base.isNotEmpty) {
-            full = base.contains(entry.title) ? base : '$base ${entry.title}';
-          }
-        } catch (_) {}
-      }
+      final full = await _resolveFullAddress(
+        point,
+        entry.title,
+        existing: entry.fullAddress,
+      );
       if (!mounted) return;
       Navigator.of(context).pop(
         LocationSelection(name: entry.title, point: point, fullAddress: full),
       );
       return;
     }
-    setState(() => _loading = true);
+    setState(() => _geocoding = true);
     try {
       final geo = await _service.geocode(entry.title);
       if (!mounted) return;
@@ -610,24 +345,15 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         return;
       }
       // 退出搜索模式并清空输入，附近列表由 _moveTo 重新加载
-      _keyword = '';
+      _controller.exitSearch();
       _searchController.clear();
       _moveTo(geo);
     } catch (e) {
       debugPrint('行政区定位失败: $e');
       if (mounted) _toast('未能定位到该区域');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _geocoding = false);
     }
-  }
-
-  /// 两点间粗略距离（米）：小范围选点场景平面近似足够
-  double _distanceMeters(Gcj02Point a, Gcj02Point b) {
-    const kmPerDegLat = 111.0;
-    final kmPerDegLng = 111.0 * cos(a.lat * pi / 180);
-    final dLat = (a.lat - b.lat).abs() * kmPerDegLat;
-    final dLng = (a.lng - b.lng).abs() * kmPerDegLng;
-    return sqrt(dLat * dLat + dLng * dLng) * 1000;
   }
 
   void _toast(String message) {
@@ -694,7 +420,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         child: TextField(
           controller: _searchController,
           focusNode: _searchFocus,
-          onChanged: _onSearchChanged,
+          onChanged: _controller.onSearchChanged,
           textInputAction: TextInputAction.search,
           textAlignVertical: TextAlignVertical.center,
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
@@ -845,14 +571,24 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     );
   }
 
+  /// 列表区：数据链路状态（条目/加载/错误/搜索模式）在控制器，
+  /// 经 ListenableBuilder 订阅刷新
   Widget _buildListArea() {
-    if (_error != null) {
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => _buildListContent(),
+    );
+  }
+
+  Widget _buildListContent() {
+    final error = _controller.error;
+    if (error != null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _error!,
+              error,
               style: const TextStyle(
                 fontSize: 13,
                 color: AppColors.textSecondary,
@@ -860,10 +596,10 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             ),
             TextButton(
               onPressed: () {
-                if (_keyword.isNotEmpty) {
-                  _search(_keyword);
+                if (_controller.keyword.isNotEmpty) {
+                  _controller.search(_controller.keyword);
                 } else if (_center != null) {
-                  _loadNear(_center!);
+                  _controller.loadNear(_center!);
                 } else {
                   // 还没定位成功过：重试即重新定位
                   _locateAndMove();
@@ -875,7 +611,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         ),
       );
     }
-    final entries = _entries;
+    final entries = _controller.entries;
     if (entries == null) {
       return const Center(
         child: CircularProgressIndicator(
@@ -886,7 +622,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     }
     if (entries.isEmpty) {
       // 搜索无结果时"创建新的位置"是唯一出路，空态也要提供
-      if (_keyword.isNotEmpty) {
+      if (_controller.keyword.isNotEmpty) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -908,18 +644,14 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         ),
       );
     }
-    return _buildListBody();
-  }
-
-  /// 列表区整体（顶部刷新进度条 + 条目列表）
-  Widget _buildListBody() {
-    final entries = _entries!;
     // 搜索模式在结果末尾追加"创建新的位置"入口（关键词即位置名）
-    final showCreate = _keyword.isNotEmpty;
+    final showCreate = _controller.keyword.isNotEmpty;
+    // 刷新中在列表顶部显示细进度条，不遮盖已有内容；
+    // 行政区地理编码飞行中同样显示（列表内容保持不塌陷）
+    final loading = _controller.loading || _geocoding;
     return Column(
       children: [
-        // 刷新中在列表顶部显示细进度条，不遮盖已有内容
-        if (_loading)
+        if (loading)
           const LinearProgressIndicator(
             minHeight: 2,
             color: AppColors.primary,
@@ -940,7 +672,37 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     );
   }
 
-  Widget _buildEntryItem(_Entry entry) {
+  /// "创建新的位置"行（钱迹式）：搜索结果末尾的自定义入口
+  Widget _buildCreateItem() {
+    final keyword = _controller.keyword;
+    return InkWell(
+      onTap: () => _createCustom(keyword),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '没有找到你的位置？',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '创建新的位置：$keyword',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEntryItem(LocationEntry entry) {
     return InkWell(
       onTap: () => _select(entry),
       child: Padding(

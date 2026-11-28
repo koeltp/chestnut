@@ -31,6 +31,16 @@ class ImageEditPage extends StatefulWidget {
   State<ImageEditPage> createState() => _ImageEditPageState();
 }
 
+/// 统一的图片编辑入口：打开编辑页并取回编辑结果字节。
+///
+/// 各调用方（账单详情、记一笔图片、借条编辑）共用此导航样板；用户
+/// 取消返回 null，编辑结果如何落盘 / 入库 / 上云由调用方各自决定
+Future<Uint8List?> pushImageEdit(BuildContext context, String sourcePath) {
+  return Navigator.of(context).push<Uint8List>(
+    MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: sourcePath)),
+  );
+}
+
 class _ImageEditPageState extends State<ImageEditPage> {
   // ---------- 位图状态 ----------
 

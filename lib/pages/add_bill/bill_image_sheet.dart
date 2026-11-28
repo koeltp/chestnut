@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -171,9 +170,7 @@ class _BillImageSheetState extends State<BillImageSheet> {
   /// · 已入库图：仓储层"删旧存新"替换（记录/本地文件/云端对象），
   ///   新记录继承原 sort，并立即触发上传
   Future<void> _editImage(String path) async {
-    final edited = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: path)),
-    );
+    final edited = await pushImageEdit(context, path);
     if (edited == null || !mounted) return;
     try {
       final existingIndex = _existing.indexWhere((e) => e.localPath == path);

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:map_launcher/map_launcher.dart';
@@ -194,9 +193,7 @@ class _DetailBodyState extends State<_DetailBody> {
   Future<void> _editImage(String path) async {
     final matches = _images.where((i) => i.localPath == path).toList();
     if (matches.isEmpty) return;
-    final edited = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(builder: (_) => ImageEditPage(sourcePath: path)),
-    );
+    final edited = await pushImageEdit(context, path);
     if (edited == null || !mounted) return;
     final created = await widget.imageRepo.replaceImage(
       matches.first,
