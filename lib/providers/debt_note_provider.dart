@@ -89,6 +89,7 @@ class DebtNoteProvider extends ChangeNotifier {
     required DateTime repaidAt,
     int? interestCents,
     int? categoryId,
+    required int? repayAssetId,
     String? remark,
   }) => _repo.addRepayment(
     note: note,
@@ -96,6 +97,7 @@ class DebtNoteProvider extends ChangeNotifier {
     repaidAt: repaidAt,
     interestCents: interestCents,
     categoryId: categoryId,
+    repayAssetId: repayAssetId,
     remark: remark,
   );
 

@@ -90,8 +90,10 @@ class AssetFlowViewRepository {
       ),
       // 借条照片标记是全表流，UI 按 id 自行过滤
       _debts.watchNoteIdsWithPhotos(),
-      // 借条字典：还款行对方名/详情弹窗按 noteId 查
-      debts.map(_debtMap),
+      // 借条字典：全量口径（与首页明细一致）——换卡还款的借条
+      // relatedAssetId ≠ 当前账户，过滤后的流查不到会显示
+      // "已删除的借条"兜底文案
+      _debts.watchAll().map(_debtMap),
     ]).map((v) {
       final assetInfo = v[0] as ({Asset? self, Map<int, Asset> map});
       return FlowView(

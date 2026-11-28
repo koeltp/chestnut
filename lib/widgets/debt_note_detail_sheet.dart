@@ -233,10 +233,11 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
     final isLendOut = widget.note.direction == DebtDirection.lendOut;
     final isLend = isLendOut; // 借出 = 钱出去（红），借入 = 钱进来（绿）
     final amountColor = isLend ? AppColors.expense : AppColors.income;
-    // 已还本金 = Σ(还款额 − 利息)；有还款时金额行显示剩余口径
+    // 已还本金 = Σ还款 amountCents（落库即本金口径）；有还款时金额行
+    // 显示剩余口径
     final repaidPrincipal = _repayments.fold<int>(
       0,
-      (s, r) => s + r.amountCents - (r.interestCents ?? 0),
+      (s, r) => s + r.amountCents,
     );
     final hasRepayments = _repayments.isNotEmpty;
     return SafeArea(

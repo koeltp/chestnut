@@ -22,6 +22,12 @@ import 'asset_repository.dart';
 ///   从云端拉回；删除 → 记录与本地文件同步清，云端对象异步删
 ///   （失败留孤儿对象可接受，与账单图片同口径）。
 ///
+/// 还款金额超过借条剩余欠款（本金口径），拒绝落库
+class RepaymentExceedsException implements Exception {
+  @override
+  String toString() => '还款金额超过借条剩余欠款';
+}
+
 /// 余额联动：关联账户的借条保存时同步增减账户余额
 /// （借出 = 从账户扣钱，借入 = 钱进账户），改/删做差值修正。
 class DebtNoteRepository {
@@ -31,6 +37,9 @@ class DebtNoteRepository {
 
   /// 记账联动引擎（AssetRepository 无状态仅持 _db，就地构造零成本）
   late final _assetRepo = AssetRepository(_db);
+
+  /// 还款金额超过借条剩余欠款（本金口径），拒绝落库
+  static const repaymentExceedsMessage = '还款金额超过借条剩余欠款';
 
   /// 借据照片暂存服务（debt_photos 目录）：选图/压缩/转正路径共用
   final PhotoStagingService photos = PhotoStagingService(
@@ -332,8 +341,9 @@ class DebtNoteRepository {
       for (final r in repayments) {
         await _applyRepaymentEffect(
           note.direction,
-          relatedAssetId: note.relatedAssetId,
-          principalCents: r.amountCents - (r.interestCents ?? 0),
+          // 撤销按各笔落库的还款账户精确回加（迁移已回填历史记录）
+          relatedAssetId: r.repayAssetId,
+          principalCents: r.amountCents,
           revert: true,
         );
         await _deleteInterestBill(r);
@@ -405,11 +415,11 @@ class DebtNoteRepository {
   }
 
   /// 各借条已还本金总额流（noteId → 分）：借条列表/合计的"剩余"口径
-  /// 数据源。本金 = 还款额 − 利息（未拆分利息时整笔都是本金）
+  /// 数据源。amount_cents 即本金口径（v17 起落库），直接求和
   Stream<Map<int, int>> watchRepaidPrincipalTotals() {
     return _db
         .customSelect(
-          'SELECT note_id, SUM(amount_cents - COALESCE(interest_cents, 0)) '
+          'SELECT note_id, SUM(amount_cents) '
           'AS paid FROM debt_note_repayments GROUP BY note_id',
           readsFrom: {_db.debtNoteRepayments},
         )
@@ -463,7 +473,9 @@ class DebtNoteRepository {
         .watch();
   }
 
-  /// 关联某账户的还款流（账户流水页混排）：join 借条按关联账户过滤
+  /// 关联某账户的还款流（账户流水页混排）：按还款落库的实际账户过滤
+  /// （repayAssetId，与本金扣减/利息账单挂靠同口径），join 借条仅为
+  /// 取对方名等展示信息
   Stream<List<DebtNoteRepayment>> watchRepaymentsOfAsset(int assetId) {
     final query =
         _db.select(_db.debtNoteRepayments).join([
@@ -472,7 +484,7 @@ class DebtNoteRepository {
               _db.debtNotes.id.equalsExp(_db.debtNoteRepayments.noteId),
             ),
           ])
-          ..where(_db.debtNotes.relatedAssetId.equals(assetId))
+          ..where(_db.debtNoteRepayments.repayAssetId.equals(assetId))
           ..orderBy([
             OrderingTerm.desc(_db.debtNoteRepayments.repaidAt),
             OrderingTerm.desc(_db.debtNoteRepayments.id),
@@ -513,17 +525,20 @@ class DebtNoteRepository {
     required DateTime repaidAt,
     int? interestCents,
     int? categoryId,
+    required int? repayAssetId,
     String? remark,
   }) async {
     assert(
       interestCents == null || interestCents > 0,
       '利息拆分必须为正数',
     );
-    assert(
-      interestCents == null || amountCents > interestCents,
-      '还款总额必须大于利息',
-    );
     return _db.transaction(() async {
+      // ⓪ 超额校验：还款本金不能超过借条剩余欠款（借入还款与借出
+      // 收款同理），超额拒绝落库避免剩余变负
+      if (amountCents >
+          note.amountCents - await repaidPrincipalTotal(note.id)) {
+        throw RepaymentExceedsException();
+      }
       // ① 利息支出账单：先插账单拿 id，再落还款记录引用（删除时级联）
       int? billId;
       if (interestCents != null) {
@@ -538,7 +553,8 @@ class DebtNoteRepository {
                 note: Value('利息·${note.personName}'),
                 date: DateTime(repaidAt.year, repaidAt.month, repaidAt.day),
                 timeMinute: Value(repaidAt.hour * 60 + repaidAt.minute),
-                assetId: Value(note.relatedAssetId),
+                // 利息也是从还款账户扣的：挂还款账户（null = 纯台账）
+                assetId: Value(repayAssetId),
               ),
             );
         final bill = await (_db.select(
@@ -547,12 +563,12 @@ class DebtNoteRepository {
         await _assetRepo.applyBillEffect(newBill: bill);
         billId = newBillId;
       }
-      // ② 本金部分联动关联账户（借入还款扣钱 / 借出收款回钱）
-      final principal = amountCents - (interestCents ?? 0);
+      // ② 本金部分联动还款账户（借入还款扣钱 / 借出收款回钱）；
+      // amountCents 即纯本金（v17 起落库口径），直接联动
       await _applyRepaymentEffect(
         note.direction,
-        relatedAssetId: note.relatedAssetId,
-        principalCents: principal,
+        relatedAssetId: repayAssetId,
+        principalCents: amountCents,
         revert: false,
       );
       // ③ 落还款记录
@@ -565,6 +581,7 @@ class DebtNoteRepository {
               interestCents: Value(interestCents),
               categoryId: Value(categoryId),
               interestBillId: Value(billId),
+              repayAssetId: Value(repayAssetId),
               note: Value(remark),
               repaidAt: repaidAt,
             ),
@@ -586,9 +603,9 @@ class DebtNoteRepository {
       if (note != null) {
         await _applyRepaymentEffect(
           note.direction,
-          relatedAssetId: note.relatedAssetId,
-          principalCents:
-              repayment.amountCents - (repayment.interestCents ?? 0),
+          // 撤销按落库的还款账户精确回加（迁移已回填历史记录）
+          relatedAssetId: repayment.repayAssetId,
+          principalCents: repayment.amountCents,
           revert: true,
         );
       }
@@ -604,7 +621,7 @@ class DebtNoteRepository {
     final row =
         await _db
             .customSelect(
-              'SELECT COALESCE(SUM(amount_cents - COALESCE(interest_cents, 0)), 0) '
+              'SELECT COALESCE(SUM(amount_cents), 0) '
               'AS paid FROM debt_note_repayments WHERE note_id = ?',
               variables: [Variable(noteId)],
             )

@@ -269,7 +269,9 @@ class AppDatabase extends _$AppDatabase {
           await rebuildNetValueDays();
         }
         // 借条分笔还款：新增 debt_note_repayments 表（一条借条多笔
-        // 偿还；索引随迁移显式创建，与 bill_images 同口径）
+        // 偿还；索引随迁移显式创建）。功能随本版本首次发布，建表即
+        // 最终结构（repayAssetId 列、amountCents 本金口径），野外
+        // v14 库一步直升，无中间版兼容负担
         if (from < 15) {
           await m.createTable(debtNoteRepayments);
           await m.createIndex(debtNoteRepaymentsNote);

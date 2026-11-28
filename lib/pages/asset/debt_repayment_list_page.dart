@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
 import '../../models/enums.dart';
+import '../../providers/asset_provider.dart';
 import '../../providers/debt_note_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
@@ -33,6 +34,12 @@ class _DebtRepaymentListPageState extends State<DebtRepaymentListPage> {
       .read<DebtNoteProvider>()
       .repaymentsByNoteStream(widget.note.id);
 
+  /// 账户字典（只查一次）：行副标题展示还款账户名
+  late final Future<Map<int, Asset>> _assetsMap = context
+      .read<AssetProvider>()
+      .assetsMapStream()
+      .first;
+
   @override
   Widget build(BuildContext context) {
     final isLendOut = widget.note.direction == DebtDirection.lendOut;
@@ -45,10 +52,11 @@ class _DebtRepaymentListPageState extends State<DebtRepaymentListPage> {
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const SizedBox.shrink();
           final repayments = snapshot.data!;
-          // 已还本金 = Σ(还款额 − 利息)；已还利息 = Σ利息
+          // 已还本金 = Σ还款 amountCents（落库即本金口径）；已还利息
+          // = Σ利息
           final repaidPrincipal = repayments.fold<int>(
             0,
-            (s, r) => s + r.amountCents - (r.interestCents ?? 0),
+            (s, r) => s + r.amountCents,
           );
           final repaidInterest = repayments.fold<int>(
             0,
@@ -79,7 +87,16 @@ class _DebtRepaymentListPageState extends State<DebtRepaymentListPage> {
               if (repayments.isEmpty)
                 const _EmptyHint()
               else
-                ..._buildMonthGroups(repayments),
+                // 账户字典（FutureBuilder）：行副标题查还款账户名
+                FutureBuilder<Map<int, Asset>>(
+                  future: _assetsMap,
+                  builder: (context, assetSnap) {
+                    final assetMap = assetSnap.data ?? const <int, Asset>{};
+                    return Column(
+                      children: _buildMonthGroups(repayments, assetMap),
+                    );
+                  },
+                ),
             ],
           );
         },
@@ -184,7 +201,10 @@ class _DebtRepaymentListPageState extends State<DebtRepaymentListPage> {
 
   /// 按月分组：组头「yyyy年M月」+ 该月记录卡片；还款流已按日期倒序，
   /// 分组按插入序迭代即保持跨月先后
-  List<Widget> _buildMonthGroups(List<DebtNoteRepayment> repayments) {
+  List<Widget> _buildMonthGroups(
+    List<DebtNoteRepayment> repayments,
+    Map<int, Asset> assetMap,
+  ) {
     final groups = <String, List<DebtNoteRepayment>>{};
     final monthOrder = <String>[];
     for (final r in repayments) {
@@ -216,6 +236,8 @@ class _DebtRepaymentListPageState extends State<DebtRepaymentListPage> {
                 RepaymentFlowRow(
                   repayment: groups[key]![i],
                   debtNote: widget.note,
+                  // 副标题展示还款账户名（换卡还款一眼可见）
+                  assetName: assetMap[groups[key]![i].repayAssetId]?.name,
                   onTap: () => showRepaymentDetailSheet(
                     context,
                     repayment: groups[key]![i],

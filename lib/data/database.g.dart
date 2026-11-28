@@ -5553,6 +5553,17 @@ class $DebtNoteRepaymentsTable extends DebtNoteRepayments
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _repayAssetIdMeta = const VerificationMeta(
+    'repayAssetId',
+  );
+  @override
+  late final GeneratedColumn<int> repayAssetId = GeneratedColumn<int>(
+    'repay_asset_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
@@ -5593,6 +5604,7 @@ class $DebtNoteRepaymentsTable extends DebtNoteRepayments
     interestCents,
     categoryId,
     interestBillId,
+    repayAssetId,
     note,
     repaidAt,
     createdAt,
@@ -5655,6 +5667,15 @@ class $DebtNoteRepaymentsTable extends DebtNoteRepayments
         ),
       );
     }
+    if (data.containsKey('repay_asset_id')) {
+      context.handle(
+        _repayAssetIdMeta,
+        repayAssetId.isAcceptableOrUnknown(
+          data['repay_asset_id']!,
+          _repayAssetIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('note')) {
       context.handle(
         _noteMeta,
@@ -5708,6 +5729,10 @@ class $DebtNoteRepaymentsTable extends DebtNoteRepayments
         DriftSqlType.int,
         data['${effectivePrefix}interest_bill_id'],
       ),
+      repayAssetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}repay_asset_id'],
+      ),
       note: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}note'],
@@ -5736,7 +5761,8 @@ class DebtNoteRepayment extends DataClass
   /// 所属借条；借条删除时级联删除全部还款记录
   final int noteId;
 
-  /// 本次还款总额，单位：分（本金 + 利息；借出方向收款恒等于本金）
+  /// 本次还款冲减借条余额的本金，单位：分；借出方向收款恒等于
+  /// 本金（利息收入另拆）。实扣合计 = amountCents + interestCents
   final int amountCents;
 
   /// 其中利息，单位：分；null = 未拆分（整笔都冲借条余额）。
@@ -5748,6 +5774,12 @@ class DebtNoteRepayment extends DataClass
 
   /// 利息支出账单 id：删除还款时级联删账单（账单联动随之自动撤销）
   final int? interestBillId;
+
+  /// 本次还款实际使用的账户：本金余额联动与利息账单挂靠均按此账户，
+  /// 与借条主表的关联账户（放款来源）相互独立——放款的卡和还款的卡
+  /// 可以不同。null = 不联动任何账户（纯台账）。历史记录由 v16 迁移
+  /// 按借条关联账户回填，语义始终为"实际扣款/回笼的账户"
+  final int? repayAssetId;
 
   /// 备注，可为空
   final String? note;
@@ -5764,6 +5796,7 @@ class DebtNoteRepayment extends DataClass
     this.interestCents,
     this.categoryId,
     this.interestBillId,
+    this.repayAssetId,
     this.note,
     required this.repaidAt,
     required this.createdAt,
@@ -5782,6 +5815,9 @@ class DebtNoteRepayment extends DataClass
     }
     if (!nullToAbsent || interestBillId != null) {
       map['interest_bill_id'] = Variable<int>(interestBillId);
+    }
+    if (!nullToAbsent || repayAssetId != null) {
+      map['repay_asset_id'] = Variable<int>(repayAssetId);
     }
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
@@ -5805,6 +5841,9 @@ class DebtNoteRepayment extends DataClass
       interestBillId: interestBillId == null && nullToAbsent
           ? const Value.absent()
           : Value(interestBillId),
+      repayAssetId: repayAssetId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(repayAssetId),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       repaidAt: Value(repaidAt),
       createdAt: Value(createdAt),
@@ -5823,6 +5862,7 @@ class DebtNoteRepayment extends DataClass
       interestCents: serializer.fromJson<int?>(json['interestCents']),
       categoryId: serializer.fromJson<int?>(json['categoryId']),
       interestBillId: serializer.fromJson<int?>(json['interestBillId']),
+      repayAssetId: serializer.fromJson<int?>(json['repayAssetId']),
       note: serializer.fromJson<String?>(json['note']),
       repaidAt: serializer.fromJson<DateTime>(json['repaidAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -5838,6 +5878,7 @@ class DebtNoteRepayment extends DataClass
       'interestCents': serializer.toJson<int?>(interestCents),
       'categoryId': serializer.toJson<int?>(categoryId),
       'interestBillId': serializer.toJson<int?>(interestBillId),
+      'repayAssetId': serializer.toJson<int?>(repayAssetId),
       'note': serializer.toJson<String?>(note),
       'repaidAt': serializer.toJson<DateTime>(repaidAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -5851,6 +5892,7 @@ class DebtNoteRepayment extends DataClass
     Value<int?> interestCents = const Value.absent(),
     Value<int?> categoryId = const Value.absent(),
     Value<int?> interestBillId = const Value.absent(),
+    Value<int?> repayAssetId = const Value.absent(),
     Value<String?> note = const Value.absent(),
     DateTime? repaidAt,
     DateTime? createdAt,
@@ -5865,6 +5907,7 @@ class DebtNoteRepayment extends DataClass
     interestBillId: interestBillId.present
         ? interestBillId.value
         : this.interestBillId,
+    repayAssetId: repayAssetId.present ? repayAssetId.value : this.repayAssetId,
     note: note.present ? note.value : this.note,
     repaidAt: repaidAt ?? this.repaidAt,
     createdAt: createdAt ?? this.createdAt,
@@ -5885,6 +5928,9 @@ class DebtNoteRepayment extends DataClass
       interestBillId: data.interestBillId.present
           ? data.interestBillId.value
           : this.interestBillId,
+      repayAssetId: data.repayAssetId.present
+          ? data.repayAssetId.value
+          : this.repayAssetId,
       note: data.note.present ? data.note.value : this.note,
       repaidAt: data.repaidAt.present ? data.repaidAt.value : this.repaidAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -5900,6 +5946,7 @@ class DebtNoteRepayment extends DataClass
           ..write('interestCents: $interestCents, ')
           ..write('categoryId: $categoryId, ')
           ..write('interestBillId: $interestBillId, ')
+          ..write('repayAssetId: $repayAssetId, ')
           ..write('note: $note, ')
           ..write('repaidAt: $repaidAt, ')
           ..write('createdAt: $createdAt')
@@ -5915,6 +5962,7 @@ class DebtNoteRepayment extends DataClass
     interestCents,
     categoryId,
     interestBillId,
+    repayAssetId,
     note,
     repaidAt,
     createdAt,
@@ -5929,6 +5977,7 @@ class DebtNoteRepayment extends DataClass
           other.interestCents == this.interestCents &&
           other.categoryId == this.categoryId &&
           other.interestBillId == this.interestBillId &&
+          other.repayAssetId == this.repayAssetId &&
           other.note == this.note &&
           other.repaidAt == this.repaidAt &&
           other.createdAt == this.createdAt);
@@ -5941,6 +5990,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
   final Value<int?> interestCents;
   final Value<int?> categoryId;
   final Value<int?> interestBillId;
+  final Value<int?> repayAssetId;
   final Value<String?> note;
   final Value<DateTime> repaidAt;
   final Value<DateTime> createdAt;
@@ -5951,6 +6001,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
     this.interestCents = const Value.absent(),
     this.categoryId = const Value.absent(),
     this.interestBillId = const Value.absent(),
+    this.repayAssetId = const Value.absent(),
     this.note = const Value.absent(),
     this.repaidAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -5962,6 +6013,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
     this.interestCents = const Value.absent(),
     this.categoryId = const Value.absent(),
     this.interestBillId = const Value.absent(),
+    this.repayAssetId = const Value.absent(),
     this.note = const Value.absent(),
     required DateTime repaidAt,
     this.createdAt = const Value.absent(),
@@ -5975,6 +6027,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
     Expression<int>? interestCents,
     Expression<int>? categoryId,
     Expression<int>? interestBillId,
+    Expression<int>? repayAssetId,
     Expression<String>? note,
     Expression<DateTime>? repaidAt,
     Expression<DateTime>? createdAt,
@@ -5986,6 +6039,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
       if (interestCents != null) 'interest_cents': interestCents,
       if (categoryId != null) 'category_id': categoryId,
       if (interestBillId != null) 'interest_bill_id': interestBillId,
+      if (repayAssetId != null) 'repay_asset_id': repayAssetId,
       if (note != null) 'note': note,
       if (repaidAt != null) 'repaid_at': repaidAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -5999,6 +6053,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
     Value<int?>? interestCents,
     Value<int?>? categoryId,
     Value<int?>? interestBillId,
+    Value<int?>? repayAssetId,
     Value<String?>? note,
     Value<DateTime>? repaidAt,
     Value<DateTime>? createdAt,
@@ -6010,6 +6065,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
       interestCents: interestCents ?? this.interestCents,
       categoryId: categoryId ?? this.categoryId,
       interestBillId: interestBillId ?? this.interestBillId,
+      repayAssetId: repayAssetId ?? this.repayAssetId,
       note: note ?? this.note,
       repaidAt: repaidAt ?? this.repaidAt,
       createdAt: createdAt ?? this.createdAt,
@@ -6037,6 +6093,9 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
     if (interestBillId.present) {
       map['interest_bill_id'] = Variable<int>(interestBillId.value);
     }
+    if (repayAssetId.present) {
+      map['repay_asset_id'] = Variable<int>(repayAssetId.value);
+    }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
@@ -6058,6 +6117,7 @@ class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
           ..write('interestCents: $interestCents, ')
           ..write('categoryId: $categoryId, ')
           ..write('interestBillId: $interestBillId, ')
+          ..write('repayAssetId: $repayAssetId, ')
           ..write('note: $note, ')
           ..write('repaidAt: $repaidAt, ')
           ..write('createdAt: $createdAt')
@@ -8838,6 +8898,7 @@ typedef $$DebtNoteRepaymentsTableCreateCompanionBuilder =
       Value<int?> interestCents,
       Value<int?> categoryId,
       Value<int?> interestBillId,
+      Value<int?> repayAssetId,
       Value<String?> note,
       required DateTime repaidAt,
       Value<DateTime> createdAt,
@@ -8850,6 +8911,7 @@ typedef $$DebtNoteRepaymentsTableUpdateCompanionBuilder =
       Value<int?> interestCents,
       Value<int?> categoryId,
       Value<int?> interestBillId,
+      Value<int?> repayAssetId,
       Value<String?> note,
       Value<DateTime> repaidAt,
       Value<DateTime> createdAt,
@@ -8891,6 +8953,11 @@ class $$DebtNoteRepaymentsTableFilterComposer
 
   ColumnFilters<int> get interestBillId => $composableBuilder(
     column: $table.interestBillId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get repayAssetId => $composableBuilder(
+    column: $table.repayAssetId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8949,6 +9016,11 @@ class $$DebtNoteRepaymentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get repayAssetId => $composableBuilder(
+    column: $table.repayAssetId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get note => $composableBuilder(
     column: $table.note,
     builder: (column) => ColumnOrderings(column),
@@ -8997,6 +9069,11 @@ class $$DebtNoteRepaymentsTableAnnotationComposer
 
   GeneratedColumn<int> get interestBillId => $composableBuilder(
     column: $table.interestBillId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get repayAssetId => $composableBuilder(
+    column: $table.repayAssetId,
     builder: (column) => column,
   );
 
@@ -9056,6 +9133,7 @@ class $$DebtNoteRepaymentsTableTableManager
                 Value<int?> interestCents = const Value.absent(),
                 Value<int?> categoryId = const Value.absent(),
                 Value<int?> interestBillId = const Value.absent(),
+                Value<int?> repayAssetId = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> repaidAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -9066,6 +9144,7 @@ class $$DebtNoteRepaymentsTableTableManager
                 interestCents: interestCents,
                 categoryId: categoryId,
                 interestBillId: interestBillId,
+                repayAssetId: repayAssetId,
                 note: note,
                 repaidAt: repaidAt,
                 createdAt: createdAt,
@@ -9078,6 +9157,7 @@ class $$DebtNoteRepaymentsTableTableManager
                 Value<int?> interestCents = const Value.absent(),
                 Value<int?> categoryId = const Value.absent(),
                 Value<int?> interestBillId = const Value.absent(),
+                Value<int?> repayAssetId = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 required DateTime repaidAt,
                 Value<DateTime> createdAt = const Value.absent(),
@@ -9088,6 +9168,7 @@ class $$DebtNoteRepaymentsTableTableManager
                 interestCents: interestCents,
                 categoryId: categoryId,
                 interestBillId: interestBillId,
+                repayAssetId: repayAssetId,
                 note: note,
                 repaidAt: repaidAt,
                 createdAt: createdAt,

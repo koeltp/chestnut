@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:chestnut/data/database.dart';
@@ -661,10 +661,10 @@ void main() {
     // 触发打开：onUpgrade(6→11) 走幂等路径，不抛 duplicate column
     await halfDb.customSelect('SELECT 1').get();
 
-    // 版本已推进到 14
+    // 版本已推进到当前 schema 版本
     final version =
         (await halfDb.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 14);
+    expect(version.data['user_version'], kSchemaVersion);
 
     // 缺失的三列已补齐、debt_notes 已建
     final cols = (await halfDb.customSelect('PRAGMA table_info(assets)').get())
@@ -779,7 +779,7 @@ void main() {
 
     final version =
         (await v7Db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 14);
+    expect(version.data['user_version'], kSchemaVersion);
 
     // v11：institution 列回填——账户名恰为机构名的命中，带后缀的不硬猜，
     // 投资组按券商/平台名单回填
@@ -857,7 +857,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     final version = (await db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 14);
+    expect(version.data['user_version'], kSchemaVersion);
 
     // institution 列已补齐、bank 列已删、机构值已搬入
     final cols = (await db.customSelect('PRAGMA table_info(assets)').get())

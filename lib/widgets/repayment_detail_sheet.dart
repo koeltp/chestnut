@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../data/database.dart';
 import '../models/enums.dart';
+import '../providers/asset_provider.dart';
 import '../providers/debt_note_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/money_util.dart';
-import '../utils/show_toast.dart';
 import 'detail_widgets.dart';
 
 /// 借条还款详情底部弹窗：点击明细中的还款条目时展示
@@ -116,11 +116,42 @@ class _RepaymentDetailBody extends StatelessWidget {
               ),
             ),
             const Divider(height: 1, color: AppColors.divider),
+            // 还款账户：本金与利息的余额联动都按这笔落库的账户走
+            DetailInfoRow(
+              label: isBorrowIn ? '还款账户' : '收款账户',
+              child: FutureBuilder<Map<int, Asset>>(
+                future: context
+                    .read<AssetProvider>()
+                    .assetsMapStream()
+                    .first,
+                builder: (context, snapshot) {
+                  final id = repayment.repayAssetId;
+                  String text = '不关联';
+                  if (id != null) {
+                    final match = snapshot.data?[id];
+                    text = match == null ? '已删除的账户' : match.name;
+                  }
+                  return Text(
+                    text,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: id == null
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.divider),
             DetailInfoRow(
               label: '合计',
               child: Text(
                 '${isBorrowIn ? '-' : '+'}'
-                '${MoneyUtil.centsToYuanGroupedTrimmed(repayment.amountCents)} CNY',
+                '${MoneyUtil.centsToYuanGroupedTrimmed(
+                  repayment.amountCents + (repayment.interestCents ?? 0),
+                )} CNY',
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontSize: 20,
@@ -135,9 +166,7 @@ class _RepaymentDetailBody extends StatelessWidget {
               DetailInfoRow(
                 label: '本金',
                 child: Text(
-                  '${MoneyUtil.centsToYuanTrimmed(
-                    repayment.amountCents - repayment.interestCents!,
-                  )} CNY',
+                  '${MoneyUtil.centsToYuanTrimmed(repayment.amountCents)} CNY',
                   textAlign: TextAlign.right,
                   style: const TextStyle(
                     fontSize: 15,

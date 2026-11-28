@@ -1,4 +1,4 @@
-import 'package:chestnut/data/database.dart';
+﻿import 'package:chestnut/data/database.dart';
 import 'package:chestnut/models/enums.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -86,9 +86,9 @@ void main() {
     // 惰性打开：任一查询触发建库/迁移
     await db.customSelect('SELECT 1').get();
 
-    // 版本已推进到 14
+    // 版本已推进到当前 schema 版本
     final version = (await db.customSelect('PRAGMA user_version').get()).single;
-    expect(version.data['user_version'], 14);
+    expect(version.data['user_version'], kSchemaVersion);
 
     // 列结构：两个新列存在，category_id 变为可空
     final cols = await db.customSelect('PRAGMA table_info(bills)').get();

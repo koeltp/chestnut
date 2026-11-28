@@ -710,6 +710,10 @@ class _DayCard extends StatelessWidget {
               RepaymentFlowRow(
                 repayment: entries[i].repayment!,
                 debtNote: view.debtNotes[entries[i].repayment!.noteId],
+                // 副标题展示资金出口：本金与利息实际扣减/挂靠的账户
+                assetName: view
+                    .relatedAssets[entries[i].repayment!.repayAssetId]
+                    ?.name,
                 onTap: () => showRepaymentDetailSheet(
                   context,
                   repayment: entries[i].repayment!,

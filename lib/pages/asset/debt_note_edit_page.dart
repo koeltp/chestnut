@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/asset_repository.dart';
 import '../../data/repositories/debt_note_repository.dart';
 import '../../models/enums.dart';
 import '../../providers/asset_provider.dart';
@@ -427,6 +428,9 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
         if (pending.isNotEmpty) unawaited(repo.uploadPhotos(pending, client));
       }
       if (mounted) Navigator.of(context).pop();
+    } on InsufficientBalanceException catch (e) {
+      if (mounted) showAppToast(context, e.toString());
+      return;
     } catch (e) {
       if (mounted) showAppToast(context, '保存失败：$e');
     } finally {

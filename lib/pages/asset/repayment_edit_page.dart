@@ -3,13 +3,17 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
+import '../../data/repositories/asset_repository.dart';
+import '../../data/repositories/debt_note_repository.dart';
 import '../../models/enums.dart';
+import '../../providers/asset_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/debt_note_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_dimens.dart';
 import '../../utils/money_util.dart';
 import '../../utils/show_toast.dart';
+import '../../widgets/asset_pick_sheet.dart';
 import '../../widgets/category_tree_selector.dart';
 import '../../widgets/form_rows.dart';
 import '../../widgets/section_card.dart';
@@ -49,6 +53,16 @@ class _RepaymentEditPageState extends State<RepaymentEditPage> {
 
   /// 全部支出分类（分类选择弹窗数据源 + 已选分类名回显）
   List<Category> _expenseCategories = [];
+
+  /// 本次还款实际使用的账户：默认带出借条的关联账户（放款来源），
+  /// 可改——放款的卡和还款的卡可以不同
+  late int? _repayAssetId = widget.note.relatedAssetId;
+
+  /// 活跃账户列表：编辑期间账户不会增删，只查一次后复用
+  late final Future<List<Asset>> _activeAssets = context
+      .read<AssetProvider>()
+      .activeStream()
+      .first;
 
   bool _saving = false;
 
@@ -190,9 +204,48 @@ class _RepaymentEditPageState extends State<RepaymentEditPage> {
     return '请选择';
   }
 
+  /// 选择还款账户：统一账户选择面板（与记借条同风格，支持"不关联"
+  /// = 纯台账不联动余额）
+  Future<void> _pickRepayAsset() async {
+    final assets = await _activeAssets;
+    if (!mounted) return;
+    final result = await showAssetPickSheet(
+      context,
+      assets: assets,
+      allowNone: true,
+    );
+    // 下滑关闭等取消操作返回 null，保持原选择不变
+    if (result == null || !mounted) return;
+    setState(() => _repayAssetId = result.$1?.id);
+  }
+
+  /// 还款账户显示名：按 id 从账户流里查（查不到说明已归档/删除）
+  Widget _repayAssetName() {
+    return FutureBuilder<List<Asset>>(
+      future: _activeAssets,
+      builder: (context, snapshot) {
+        final id = _repayAssetId;
+        String text = '不关联';
+        if (id != null) {
+          final match = snapshot.data?.where((a) => a.id == id).toList();
+          text = (match == null || match.isEmpty)
+              ? '已删除的账户'
+              : match.single.name;
+        }
+        return Text(
+          text,
+          style: TextStyle(
+            fontSize: 15,
+            color: id == null ? AppColors.textSecondary : AppColors.textPrimary,
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _save() async {
-    // 本金与利息独立录入：落库总额 = 本金 + 利息（银行实际扣款额），
-    // 详情页与借条余额冲减由仓储按"总额 − 利息"反推本金
+    // 本金与利息独立录入：amountCents 落库纯本金（余额冲减/剩余计算
+    // 的直接口径），拆息时另生成利息支出账单进明细与统计
     final principal = MoneyUtil.yuanToCents(_amount.text.trim());
     if (principal == null || principal <= 0) {
       showAppToast(context, '请输入正确的本金');
@@ -208,19 +261,35 @@ class _RepaymentEditPageState extends State<RepaymentEditPage> {
         return;
       }
     }
-    final amountCents = principal + (interest ?? 0);
+    // 还款日期不能早于借款日期（按自然日比较，借款当天还款合法）
+    final borrowedDay = DateTime(
+      widget.note.borrowedAt.year,
+      widget.note.borrowedAt.month,
+      widget.note.borrowedAt.day,
+    );
+    if (_repaidAt.isBefore(borrowedDay)) {
+      showAppToast(context, '还款日期不能早于借款日期');
+      return;
+    }
     final text = _note.text.trim();
     setState(() => _saving = true);
     try {
       await context.read<DebtNoteProvider>().addRepayment(
         note: widget.note,
-        amountCents: amountCents,
+        amountCents: principal,
         repaidAt: _repaidAt,
         interestCents: interest,
         categoryId: interest != null ? _categoryId : null,
+        repayAssetId: _repayAssetId,
         remark: text.isEmpty ? null : text,
       );
       if (mounted) Navigator.of(context).pop();
+    } on RepaymentExceedsException {
+      if (mounted) showAppToast(context, '还款金额超过借条剩余欠款');
+      return;
+    } on InsufficientBalanceException catch (e) {
+      if (mounted) showAppToast(context, e.toString());
+      return;
     } catch (e) {
       if (mounted) showAppToast(context, '保存失败：$e');
     } finally {
@@ -346,6 +415,24 @@ class _RepaymentEditPageState extends State<RepaymentEditPage> {
               const SizedBox(height: AppDimens.gapMd),
               FormRowsCard(
                 rows: [
+                  // 还款账户：默认带出借条关联账户，可改（放款与还款
+                  // 的卡可以不同）；本金与利息的余额联动都按这笔的
+                  // 落库账户走
+                  FormRow(
+                    label: _isBorrowIn ? '还款账户' : '收款账户',
+                    onTap: _pickRepayAsset,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _repayAssetName(),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 22,
+                          color: AppColors.textSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
                   FormRow(
                     label: _isBorrowIn ? '还款日期' : '收款日期',
                     onTap: _pickDate,
