@@ -81,4 +81,41 @@ class DebtNoteProvider extends ChangeNotifier {
   /// 删除借条（照片级联删除，client 非空时一并清云端对象）
   Future<void> deleteDebtNote(DebtNote note, {S3CompatibleClient? client}) =>
       _repo.deleteDebtNote(note, client: client);
+
+  /// 记一笔还款/收款（同事务完成余额联动与利息账单生成）
+  Future<DebtNoteRepayment> addRepayment({
+    required DebtNote note,
+    required int amountCents,
+    required DateTime repaidAt,
+    int? interestCents,
+    int? categoryId,
+    String? remark,
+  }) => _repo.addRepayment(
+    note: note,
+    amountCents: amountCents,
+    repaidAt: repaidAt,
+    interestCents: interestCents,
+    categoryId: categoryId,
+    remark: remark,
+  );
+
+  /// 删除一笔还款（联动自动撤销）
+  Future<void> deleteRepayment(DebtNoteRepayment repayment) =>
+      _repo.deleteRepayment(repayment);
+
+  /// 某借条的还款分笔流（详情弹窗：已还/剩余与记录列表）
+  Stream<List<DebtNoteRepayment>> repaymentsByNoteStream(int noteId) =>
+      _repo.watchRepaymentsByNote(noteId);
+
+  /// 各借条已还本金总额流（noteId → 分）：列表页剩余口径
+  Stream<Map<int, int>> repaidTotalsStream() =>
+      _repo.watchRepaidPrincipalTotals();
+
+  /// 全部还款流（还款记录页：跨借条聚合，日期倒序）
+  Stream<List<DebtNoteRepayment>> repaymentsAllStream() =>
+      _repo.watchRepaymentsAll();
+
+  /// 该借条最近一次使用的利息分类 id（记还款分类记忆）
+  Future<int?> latestRepaymentCategoryId(int noteId) =>
+      _repo.latestRepaymentCategoryId(noteId);
 }

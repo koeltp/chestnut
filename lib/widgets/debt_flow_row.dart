@@ -21,6 +21,7 @@ class DebtFlowRow extends StatelessWidget {
     required this.onTap,
     this.hasImage = false,
     this.accountLine,
+    this.paidCents,
   });
 
   final DebtNote note;
@@ -33,10 +34,17 @@ class DebtFlowRow extends StatelessWidget {
   /// 金额下方关联账户小字：未关联账户为 null（不显示该行）
   final String? accountLine;
 
+  /// 已还本金（分）：非空且有还款时主金额显示剩余口径（借条余额），
+  /// 副标题追加"已还 ¥x"；null = 不参与剩余口径（如详情弹窗快照）
+  final int? paidCents;
+
   @override
   Widget build(BuildContext context) {
     final isLendOut = note.direction == DebtDirection.lendOut;
     final hasNote = note.note != null && note.note!.isNotEmpty;
+    // 剩余口径：有已还数据且确实还过钱时，主金额显示借条余额
+    final hasPaid = paidCents != null && paidCents! > 0;
+    final displayCents = hasPaid ? note.amountCents - paidCents! : note.amountCents;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -95,14 +103,34 @@ class DebtFlowRow extends StatelessWidget {
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  // 「未计入」胶囊与备注同一行（同账单行「省¥x｜备注」），
-                  // 二者至少其一时整行才出现
-                  if (!note.includeInTotal || hasNote) ...[
+                  // 「未计入」胶囊｜已还小字｜备注 同一行（与账单行
+                  // 「省¥x｜备注」同构），三者至少其一时整行才出现
+                  if (!note.includeInTotal || hasPaid || hasNote) ...[
                     const SizedBox(height: 2),
                     Row(
                       children: [
                         if (!note.includeInTotal) _excludedChip(),
-                        if (!note.includeInTotal && hasNote) ...[
+                        if (!note.includeInTotal && (hasPaid || hasNote)) ...[
+                          const SizedBox(width: 6),
+                          const Text(
+                            '|',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.divider,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        if (hasPaid)
+                          Text(
+                            '已还 ¥${MoneyUtil.centsToYuanTrimmed(paidCents!)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        if (hasPaid && hasNote) ...[
                           const SizedBox(width: 6),
                           const Text(
                             '|',
@@ -139,7 +167,7 @@ class DebtFlowRow extends StatelessWidget {
               children: [
                 Text(
                   '${isLendOut ? '-' : '+'}'
-                  '${MoneyUtil.centsToYuanTrimmed(note.amountCents)}',
+                  '${MoneyUtil.centsToYuanTrimmed(displayCents)}',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,

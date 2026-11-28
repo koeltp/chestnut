@@ -535,7 +535,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
                 textInputAction: TextInputAction.next,
               ),
               FormInputRow(
-                label: '金额（元）',
+                label: '本金',
                 controller: _amount,
                 hint: '0.00',
                 keyboardType: const TextInputType.numberWithOptions(
@@ -543,6 +543,7 @@ class _DebtNoteEditPageState extends State<DebtNoteEditPage> {
                 ),
                 // 最多两位小数：金额按分入库，防输入超精度小数
                 inputFormatters: MoneyUtil.amountInputFormatters,
+                suffix: 'CNY',
                 textInputAction: TextInputAction.next,
               ),
               FormRow(

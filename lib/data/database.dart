@@ -18,6 +18,7 @@ import 'tables/bills.dart';
 import 'tables/budgets.dart';
 import 'tables/categories.dart';
 import 'tables/debt_note_images.dart';
+import 'tables/debt_note_repayments.dart';
 import 'tables/debt_notes.dart';
 import 'tables/tags.dart';
 
@@ -27,7 +28,7 @@ part 'database.g.dart';
 ///
 /// 开发期历史迁移已在发布前整体重置归一，自 v1 起每次结构
 /// 变更 +1；野外用户出现后版本号只增不减、迁移代码只增不删。
-const int kSchemaVersion = 14;
+const int kSchemaVersion = 15;
 
 /// 数据库主文件名（备份服务与启动恢复共用）
 const String kDatabaseFileName = 'chestnut.sqlite';
@@ -61,6 +62,7 @@ const String kDowngradeDetectedKey = 'db_downgrade_detected';
     NetValueDays,
     DebtNotes,
     DebtNoteImages,
+    DebtNoteRepayments,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -265,6 +267,12 @@ class AppDatabase extends _$AppDatabase {
         if (from < 14) {
           await m.createTable(netValueDays);
           await rebuildNetValueDays();
+        }
+        // 借条分笔还款：新增 debt_note_repayments 表（一条借条多笔
+        // 偿还；索引随迁移显式创建，与 bill_images 同口径）
+        if (from < 15) {
+          await m.createTable(debtNoteRepayments);
+          await m.createIndex(debtNoteRepaymentsNote);
         }
       }
     },

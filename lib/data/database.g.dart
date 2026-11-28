@@ -5481,6 +5481,591 @@ class DebtNoteImagesCompanion extends UpdateCompanion<DebtNoteImage> {
   }
 }
 
+class $DebtNoteRepaymentsTable extends DebtNoteRepayments
+    with TableInfo<$DebtNoteRepaymentsTable, DebtNoteRepayment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DebtNoteRepaymentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountCentsMeta = const VerificationMeta(
+    'amountCents',
+  );
+  @override
+  late final GeneratedColumn<int> amountCents = GeneratedColumn<int>(
+    'amount_cents',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _interestCentsMeta = const VerificationMeta(
+    'interestCents',
+  );
+  @override
+  late final GeneratedColumn<int> interestCents = GeneratedColumn<int>(
+    'interest_cents',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<int> categoryId = GeneratedColumn<int>(
+    'category_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _interestBillIdMeta = const VerificationMeta(
+    'interestBillId',
+  );
+  @override
+  late final GeneratedColumn<int> interestBillId = GeneratedColumn<int>(
+    'interest_bill_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _repaidAtMeta = const VerificationMeta(
+    'repaidAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> repaidAt = GeneratedColumn<DateTime>(
+    'repaid_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    noteId,
+    amountCents,
+    interestCents,
+    categoryId,
+    interestBillId,
+    note,
+    repaidAt,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'debt_note_repayments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DebtNoteRepayment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('amount_cents')) {
+      context.handle(
+        _amountCentsMeta,
+        amountCents.isAcceptableOrUnknown(
+          data['amount_cents']!,
+          _amountCentsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountCentsMeta);
+    }
+    if (data.containsKey('interest_cents')) {
+      context.handle(
+        _interestCentsMeta,
+        interestCents.isAcceptableOrUnknown(
+          data['interest_cents']!,
+          _interestCentsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    }
+    if (data.containsKey('interest_bill_id')) {
+      context.handle(
+        _interestBillIdMeta,
+        interestBillId.isAcceptableOrUnknown(
+          data['interest_bill_id']!,
+          _interestBillIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('repaid_at')) {
+      context.handle(
+        _repaidAtMeta,
+        repaidAt.isAcceptableOrUnknown(data['repaid_at']!, _repaidAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_repaidAtMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DebtNoteRepayment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DebtNoteRepayment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      noteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}note_id'],
+      )!,
+      amountCents: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_cents'],
+      )!,
+      interestCents: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}interest_cents'],
+      ),
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}category_id'],
+      ),
+      interestBillId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}interest_bill_id'],
+      ),
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      repaidAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}repaid_at'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DebtNoteRepaymentsTable createAlias(String alias) {
+    return $DebtNoteRepaymentsTable(attachedDatabase, alias);
+  }
+}
+
+class DebtNoteRepayment extends DataClass
+    implements Insertable<DebtNoteRepayment> {
+  final int id;
+
+  /// 所属借条；借条删除时级联删除全部还款记录
+  final int noteId;
+
+  /// 本次还款总额，单位：分（本金 + 利息；借出方向收款恒等于本金）
+  final int amountCents;
+
+  /// 其中利息，单位：分；null = 未拆分（整笔都冲借条余额）。
+  /// 仅借入方向（还银行分期等）在 UI 上提供拆分，借出收款恒为 null
+  final int? interestCents;
+
+  /// 利息支出账单的分类；null = 未拆分利息或用户未选
+  final int? categoryId;
+
+  /// 利息支出账单 id：删除还款时级联删账单（账单联动随之自动撤销）
+  final int? interestBillId;
+
+  /// 备注，可为空
+  final String? note;
+
+  /// 还款时间（含时刻）：明细混排按此排序与日分组
+  final DateTime repaidAt;
+
+  /// 创建时间
+  final DateTime createdAt;
+  const DebtNoteRepayment({
+    required this.id,
+    required this.noteId,
+    required this.amountCents,
+    this.interestCents,
+    this.categoryId,
+    this.interestBillId,
+    this.note,
+    required this.repaidAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['note_id'] = Variable<int>(noteId);
+    map['amount_cents'] = Variable<int>(amountCents);
+    if (!nullToAbsent || interestCents != null) {
+      map['interest_cents'] = Variable<int>(interestCents);
+    }
+    if (!nullToAbsent || categoryId != null) {
+      map['category_id'] = Variable<int>(categoryId);
+    }
+    if (!nullToAbsent || interestBillId != null) {
+      map['interest_bill_id'] = Variable<int>(interestBillId);
+    }
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['repaid_at'] = Variable<DateTime>(repaidAt);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DebtNoteRepaymentsCompanion toCompanion(bool nullToAbsent) {
+    return DebtNoteRepaymentsCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      amountCents: Value(amountCents),
+      interestCents: interestCents == null && nullToAbsent
+          ? const Value.absent()
+          : Value(interestCents),
+      categoryId: categoryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryId),
+      interestBillId: interestBillId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(interestBillId),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      repaidAt: Value(repaidAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DebtNoteRepayment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DebtNoteRepayment(
+      id: serializer.fromJson<int>(json['id']),
+      noteId: serializer.fromJson<int>(json['noteId']),
+      amountCents: serializer.fromJson<int>(json['amountCents']),
+      interestCents: serializer.fromJson<int?>(json['interestCents']),
+      categoryId: serializer.fromJson<int?>(json['categoryId']),
+      interestBillId: serializer.fromJson<int?>(json['interestBillId']),
+      note: serializer.fromJson<String?>(json['note']),
+      repaidAt: serializer.fromJson<DateTime>(json['repaidAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'noteId': serializer.toJson<int>(noteId),
+      'amountCents': serializer.toJson<int>(amountCents),
+      'interestCents': serializer.toJson<int?>(interestCents),
+      'categoryId': serializer.toJson<int?>(categoryId),
+      'interestBillId': serializer.toJson<int?>(interestBillId),
+      'note': serializer.toJson<String?>(note),
+      'repaidAt': serializer.toJson<DateTime>(repaidAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DebtNoteRepayment copyWith({
+    int? id,
+    int? noteId,
+    int? amountCents,
+    Value<int?> interestCents = const Value.absent(),
+    Value<int?> categoryId = const Value.absent(),
+    Value<int?> interestBillId = const Value.absent(),
+    Value<String?> note = const Value.absent(),
+    DateTime? repaidAt,
+    DateTime? createdAt,
+  }) => DebtNoteRepayment(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    amountCents: amountCents ?? this.amountCents,
+    interestCents: interestCents.present
+        ? interestCents.value
+        : this.interestCents,
+    categoryId: categoryId.present ? categoryId.value : this.categoryId,
+    interestBillId: interestBillId.present
+        ? interestBillId.value
+        : this.interestBillId,
+    note: note.present ? note.value : this.note,
+    repaidAt: repaidAt ?? this.repaidAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DebtNoteRepayment copyWithCompanion(DebtNoteRepaymentsCompanion data) {
+    return DebtNoteRepayment(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      amountCents: data.amountCents.present
+          ? data.amountCents.value
+          : this.amountCents,
+      interestCents: data.interestCents.present
+          ? data.interestCents.value
+          : this.interestCents,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      interestBillId: data.interestBillId.present
+          ? data.interestBillId.value
+          : this.interestBillId,
+      note: data.note.present ? data.note.value : this.note,
+      repaidAt: data.repaidAt.present ? data.repaidAt.value : this.repaidAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DebtNoteRepayment(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('amountCents: $amountCents, ')
+          ..write('interestCents: $interestCents, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('interestBillId: $interestBillId, ')
+          ..write('note: $note, ')
+          ..write('repaidAt: $repaidAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    noteId,
+    amountCents,
+    interestCents,
+    categoryId,
+    interestBillId,
+    note,
+    repaidAt,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DebtNoteRepayment &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.amountCents == this.amountCents &&
+          other.interestCents == this.interestCents &&
+          other.categoryId == this.categoryId &&
+          other.interestBillId == this.interestBillId &&
+          other.note == this.note &&
+          other.repaidAt == this.repaidAt &&
+          other.createdAt == this.createdAt);
+}
+
+class DebtNoteRepaymentsCompanion extends UpdateCompanion<DebtNoteRepayment> {
+  final Value<int> id;
+  final Value<int> noteId;
+  final Value<int> amountCents;
+  final Value<int?> interestCents;
+  final Value<int?> categoryId;
+  final Value<int?> interestBillId;
+  final Value<String?> note;
+  final Value<DateTime> repaidAt;
+  final Value<DateTime> createdAt;
+  const DebtNoteRepaymentsCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.amountCents = const Value.absent(),
+    this.interestCents = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.interestBillId = const Value.absent(),
+    this.note = const Value.absent(),
+    this.repaidAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  DebtNoteRepaymentsCompanion.insert({
+    this.id = const Value.absent(),
+    required int noteId,
+    required int amountCents,
+    this.interestCents = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.interestBillId = const Value.absent(),
+    this.note = const Value.absent(),
+    required DateTime repaidAt,
+    this.createdAt = const Value.absent(),
+  }) : noteId = Value(noteId),
+       amountCents = Value(amountCents),
+       repaidAt = Value(repaidAt);
+  static Insertable<DebtNoteRepayment> custom({
+    Expression<int>? id,
+    Expression<int>? noteId,
+    Expression<int>? amountCents,
+    Expression<int>? interestCents,
+    Expression<int>? categoryId,
+    Expression<int>? interestBillId,
+    Expression<String>? note,
+    Expression<DateTime>? repaidAt,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (amountCents != null) 'amount_cents': amountCents,
+      if (interestCents != null) 'interest_cents': interestCents,
+      if (categoryId != null) 'category_id': categoryId,
+      if (interestBillId != null) 'interest_bill_id': interestBillId,
+      if (note != null) 'note': note,
+      if (repaidAt != null) 'repaid_at': repaidAt,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  DebtNoteRepaymentsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? noteId,
+    Value<int>? amountCents,
+    Value<int?>? interestCents,
+    Value<int?>? categoryId,
+    Value<int?>? interestBillId,
+    Value<String?>? note,
+    Value<DateTime>? repaidAt,
+    Value<DateTime>? createdAt,
+  }) {
+    return DebtNoteRepaymentsCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      amountCents: amountCents ?? this.amountCents,
+      interestCents: interestCents ?? this.interestCents,
+      categoryId: categoryId ?? this.categoryId,
+      interestBillId: interestBillId ?? this.interestBillId,
+      note: note ?? this.note,
+      repaidAt: repaidAt ?? this.repaidAt,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (amountCents.present) {
+      map['amount_cents'] = Variable<int>(amountCents.value);
+    }
+    if (interestCents.present) {
+      map['interest_cents'] = Variable<int>(interestCents.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<int>(categoryId.value);
+    }
+    if (interestBillId.present) {
+      map['interest_bill_id'] = Variable<int>(interestBillId.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (repaidAt.present) {
+      map['repaid_at'] = Variable<DateTime>(repaidAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DebtNoteRepaymentsCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('amountCents: $amountCents, ')
+          ..write('interestCents: $interestCents, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('interestBillId: $interestBillId, ')
+          ..write('note: $note, ')
+          ..write('repaidAt: $repaidAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -5495,6 +6080,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NetValueDaysTable netValueDays = $NetValueDaysTable(this);
   late final $DebtNotesTable debtNotes = $DebtNotesTable(this);
   late final $DebtNoteImagesTable debtNoteImages = $DebtNoteImagesTable(this);
+  late final $DebtNoteRepaymentsTable debtNoteRepayments =
+      $DebtNoteRepaymentsTable(this);
   late final Index billsDateCreated = Index(
     'bills_date_created',
     'CREATE INDEX bills_date_created ON bills (date, created_at)',
@@ -5519,6 +6106,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'debt_note_images_note',
     'CREATE INDEX debt_note_images_note ON debt_note_images (note_id)',
   );
+  late final Index debtNoteRepaymentsNote = Index(
+    'debt_note_repayments_note',
+    'CREATE INDEX debt_note_repayments_note ON debt_note_repayments (note_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5535,35 +6126,39 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     netValueDays,
     debtNotes,
     debtNoteImages,
+    debtNoteRepayments,
     billsDateCreated,
     billsCategory,
     tagsName,
     billImagesBill,
     assetSnapshotsAssetDay,
     debtNoteImagesNote,
+    debtNoteRepaymentsNote,
   ];
 }
 
-typedef $$CategoriesTableCreateCompanionBuilder = CategoriesCompanion Function({
-  Value<int> id,
-  required String name,
-  required int iconCode,
-  required int colorValue,
-  required BillType type,
-  Value<int?> parentId,
-  Value<int> sortOrder,
-  Value<bool> isFallback,
-});
-typedef $$CategoriesTableUpdateCompanionBuilder = CategoriesCompanion Function({
-  Value<int> id,
-  Value<String> name,
-  Value<int> iconCode,
-  Value<int> colorValue,
-  Value<BillType> type,
-  Value<int?> parentId,
-  Value<int> sortOrder,
-  Value<bool> isFallback,
-});
+typedef $$CategoriesTableCreateCompanionBuilder =
+    CategoriesCompanion Function({
+      Value<int> id,
+      required String name,
+      required int iconCode,
+      required int colorValue,
+      required BillType type,
+      Value<int?> parentId,
+      Value<int> sortOrder,
+      Value<bool> isFallback,
+    });
+typedef $$CategoriesTableUpdateCompanionBuilder =
+    CategoriesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> iconCode,
+      Value<int> colorValue,
+      Value<BillType> type,
+      Value<int?> parentId,
+      Value<int> sortOrder,
+      Value<bool> isFallback,
+    });
 
 class $$CategoriesTableFilterComposer
     extends Composer<_$AppDatabase, $CategoriesTable> {
@@ -5792,42 +6387,44 @@ typedef $$CategoriesTableProcessedTableManager =
       Category,
       PrefetchHooks Function()
     >;
-typedef $$BillsTableCreateCompanionBuilder = BillsCompanion Function({
-  Value<int> id,
-  required BillType type,
-  required int amountCents,
-  Value<int?> discountCents,
-  Value<int?> categoryId,
-  Value<String?> note,
-  required DateTime date,
-  Value<int?> timeMinute,
-  Value<String?> location,
-  Value<String?> locationFull,
-  Value<double?> lat,
-  Value<double?> lng,
-  Value<DateTime> createdAt,
-  Value<int?> importBatchId,
-  Value<int?> assetId,
-  Value<int?> toAssetId,
-});
-typedef $$BillsTableUpdateCompanionBuilder = BillsCompanion Function({
-  Value<int> id,
-  Value<BillType> type,
-  Value<int> amountCents,
-  Value<int?> discountCents,
-  Value<int?> categoryId,
-  Value<String?> note,
-  Value<DateTime> date,
-  Value<int?> timeMinute,
-  Value<String?> location,
-  Value<String?> locationFull,
-  Value<double?> lat,
-  Value<double?> lng,
-  Value<DateTime> createdAt,
-  Value<int?> importBatchId,
-  Value<int?> assetId,
-  Value<int?> toAssetId,
-});
+typedef $$BillsTableCreateCompanionBuilder =
+    BillsCompanion Function({
+      Value<int> id,
+      required BillType type,
+      required int amountCents,
+      Value<int?> discountCents,
+      Value<int?> categoryId,
+      Value<String?> note,
+      required DateTime date,
+      Value<int?> timeMinute,
+      Value<String?> location,
+      Value<String?> locationFull,
+      Value<double?> lat,
+      Value<double?> lng,
+      Value<DateTime> createdAt,
+      Value<int?> importBatchId,
+      Value<int?> assetId,
+      Value<int?> toAssetId,
+    });
+typedef $$BillsTableUpdateCompanionBuilder =
+    BillsCompanion Function({
+      Value<int> id,
+      Value<BillType> type,
+      Value<int> amountCents,
+      Value<int?> discountCents,
+      Value<int?> categoryId,
+      Value<String?> note,
+      Value<DateTime> date,
+      Value<int?> timeMinute,
+      Value<String?> location,
+      Value<String?> locationFull,
+      Value<double?> lat,
+      Value<double?> lng,
+      Value<DateTime> createdAt,
+      Value<int?> importBatchId,
+      Value<int?> assetId,
+      Value<int?> toAssetId,
+    });
 
 class $$BillsTableFilterComposer extends Composer<_$AppDatabase, $BillsTable> {
   $$BillsTableFilterComposer({
@@ -6199,18 +6796,20 @@ typedef $$BillsTableProcessedTableManager =
       Bill,
       PrefetchHooks Function()
     >;
-typedef $$BudgetsTableCreateCompanionBuilder = BudgetsCompanion Function({
-  Value<int> id,
-  required String month,
-  required int amountCents,
-  Value<int> categoryId,
-});
-typedef $$BudgetsTableUpdateCompanionBuilder = BudgetsCompanion Function({
-  Value<int> id,
-  Value<String> month,
-  Value<int> amountCents,
-  Value<int> categoryId,
-});
+typedef $$BudgetsTableCreateCompanionBuilder =
+    BudgetsCompanion Function({
+      Value<int> id,
+      required String month,
+      required int amountCents,
+      Value<int> categoryId,
+    });
+typedef $$BudgetsTableUpdateCompanionBuilder =
+    BudgetsCompanion Function({
+      Value<int> id,
+      Value<String> month,
+      Value<int> amountCents,
+      Value<int> categoryId,
+    });
 
 class $$BudgetsTableFilterComposer
     extends Composer<_$AppDatabase, $BudgetsTable> {
@@ -6370,20 +6969,22 @@ typedef $$BudgetsTableProcessedTableManager =
       Budget,
       PrefetchHooks Function()
     >;
-typedef $$TagsTableCreateCompanionBuilder = TagsCompanion Function({
-  Value<int> id,
-  required String name,
-  required int color,
-  Value<int> sortOrder,
-  Value<DateTime> createdAt,
-});
-typedef $$TagsTableUpdateCompanionBuilder = TagsCompanion Function({
-  Value<int> id,
-  Value<String> name,
-  Value<int> color,
-  Value<int> sortOrder,
-  Value<DateTime> createdAt,
-});
+typedef $$TagsTableCreateCompanionBuilder =
+    TagsCompanion Function({
+      Value<int> id,
+      required String name,
+      required int color,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+    });
+typedef $$TagsTableUpdateCompanionBuilder =
+    TagsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> color,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+    });
 
 class $$TagsTableFilterComposer extends Composer<_$AppDatabase, $TagsTable> {
   $$TagsTableFilterComposer({
@@ -6554,16 +7155,18 @@ typedef $$TagsTableProcessedTableManager =
       Tag,
       PrefetchHooks Function()
     >;
-typedef $$BillTagsTableCreateCompanionBuilder = BillTagsCompanion Function({
-  required int billId,
-  required int tagId,
-  Value<int> rowid,
-});
-typedef $$BillTagsTableUpdateCompanionBuilder = BillTagsCompanion Function({
-  Value<int> billId,
-  Value<int> tagId,
-  Value<int> rowid,
-});
+typedef $$BillTagsTableCreateCompanionBuilder =
+    BillTagsCompanion Function({
+      required int billId,
+      required int tagId,
+      Value<int> rowid,
+    });
+typedef $$BillTagsTableUpdateCompanionBuilder =
+    BillTagsCompanion Function({
+      Value<int> billId,
+      Value<int> tagId,
+      Value<int> rowid,
+    });
 
 class $$BillTagsTableFilterComposer
     extends Composer<_$AppDatabase, $BillTagsTable> {
@@ -6647,11 +7250,13 @@ class $$BillTagsTableTableManager
               $$BillTagsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$BillTagsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<int> billId = const Value.absent(),
-            Value<int> tagId = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) => BillTagsCompanion(billId: billId, tagId: tagId, rowid: rowid),
+          updateCompanionCallback:
+              ({
+                Value<int> billId = const Value.absent(),
+                Value<int> tagId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) =>
+                  BillTagsCompanion(billId: billId, tagId: tagId, rowid: rowid),
           createCompanionCallback:
               ({
                 required int billId,
@@ -6684,24 +7289,26 @@ typedef $$BillTagsTableProcessedTableManager =
       BillTag,
       PrefetchHooks Function()
     >;
-typedef $$BillImagesTableCreateCompanionBuilder = BillImagesCompanion Function({
-  Value<int> id,
-  required int billId,
-  required String objectKey,
-  required String localPath,
-  required BillImageUploadState uploadState,
-  Value<DateTime> createdAt,
-  Value<int> sort,
-});
-typedef $$BillImagesTableUpdateCompanionBuilder = BillImagesCompanion Function({
-  Value<int> id,
-  Value<int> billId,
-  Value<String> objectKey,
-  Value<String> localPath,
-  Value<BillImageUploadState> uploadState,
-  Value<DateTime> createdAt,
-  Value<int> sort,
-});
+typedef $$BillImagesTableCreateCompanionBuilder =
+    BillImagesCompanion Function({
+      Value<int> id,
+      required int billId,
+      required String objectKey,
+      required String localPath,
+      required BillImageUploadState uploadState,
+      Value<DateTime> createdAt,
+      Value<int> sort,
+    });
+typedef $$BillImagesTableUpdateCompanionBuilder =
+    BillImagesCompanion Function({
+      Value<int> id,
+      Value<int> billId,
+      Value<String> objectKey,
+      Value<String> localPath,
+      Value<BillImageUploadState> uploadState,
+      Value<DateTime> createdAt,
+      Value<int> sort,
+    });
 
 class $$BillImagesTableFilterComposer
     extends Composer<_$AppDatabase, $BillImagesTable> {
@@ -6919,40 +7526,42 @@ typedef $$BillImagesTableProcessedTableManager =
       BillImage,
       PrefetchHooks Function()
     >;
-typedef $$AssetsTableCreateCompanionBuilder = AssetsCompanion Function({
-  Value<int> id,
-  required String name,
-  required AssetKind kind,
-  required String category,
-  Value<String?> institution,
-  required int valueCents,
-  Value<String?> note,
-  Value<int> sortOrder,
-  Value<bool> archived,
-  Value<bool> includeInNet,
-  Value<int?> creditLimitCents,
-  Value<int?> billDay,
-  Value<int?> repayDay,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-});
-typedef $$AssetsTableUpdateCompanionBuilder = AssetsCompanion Function({
-  Value<int> id,
-  Value<String> name,
-  Value<AssetKind> kind,
-  Value<String> category,
-  Value<String?> institution,
-  Value<int> valueCents,
-  Value<String?> note,
-  Value<int> sortOrder,
-  Value<bool> archived,
-  Value<bool> includeInNet,
-  Value<int?> creditLimitCents,
-  Value<int?> billDay,
-  Value<int?> repayDay,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-});
+typedef $$AssetsTableCreateCompanionBuilder =
+    AssetsCompanion Function({
+      Value<int> id,
+      required String name,
+      required AssetKind kind,
+      required String category,
+      Value<String?> institution,
+      required int valueCents,
+      Value<String?> note,
+      Value<int> sortOrder,
+      Value<bool> archived,
+      Value<bool> includeInNet,
+      Value<int?> creditLimitCents,
+      Value<int?> billDay,
+      Value<int?> repayDay,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$AssetsTableUpdateCompanionBuilder =
+    AssetsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<AssetKind> kind,
+      Value<String> category,
+      Value<String?> institution,
+      Value<int> valueCents,
+      Value<String?> note,
+      Value<int> sortOrder,
+      Value<bool> archived,
+      Value<bool> includeInNet,
+      Value<int?> creditLimitCents,
+      Value<int?> billDay,
+      Value<int?> repayDay,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
 
 class $$AssetsTableFilterComposer
     extends Composer<_$AppDatabase, $AssetsTable> {
@@ -7664,32 +8273,34 @@ typedef $$NetValueDaysTableProcessedTableManager =
       NetValueDay,
       PrefetchHooks Function()
     >;
-typedef $$DebtNotesTableCreateCompanionBuilder = DebtNotesCompanion Function({
-  Value<int> id,
-  required DebtDirection direction,
-  required String personName,
-  required int amountCents,
-  Value<String?> note,
-  Value<int?> relatedAssetId,
-  required DateTime borrowedAt,
-  Value<DateTime?> repayDueAt,
-  Value<bool> includeInTotal,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-});
-typedef $$DebtNotesTableUpdateCompanionBuilder = DebtNotesCompanion Function({
-  Value<int> id,
-  Value<DebtDirection> direction,
-  Value<String> personName,
-  Value<int> amountCents,
-  Value<String?> note,
-  Value<int?> relatedAssetId,
-  Value<DateTime> borrowedAt,
-  Value<DateTime?> repayDueAt,
-  Value<bool> includeInTotal,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-});
+typedef $$DebtNotesTableCreateCompanionBuilder =
+    DebtNotesCompanion Function({
+      Value<int> id,
+      required DebtDirection direction,
+      required String personName,
+      required int amountCents,
+      Value<String?> note,
+      Value<int?> relatedAssetId,
+      required DateTime borrowedAt,
+      Value<DateTime?> repayDueAt,
+      Value<bool> includeInTotal,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$DebtNotesTableUpdateCompanionBuilder =
+    DebtNotesCompanion Function({
+      Value<int> id,
+      Value<DebtDirection> direction,
+      Value<String> personName,
+      Value<int> amountCents,
+      Value<String?> note,
+      Value<int?> relatedAssetId,
+      Value<DateTime> borrowedAt,
+      Value<DateTime?> repayDueAt,
+      Value<bool> includeInTotal,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
 
 class $$DebtNotesTableFilterComposer
     extends Composer<_$AppDatabase, $DebtNotesTable> {
@@ -8219,6 +8830,297 @@ typedef $$DebtNoteImagesTableProcessedTableManager =
       DebtNoteImage,
       PrefetchHooks Function()
     >;
+typedef $$DebtNoteRepaymentsTableCreateCompanionBuilder =
+    DebtNoteRepaymentsCompanion Function({
+      Value<int> id,
+      required int noteId,
+      required int amountCents,
+      Value<int?> interestCents,
+      Value<int?> categoryId,
+      Value<int?> interestBillId,
+      Value<String?> note,
+      required DateTime repaidAt,
+      Value<DateTime> createdAt,
+    });
+typedef $$DebtNoteRepaymentsTableUpdateCompanionBuilder =
+    DebtNoteRepaymentsCompanion Function({
+      Value<int> id,
+      Value<int> noteId,
+      Value<int> amountCents,
+      Value<int?> interestCents,
+      Value<int?> categoryId,
+      Value<int?> interestBillId,
+      Value<String?> note,
+      Value<DateTime> repaidAt,
+      Value<DateTime> createdAt,
+    });
+
+class $$DebtNoteRepaymentsTableFilterComposer
+    extends Composer<_$AppDatabase, $DebtNoteRepaymentsTable> {
+  $$DebtNoteRepaymentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountCents => $composableBuilder(
+    column: $table.amountCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get interestCents => $composableBuilder(
+    column: $table.interestCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get interestBillId => $composableBuilder(
+    column: $table.interestBillId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get repaidAt => $composableBuilder(
+    column: $table.repaidAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DebtNoteRepaymentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DebtNoteRepaymentsTable> {
+  $$DebtNoteRepaymentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountCents => $composableBuilder(
+    column: $table.amountCents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get interestCents => $composableBuilder(
+    column: $table.interestCents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get interestBillId => $composableBuilder(
+    column: $table.interestBillId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get repaidAt => $composableBuilder(
+    column: $table.repaidAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DebtNoteRepaymentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DebtNoteRepaymentsTable> {
+  $$DebtNoteRepaymentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get noteId =>
+      $composableBuilder(column: $table.noteId, builder: (column) => column);
+
+  GeneratedColumn<int> get amountCents => $composableBuilder(
+    column: $table.amountCents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get interestCents => $composableBuilder(
+    column: $table.interestCents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get interestBillId => $composableBuilder(
+    column: $table.interestBillId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get repaidAt =>
+      $composableBuilder(column: $table.repaidAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DebtNoteRepaymentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DebtNoteRepaymentsTable,
+          DebtNoteRepayment,
+          $$DebtNoteRepaymentsTableFilterComposer,
+          $$DebtNoteRepaymentsTableOrderingComposer,
+          $$DebtNoteRepaymentsTableAnnotationComposer,
+          $$DebtNoteRepaymentsTableCreateCompanionBuilder,
+          $$DebtNoteRepaymentsTableUpdateCompanionBuilder,
+          (
+            DebtNoteRepayment,
+            BaseReferences<
+              _$AppDatabase,
+              $DebtNoteRepaymentsTable,
+              DebtNoteRepayment
+            >,
+          ),
+          DebtNoteRepayment,
+          PrefetchHooks Function()
+        > {
+  $$DebtNoteRepaymentsTableTableManager(
+    _$AppDatabase db,
+    $DebtNoteRepaymentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DebtNoteRepaymentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DebtNoteRepaymentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DebtNoteRepaymentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
+                Value<int> amountCents = const Value.absent(),
+                Value<int?> interestCents = const Value.absent(),
+                Value<int?> categoryId = const Value.absent(),
+                Value<int?> interestBillId = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime> repaidAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => DebtNoteRepaymentsCompanion(
+                id: id,
+                noteId: noteId,
+                amountCents: amountCents,
+                interestCents: interestCents,
+                categoryId: categoryId,
+                interestBillId: interestBillId,
+                note: note,
+                repaidAt: repaidAt,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int noteId,
+                required int amountCents,
+                Value<int?> interestCents = const Value.absent(),
+                Value<int?> categoryId = const Value.absent(),
+                Value<int?> interestBillId = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                required DateTime repaidAt,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => DebtNoteRepaymentsCompanion.insert(
+                id: id,
+                noteId: noteId,
+                amountCents: amountCents,
+                interestCents: interestCents,
+                categoryId: categoryId,
+                interestBillId: interestBillId,
+                note: note,
+                repaidAt: repaidAt,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DebtNoteRepaymentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DebtNoteRepaymentsTable,
+      DebtNoteRepayment,
+      $$DebtNoteRepaymentsTableFilterComposer,
+      $$DebtNoteRepaymentsTableOrderingComposer,
+      $$DebtNoteRepaymentsTableAnnotationComposer,
+      $$DebtNoteRepaymentsTableCreateCompanionBuilder,
+      $$DebtNoteRepaymentsTableUpdateCompanionBuilder,
+      (
+        DebtNoteRepayment,
+        BaseReferences<
+          _$AppDatabase,
+          $DebtNoteRepaymentsTable,
+          DebtNoteRepayment
+        >,
+      ),
+      DebtNoteRepayment,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8244,4 +9146,6 @@ class $AppDatabaseManager {
       $$DebtNotesTableTableManager(_db, _db.debtNotes);
   $$DebtNoteImagesTableTableManager get debtNoteImages =>
       $$DebtNoteImagesTableTableManager(_db, _db.debtNoteImages);
+  $$DebtNoteRepaymentsTableTableManager get debtNoteRepayments =>
+      $$DebtNoteRepaymentsTableTableManager(_db, _db.debtNoteRepayments);
 }

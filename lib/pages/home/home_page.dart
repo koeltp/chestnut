@@ -27,6 +27,8 @@ import '../../widgets/debt_note_detail_sheet.dart';
 import '../../widgets/empty_state_card.dart';
 import '../../widgets/loading_placeholder.dart';
 import '../../widgets/month_switcher.dart';
+import '../../widgets/repayment_detail_sheet.dart';
+import '../../widgets/repayment_flow_row.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/update_dialog.dart';
 import '../settings/backup_page.dart';
@@ -704,6 +706,16 @@ class _DayCard extends StatelessWidget {
             if (i > 0) const Divider(indent: 68, endIndent: 16),
             if (entries[i].bill != null)
               _buildBillItem(context, entries[i].bill!)
+            else if (entries[i].repayment != null)
+              RepaymentFlowRow(
+                repayment: entries[i].repayment!,
+                debtNote: view.debtNotes[entries[i].repayment!.noteId],
+                onTap: () => showRepaymentDetailSheet(
+                  context,
+                  repayment: entries[i].repayment!,
+                  note: view.debtNotes[entries[i].repayment!.noteId],
+                ),
+              )
             else
               DebtFlowRow(
                 note: entries[i].debt!,

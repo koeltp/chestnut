@@ -268,6 +268,12 @@ class DebtNoteRepository {
     S3CompatibleClient? client,
   }) async {
     await _db.transaction(() async {
+      // 已还本金不能超过新借款金额：借条余额 = 金额 − 已还本金，
+      // 改小会让余额为负、剩余口径失真，直接拒绝
+      final repaid = await repaidPrincipalTotal(existing.id);
+      if (amountCents < repaid) {
+        throw Exception('借款金额不能低于已还本金，请先删除部分还款记录');
+      }
       // 余额联动差值修正：先撤销旧影响（旧账户/旧金额），落库后应用新影响。
       // 方向不可编辑，新旧方向一致，直接用 existing.direction
       await _applyDebtNoteEffect(
@@ -311,13 +317,30 @@ class DebtNoteRepository {
     )..where((n) => n.id.equals(existing.id))).getSingle();
   }
 
-  /// 删除借条：记录、照片与关联账户余额影响同步撤销；
+  /// 删除借条：记录、照片、还款分笔与关联账户余额影响同步撤销；
   /// [client] 非空时异步清云端对象
   Future<void> deleteDebtNote(
     DebtNote note, {
     S3CompatibleClient? client,
   }) async {
     await _db.transaction(() async {
+      // 先级联撤销全部还款分笔：本金部分撤销账户扣款/收款，利息账单
+      // 删除时经 applyBillEffect 自动撤销其余额影响
+      final repayments = await (_db.select(
+        _db.debtNoteRepayments,
+      )..where((r) => r.noteId.equals(note.id))).get();
+      for (final r in repayments) {
+        await _applyRepaymentEffect(
+          note.direction,
+          relatedAssetId: note.relatedAssetId,
+          principalCents: r.amountCents - (r.interestCents ?? 0),
+          revert: true,
+        );
+        await _deleteInterestBill(r);
+        await (_db.delete(
+          _db.debtNoteRepayments,
+        )..where((x) => x.id.equals(r.id))).go();
+      }
       await (_db.delete(
         _db.debtNotes,
       )..where((n) => n.id.equals(note.id))).go();
@@ -332,6 +355,261 @@ class DebtNoteRepository {
     for (final image in photos) {
       await deletePhoto(image, client: client);
     }
+  }
+
+  // ---------- 还款分笔 ----------
+
+  /// 应用/撤销一笔还款本金部分对关联账户的影响（必须在调用方事务内）：
+  /// 借入还款 = 钱从关联账户出（资产减/信用卡欠款增），借出收款 = 钱回
+  /// 关联账户；撤销取反。利息部分由利息支出账单的既有链路处理，
+  /// 这里只管本金
+  Future<void> _applyRepaymentEffect(
+    DebtDirection direction, {
+    required int? relatedAssetId,
+    required int principalCents,
+    required bool revert,
+  }) async {
+    if (relatedAssetId == null || principalCents <= 0) return;
+    final isOutflow = direction == DebtDirection.borrowIn;
+    await _assetRepo.applyAccountDelta(
+      relatedAssetId,
+      isOutflow: revert ? !isOutflow : isOutflow,
+      amountCents: principalCents,
+      // 应用新影响（扣款）校验余额不足；撤销旧影响不校验
+      enforceBalance: !revert,
+    );
+  }
+
+  /// 删除一笔还款关联的利息支出账单：账单行删除时经 applyBillEffect
+  /// 自动撤销其账户余额影响（同事务调用）
+  Future<void> _deleteInterestBill(DebtNoteRepayment repayment) async {
+    final billId = repayment.interestBillId;
+    if (billId == null) return;
+    final bill = await (_db.select(
+      _db.bills,
+    )..where((b) => b.id.equals(billId))).getSingleOrNull();
+    if (bill == null) return;
+    await (_db.delete(_db.bills)..where((b) => b.id.equals(billId))).go();
+    await _assetRepo.applyBillEffect(oldBill: bill);
+  }
+
+  /// 某借条的全部还款分笔流（详情弹窗订阅：已还/剩余与记录列表数据源）
+  Stream<List<DebtNoteRepayment>> watchRepaymentsByNote(int noteId) {
+    return (_db.select(_db.debtNoteRepayments)
+          ..where((r) => r.noteId.equals(noteId))
+          ..orderBy([
+            (r) => OrderingTerm.desc(r.repaidAt),
+            (r) => OrderingTerm.desc(r.id),
+          ]))
+        .watch();
+  }
+
+  /// 各借条已还本金总额流（noteId → 分）：借条列表/合计的"剩余"口径
+  /// 数据源。本金 = 还款额 − 利息（未拆分利息时整笔都是本金）
+  Stream<Map<int, int>> watchRepaidPrincipalTotals() {
+    return _db
+        .customSelect(
+          'SELECT note_id, SUM(amount_cents - COALESCE(interest_cents, 0)) '
+          'AS paid FROM debt_note_repayments GROUP BY note_id',
+          readsFrom: {_db.debtNoteRepayments},
+        )
+        .watch()
+        .map(
+          (rows) => {
+            for (final r in rows)
+              r.data['note_id'] as int: r.data['paid'] as int,
+          },
+        );
+  }
+
+  /// 指定范围的还款流（首页明细混排）：与借条同口径下沉 SQL 过滤，
+  /// 避免全表 watch 后 Dart 层过滤导致范围外变动也触发重发射
+  Stream<List<DebtNoteRepayment>> watchRepaymentsInMonth(DateTime month) {
+    return _watchRepaymentsBetween(
+      DateTime(month.year, month.month, 1),
+      DateTime(month.year, month.month + 1, 1),
+    );
+  }
+
+  /// 指定年份的还款流
+  Stream<List<DebtNoteRepayment>> watchRepaymentsInYear(int year) {
+    return _watchRepaymentsBetween(DateTime(year, 1, 1), DateTime(year + 1, 1, 1));
+  }
+
+  /// 全部还款流（首页"全部"模式：还款记录量级小，全表参与混排）
+  Stream<List<DebtNoteRepayment>> watchRepaymentsAll() {
+    return (_db.select(_db.debtNoteRepayments)
+          ..orderBy([
+            (r) => OrderingTerm.desc(r.repaidAt),
+            (r) => OrderingTerm.desc(r.id),
+          ]))
+        .watch();
+  }
+
+  Stream<List<DebtNoteRepayment>> _watchRepaymentsBetween(
+    DateTime start,
+    DateTime end,
+  ) {
+    return (_db.select(_db.debtNoteRepayments)
+          ..where(
+            (r) =>
+                r.repaidAt.isBiggerOrEqualValue(start) &
+                r.repaidAt.isSmallerThanValue(end),
+          )
+          ..orderBy([
+            (r) => OrderingTerm.desc(r.repaidAt),
+            (r) => OrderingTerm.desc(r.id),
+          ]))
+        .watch();
+  }
+
+  /// 关联某账户的还款流（账户流水页混排）：join 借条按关联账户过滤
+  Stream<List<DebtNoteRepayment>> watchRepaymentsOfAsset(int assetId) {
+    final query =
+        _db.select(_db.debtNoteRepayments).join([
+            innerJoin(
+              _db.debtNotes,
+              _db.debtNotes.id.equalsExp(_db.debtNoteRepayments.noteId),
+            ),
+          ])
+          ..where(_db.debtNotes.relatedAssetId.equals(assetId))
+          ..orderBy([
+            OrderingTerm.desc(_db.debtNoteRepayments.repaidAt),
+            OrderingTerm.desc(_db.debtNoteRepayments.id),
+          ]);
+    return query.watch().map(
+      (rows) =>
+          rows.map((r) => r.readTable(_db.debtNoteRepayments)).toList(),
+    );
+  }
+
+  /// 该借条最近一次使用的利息分类 id（记还款时分类记忆带出）；
+  /// 无历史还款分类返回 null（由用户选择）
+  Future<int?> latestRepaymentCategoryId(int noteId) async {
+    final row =
+        await (_db.select(_db.debtNoteRepayments)
+              ..where(
+                (r) => r.noteId.equals(noteId) & r.categoryId.isNotNull(),
+              )
+              ..orderBy([
+                (r) => OrderingTerm.desc(r.repaidAt),
+                (r) => OrderingTerm.desc(r.id),
+              ])
+              ..limit(1))
+            .getSingleOrNull();
+    return row?.categoryId;
+  }
+
+  /// 记一笔还款（同事务完成三条联动）：
+  /// ① 利息部分（拆分时）生成支出账单——明细展示与余额影响全走
+  ///    账单既有链路；② 本金部分直接增减关联账户余额；③ 落还款记录
+  ///
+  /// [interestCents] 非空时 [categoryId] 必传（利息账单要带分类）；
+  /// 关联账户余额不足时抛 [InsufficientBalanceException] 整体回滚。
+  /// 返回落库后的还款记录
+  Future<DebtNoteRepayment> addRepayment({
+    required DebtNote note,
+    required int amountCents,
+    required DateTime repaidAt,
+    int? interestCents,
+    int? categoryId,
+    String? remark,
+  }) async {
+    assert(
+      interestCents == null || interestCents > 0,
+      '利息拆分必须为正数',
+    );
+    assert(
+      interestCents == null || amountCents > interestCents,
+      '还款总额必须大于利息',
+    );
+    return _db.transaction(() async {
+      // ① 利息支出账单：先插账单拿 id，再落还款记录引用（删除时级联）
+      int? billId;
+      if (interestCents != null) {
+        // 局部非空变量：drift equals 需要 int，类型提升只在局部生效
+        final newBillId = await _db
+            .into(_db.bills)
+            .insert(
+              BillsCompanion.insert(
+                type: BillType.expense,
+                amountCents: interestCents,
+                categoryId: Value(categoryId),
+                note: Value('利息·${note.personName}'),
+                date: DateTime(repaidAt.year, repaidAt.month, repaidAt.day),
+                timeMinute: Value(repaidAt.hour * 60 + repaidAt.minute),
+                assetId: Value(note.relatedAssetId),
+              ),
+            );
+        final bill = await (_db.select(
+          _db.bills,
+        )..where((b) => b.id.equals(newBillId))).getSingle();
+        await _assetRepo.applyBillEffect(newBill: bill);
+        billId = newBillId;
+      }
+      // ② 本金部分联动关联账户（借入还款扣钱 / 借出收款回钱）
+      final principal = amountCents - (interestCents ?? 0);
+      await _applyRepaymentEffect(
+        note.direction,
+        relatedAssetId: note.relatedAssetId,
+        principalCents: principal,
+        revert: false,
+      );
+      // ③ 落还款记录
+      final id = await _db
+          .into(_db.debtNoteRepayments)
+          .insert(
+            DebtNoteRepaymentsCompanion.insert(
+              noteId: note.id,
+              amountCents: amountCents,
+              interestCents: Value(interestCents),
+              categoryId: Value(categoryId),
+              interestBillId: Value(billId),
+              note: Value(remark),
+              repaidAt: repaidAt,
+            ),
+          );
+      return (_db.select(
+        _db.debtNoteRepayments,
+      )..where((r) => r.id.equals(id))).getSingle();
+    });
+  }
+
+  /// 删除一笔还款：撤销本金联动（账户余额加回/扣回）、级联删利息
+  /// 账单（余额影响自动撤销）、删还款记录。借条归属信息内部自查，
+  /// 不依赖调用方传参
+  Future<void> deleteRepayment(DebtNoteRepayment repayment) async {
+    await _db.transaction(() async {
+      final note = await (_db.select(
+        _db.debtNotes,
+      )..where((n) => n.id.equals(repayment.noteId))).getSingleOrNull();
+      if (note != null) {
+        await _applyRepaymentEffect(
+          note.direction,
+          relatedAssetId: note.relatedAssetId,
+          principalCents:
+              repayment.amountCents - (repayment.interestCents ?? 0),
+          revert: true,
+        );
+      }
+      await _deleteInterestBill(repayment);
+      await (_db.delete(
+        _db.debtNoteRepayments,
+      )..where((r) => r.id.equals(repayment.id))).go();
+    });
+  }
+
+  /// 某借条已还本金总额（编辑借条校验新金额时用）
+  Future<int> repaidPrincipalTotal(int noteId) async {
+    final row =
+        await _db
+            .customSelect(
+              'SELECT COALESCE(SUM(amount_cents - COALESCE(interest_cents, 0)), 0) '
+              'AS paid FROM debt_note_repayments WHERE note_id = ?',
+              variables: [Variable(noteId)],
+            )
+            .getSingle();
+    return row.data['paid'] as int;
   }
 
   // ---------- 照片删除 ----------

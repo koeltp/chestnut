@@ -15,6 +15,24 @@ enum CategoryTreeMode {
   multi,
 }
 
+/// 分类选择的共用兜底：无选中时取第一个一级分类 id（与记一笔的
+/// 自动兜底同款），无一级分类返回 null
+int? defaultCategoryId(List<Category> categories) =>
+    categories.where((c) => c.parentId == null).firstOrNull?.id;
+
+/// 计算分类树的初始展开项：选中分类挂二级展开其所属一级，挂一级
+/// 展开自身；[selectedId] 为空或不存在时展开第一个一级分类——打开
+/// 即见二级分类省一次点击（记一笔与弹窗选分类共用，修改一处全局生效）
+int? initialExpandedCategoryId(List<Category> categories, int? selectedId) {
+  final parents = categories.where((c) => c.parentId == null).toList();
+  if (parents.isEmpty) return null;
+  final selected = selectedId == null
+      ? null
+      : categories.where((c) => c.id == selectedId).firstOrNull;
+  final target = selected ?? parents.first;
+  return target.parentId ?? target.id;
+}
+
 /// 分类树选择器：记一笔单选与统计筛选多选共用的唯一组件
 ///
 /// 两种模式各用最合适的形态：

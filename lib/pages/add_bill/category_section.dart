@@ -74,14 +74,12 @@ class CategorySection extends StatelessWidget {
         }
         final effectiveId = exists ? selectedId : parents.first.id;
         // 初始展开：新建/切类型展开第一个一级的二级供直接选择，省一次点击；
-        // 编辑回显挂二级展开其所属组，挂一级展开自身面板
-        final selectedCat = categories.firstWhere(
-          (c) => c.id == effectiveId,
-          orElse: () => parents.first,
+        // 编辑回显挂二级展开其所属组，挂一级展开自身面板——共用函数见
+        // initialExpandedCategoryId
+        final initialExpandedId = initialExpandedCategoryId(
+          categories,
+          exists ? effectiveId : null,
         );
-        final initialExpandedId = exists
-            ? (selectedCat.parentId ?? selectedCat.id)
-            : parents.first.id;
         return CategoryTreeSelector(
           // 切收/支类型后整树重建：展开状态随类型重置，避免残留上一类型面板
           key: ValueKey(type),

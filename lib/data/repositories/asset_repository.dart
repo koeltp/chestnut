@@ -143,20 +143,30 @@ class AssetRepository {
             (SELECT COUNT(*) FROM assets
               WHERE archived = 0 AND include_in_net = 1 AND kind = 1
             ) AS liability_count,
-            (SELECT COALESCE(SUM(amount_cents), 0) FROM debt_notes
-              WHERE direction = 0 AND include_in_total = 1
+            (SELECT COALESCE(SUM(n.amount_cents - COALESCE((
+              SELECT SUM(r.amount_cents - COALESCE(r.interest_cents, 0))
+              FROM debt_note_repayments r WHERE r.note_id = n.id
+            ), 0)), 0) FROM debt_notes n
+              WHERE n.direction = 0 AND n.include_in_total = 1
             ) AS lend_out_cents,
-            (SELECT COALESCE(SUM(amount_cents), 0) FROM debt_notes
-              WHERE direction = 1 AND include_in_total = 1
+            (SELECT COALESCE(SUM(n.amount_cents - COALESCE((
+              SELECT SUM(r.amount_cents - COALESCE(r.interest_cents, 0))
+              FROM debt_note_repayments r WHERE r.note_id = n.id
+            ), 0)), 0) FROM debt_notes n
+              WHERE n.direction = 1 AND n.include_in_total = 1
             ) AS borrow_in_cents,
-            (SELECT COALESCE(SUM(amount_cents), 0) FROM debt_notes
-              WHERE direction = 0
+            (SELECT COALESCE(SUM(n.amount_cents - COALESCE((
+              SELECT SUM(r.amount_cents - COALESCE(r.interest_cents, 0))
+              FROM debt_note_repayments r WHERE r.note_id = n.id
+            ), 0)), 0) FROM debt_notes n WHERE n.direction = 0
             ) AS lend_out_all_cents,
-            (SELECT COALESCE(SUM(amount_cents), 0) FROM debt_notes
-              WHERE direction = 1
+            (SELECT COALESCE(SUM(n.amount_cents - COALESCE((
+              SELECT SUM(r.amount_cents - COALESCE(r.interest_cents, 0))
+              FROM debt_note_repayments r WHERE r.note_id = n.id
+            ), 0)), 0) FROM debt_notes n WHERE n.direction = 1
             ) AS borrow_in_all_cents
           ''',
-          readsFrom: {_db.assets, _db.debtNotes},
+          readsFrom: {_db.assets, _db.debtNotes, _db.debtNoteRepayments},
         )
         .watch()
         .map((rows) {

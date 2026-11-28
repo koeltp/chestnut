@@ -16,6 +16,8 @@ import '../../widgets/debt_flow_row.dart';
 import '../../widgets/debt_note_detail_sheet.dart';
 import '../../widgets/institution_logo.dart';
 import '../../widgets/loading_placeholder.dart';
+import '../../widgets/repayment_detail_sheet.dart';
+import '../../widgets/repayment_flow_row.dart';
 import '../../widgets/section_card.dart';
 import '../stats/stats_page.dart';
 import 'asset_edit_page.dart';
@@ -231,6 +233,16 @@ class _FlowCard extends StatelessWidget {
                   if (i > 0) const Divider(height: 1, indent: 16),
                   if (entries[i].bill != null)
                     _BillFlowRow(bill: entries[i].bill!, view: view)
+                  else if (entries[i].repayment != null)
+                    RepaymentFlowRow(
+                      repayment: entries[i].repayment!,
+                      debtNote: view.debtNotes[entries[i].repayment!.noteId],
+                      onTap: () => showRepaymentDetailSheet(
+                        context,
+                        repayment: entries[i].repayment!,
+                        note: view.debtNotes[entries[i].repayment!.noteId],
+                      ),
+                    )
                   else
                     DebtFlowRow(
                       note: entries[i].debt!,

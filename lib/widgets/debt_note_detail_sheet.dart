@@ -8,6 +8,8 @@ import '../data/database.dart';
 import '../data/repositories/debt_note_repository.dart';
 import '../models/enums.dart';
 import '../pages/asset/debt_note_edit_page.dart';
+import '../pages/asset/debt_repayment_list_page.dart';
+import '../pages/asset/repayment_edit_page.dart';
 import '../providers/asset_provider.dart';
 import '../providers/cloud_storage_provider.dart';
 import '../providers/debt_note_provider.dart';
@@ -74,6 +76,10 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
   List<DebtNoteImage> _images = [];
   StreamSubscription<List<DebtNoteImage>>? _imageSub;
 
+  /// 该借条的还款分笔（流订阅：已还/剩余与记录列表）
+  List<DebtNoteRepayment> _repayments = [];
+  StreamSubscription<List<DebtNoteRepayment>>? _repaymentSub;
+
   /// imageId → 本地文件（null = 本地缺失且云端拉回失败，显示占位）
   final Map<int, File?> _localFiles = {};
 
@@ -93,11 +99,18 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
       setState(() => _images = images);
       unawaited(_ensureFiles(images));
     });
+    _repaymentSub = widget.provider
+        .repaymentsByNoteStream(widget.note.id)
+        .listen((repayments) {
+          if (!mounted) return;
+          setState(() => _repayments = repayments);
+        });
   }
 
   @override
   void dispose() {
     unawaited(_imageSub?.cancel());
+    unawaited(_repaymentSub?.cancel());
     super.dispose();
   }
 
@@ -167,6 +180,26 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
     );
   }
 
+  /// 记一笔还款/收款：先关详情，再用宿主 context 进记还款页
+  void _openRepaymentEditor() {
+    Navigator.of(context).pop();
+    Navigator.of(widget.hostContext).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RepaymentEditPage(note: widget.note),
+      ),
+    );
+  }
+
+  /// 查看还款记录：先关详情，再用宿主 context 进该借条的还款记录页
+  void _openRepaymentList() {
+    Navigator.of(context).pop();
+    Navigator.of(widget.hostContext).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DebtRepaymentListPage(note: widget.note),
+      ),
+    );
+  }
+
   /// 删除（二次确认）：确认后先关详情再写库，列表由流自动刷新
   Future<void> _confirmDelete(BuildContext sheetContext) async {
     final confirmed = await showDialog<bool>(
@@ -200,6 +233,12 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
     final isLendOut = widget.note.direction == DebtDirection.lendOut;
     final isLend = isLendOut; // 借出 = 钱出去（红），借入 = 钱进来（绿）
     final amountColor = isLend ? AppColors.expense : AppColors.income;
+    // 已还本金 = Σ(还款额 − 利息)；有还款时金额行显示剩余口径
+    final repaidPrincipal = _repayments.fold<int>(
+      0,
+      (s, r) => s + r.amountCents - (r.interestCents ?? 0),
+    );
+    final hasRepayments = _repayments.isNotEmpty;
     return SafeArea(
       child: SingleChildScrollView(
         // 边距与账单详情弹窗完全一致
@@ -208,7 +247,7 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 顶部：标题 + 操作胶囊（删除红底红字提示危险操作）
+            // 顶部：标题 + 操作胶囊（记还款主入口；删除红底红字提示危险操作）
             Row(
               children: [
                 const Text(
@@ -220,6 +259,11 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
                   ),
                 ),
                 const Spacer(),
+                DetailPill(
+                  isLendOut ? '记收款' : '记还款',
+                  onTap: _openRepaymentEditor,
+                ),
+                const SizedBox(width: 8),
                 DetailPill('修改', onTap: _openEditor),
                 const SizedBox(width: 8),
                 DetailPill(
@@ -231,10 +275,10 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
             ),
             const SizedBox(height: 6),
             DetailInfoRow(
-              label: '金额',
+              label: hasRepayments ? '剩余欠款' : '金额',
               child: Text(
                 '${isLend ? '-' : '+'}¥'
-                '${MoneyUtil.centsToYuanGroupedTrimmed(widget.note.amountCents)}',
+                '${MoneyUtil.centsToYuanGroupedTrimmed(hasRepayments ? widget.note.amountCents - repaidPrincipal : widget.note.amountCents)}',
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontSize: 20,
@@ -244,6 +288,23 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
                 ),
               ),
             ),
+            // 已还行：有还款分笔时展示进度
+            if (hasRepayments) ...[
+              const Divider(height: 1, color: AppColors.divider),
+              DetailInfoRow(
+                label: '已还（${_repayments.length} 笔）',
+                child: Text(
+                  '¥${MoneyUtil.centsToYuanGroupedTrimmed(repaidPrincipal)}'
+                  '${repaidPrincipal >= widget.note.amountCents ? ' · 已结清' : ''}',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
             // 借据照片条：56px 圆角横滑缩略图（点击全屏预览）
             if (_images.isNotEmpty) ...[
               const Divider(height: 1, color: AppColors.divider),
@@ -361,6 +422,42 @@ class _DebtDetailBodyState extends State<_DebtDetailBody> {
                   style: const TextStyle(
                     fontSize: 15,
                     color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+            // 还款记录入口：有分笔时跳还款记录页（列表/删除都在那里）
+            if (hasRepayments) ...[
+              const Divider(height: 1, color: AppColors.divider),
+              InkWell(
+                onTap: _openRepaymentList,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: [
+                      const Text(
+                        '还款记录',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${_repayments.length} 笔',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: AppColors.textSecondary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      ),
+                    ],
                   ),
                 ),
               ),

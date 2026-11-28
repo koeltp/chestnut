@@ -37,6 +37,11 @@ class _DebtNoteListPageState extends State<DebtNoteListPage> {
       .read<AssetProvider>()
       .assetsMapStream();
 
+  /// 各借条已还本金总额（noteId → 分）：合计与行剩余口径数据源
+  late final Stream<Map<int, int>> _repaidStream = context
+      .read<DebtNoteProvider>()
+      .repaidTotalsStream();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,13 +64,23 @@ class _DebtNoteListPageState extends State<DebtNoteListPage> {
           final borrowIn = list
               .where((n) => n.direction == DebtDirection.borrowIn)
               .toList();
-          final lendTotal = lendOut.fold<int>(0, (s, n) => s + n.amountCents);
-          final borrowTotal = borrowIn.fold<int>(
-            0,
-            (s, n) => s + n.amountCents,
-          );
           final masked = context.watch<AssetProvider>().masked;
-          return ListView(
+          return StreamBuilder<Map<int, int>>(
+            stream: _repaidStream,
+            builder: (context, repaidSnap) {
+              final repaid = repaidSnap.data ?? const <int, int>{};
+              int remaining(DebtNote n) =>
+                  n.amountCents - (repaid[n.id] ?? 0);
+              // 合计为剩余口径（与资产页净值中的借条口径一致）
+              final lendTotal = lendOut.fold<int>(
+                0,
+                (s, n) => s + remaining(n),
+              );
+              final borrowTotal = borrowIn.fold<int>(
+                0,
+                (s, n) => s + remaining(n),
+              );
+              return ListView(
             padding: const EdgeInsets.fromLTRB(
               AppDimens.pagePadding,
               AppDimens.gapSection,
@@ -128,6 +143,7 @@ class _DebtNoteListPageState extends State<DebtNoteListPage> {
                                   note: list[i],
                                   hasImage: photoNoteIds.contains(list[i].id),
                                   accountLine: debtAccountLine(list[i], assets),
+                                  paidCents: repaid[list[i].id] ?? 0,
                                   onTap: () => showDebtNoteDetailSheet(
                                     context,
                                     note: list[i],
@@ -142,6 +158,8 @@ class _DebtNoteListPageState extends State<DebtNoteListPage> {
                   },
                 ),
             ],
+              );
+            },
           );
         },
       ),
